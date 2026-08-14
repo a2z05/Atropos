@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="Atropos control plane — Hermes + Claude fusion harness">
 <title>Atropos — Control Plane</title>
 <style>
   :root {
@@ -323,7 +325,6 @@
   @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(.82); } 100% { opacity: 1; transform: scale(1); } }
 
   @media (max-width: 1000px) {
-    .sidebar { display: none; }
     .router-grid { grid-template-columns: 1fr; }
   }
   /* bottom status strip */
@@ -392,6 +393,126 @@
   .bk-file .sz { color: var(--muted); font-size: 10.5px; font-family: ui-monospace, Menlo, Consolas, monospace; }
   .bk-file .dt { color: var(--muted); font-size: 10px; }
 
+  /* ── Command Palette (Ctrl+K / Cmd+K) ── */
+  .cmd-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 90;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    animation: fadeUp .15s ease both;
+  }
+  .cmd-backdrop.open { display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+  .cmd-modal {
+    width: 520px; max-width: 92vw; background: var(--bg1); border: var(--card-border);
+    border-radius: 14px; box-shadow: 0 24px 80px rgba(0,0,0,.6); overflow: hidden;
+    animation: fadeUp .18s ease both;
+  }
+  .cmd-input {
+    width: 100%; padding: 15px 18px; background: transparent; border: none; border-bottom: 1px solid rgba(148,163,184,.14);
+    color: var(--text); font-size: 14.5px; outline: none; font-family: inherit;
+  }
+  .cmd-input::placeholder { color: var(--muted); }
+  .cmd-list { max-height: 320px; overflow-y: auto; padding: 6px 0; }
+  .cmd-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 18px; cursor: pointer; font-size: 13.5px; color: var(--muted);
+    transition: background .12s, color .12s;
+  }
+  .cmd-item:hover, .cmd-item.sel { background: rgba(99,102,241,.12); color: var(--text); }
+  .cmd-item .cmd-ico { width: 20px; text-align: center; font-size: 14px; flex: 0 0 auto; }
+  .cmd-item .cmd-name { font-weight: 600; }
+  .cmd-item .cmd-desc { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .cmd-item .cmd-shortcut { font-size: 10px; color: var(--muted); background: rgba(30,41,59,.6); border: 1px solid rgba(148,163,184,.18); padding: 1px 6px; border-radius: 5px; font-family: ui-monospace, Menlo, monospace; }
+
+  /* ── Auth password gate ── */
+  .auth-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 95;
+    background: rgba(0,0,0,.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .auth-backdrop.open { display: flex; align-items: center; justify-content: center; }
+  .auth-box {
+    background: var(--bg1); border: var(--card-border); border-radius: 16px; padding: 30px 36px;
+    text-align: center; max-width: 340px; width: 90%;
+  }
+  .auth-box h3 { font-size: 15px; margin-bottom: 14px; font-weight: 800; letter-spacing: .5px; }
+  .auth-box input {
+    width: 100%; padding: 10px 14px; background: rgba(15,23,42,.7); border: 1px solid rgba(148,163,184,.25);
+    color: var(--text); border-radius: 10px; font-size: 13px; outline: none; margin-bottom: 12px;
+  }
+  .auth-box input:focus { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+  .auth-err { color: var(--red); font-size: 12px; margin-top: 6px; min-height: 16px; }
+
+  /* ── Session trace drill-down ── */
+  .trace-overlay {
+    display: none; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0,0,0,.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  .trace-overlay.open { display: flex; justify-content: flex-end; }
+  .trace-panel {
+    width: 420px; max-width: 92vw; height: 100vh; background: var(--bg1);
+    border-left: var(--card-border); overflow-y: auto; padding: 22px;
+    animation: slideInRight .25s ease both;
+  }
+  @keyframes slideInRight { from { transform: translateX(100%); } to { transform: none; } }
+  .trace-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .trace-header h3 { font-size: 14px; font-weight: 800; flex: 1; }
+  .trace-close { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+  .trace-close:hover { color: var(--text); background: rgba(148,163,184,.12); }
+  .trace-msg {
+    background: rgba(2,6,23,.6); border: 1px solid rgba(148,163,184,.1);
+    border-radius: 10px; padding: 11px 13px; margin-bottom: 8px; font-size: 12.5px;
+  }
+  .trace-msg .role { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 4px; }
+  .trace-msg .role.user { color: var(--cyan); } .trace-msg .role.assistant { color: var(--indigo-l); } .trace-msg .role.system { color: var(--yellow); }
+  .trace-msg .meta { color: var(--muted); font-size: 10.5px; margin-bottom: 6px; }
+  .trace-msg .body { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--text); max-height: 150px; overflow-y: auto; }
+  .trace-empty { color: var(--muted); font-style: italic; font-size: 13px; padding: 20px 0; }
+
+  /* ── Router sparkline ── */
+  .sparkline-wrap { margin-top: 8px; }
+  .sparkline-wrap svg { display: block; width: 100%; height: 28px; }
+  .sparkline-wrap .spark-val { font-size: 10px; color: var(--muted); }
+
+  /* ── Changelog viewer ── */
+  .changelog-box {
+    background: rgba(2,6,23,.6); border: 1px solid rgba(148,163,184,.12);
+    border-radius: 10px; padding: 12px 14px; max-height: 220px; overflow-y: auto;
+    font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+    font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--muted);
+    margin-top: 12px;
+  }
+
+  /* ── Claude doctor output ── */
+  .claude-out {
+    background: rgba(2,6,23,.6); border: 1px solid rgba(148,163,184,.12);
+    border-radius: 10px; padding: 12px 14px; max-height: 320px; overflow-y: auto;
+    font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    font-family: ui-monospace, Menlo, Consolas, monospace; margin-top: 12px;
+  }
+
+  /* ── Hamburger for mobile ── */
+  .hamburger {
+    display: none; background: none; border: none; color: var(--muted); font-size: 20px;
+    cursor: pointer; padding: 6px; border-radius: 8px;
+  }
+  .hamburger:hover { color: var(--text); background: rgba(148,163,184,.1); }
+  @media (max-width: 768px) {
+    .hamburger { display: block; }
+    .sidebar {
+      display: none; position: fixed; left: 0; top: 0; bottom: 0; z-index: 60;
+      width: 232px; max-width: 80vw; padding-top: 70px;
+      animation: slideInRight .2s ease both;
+    }
+    .sidebar.mobile-open { display: flex; }
+    .mobile-overlay {
+      display: none; position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.45);
+    }
+    .mobile-overlay.open { display: block; }
+    .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+    .token-input { width: 100%; }
+    .main { padding: 14px; }
+    .bk-grid { grid-template-columns: 1fr; }
+    .stat-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
   @media (max-width: 800px) {
     .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
     .token-input { width: 100%; }
@@ -439,6 +560,7 @@
   <!-- ── Main ── -->
   <main class="main">
     <div class="topbar">
+      <button class="hamburger" id="hamburger" title="Menu">☰</button>
       <div class="title" id="top-title">Overview <span>control plane</span></div>
       <div class="spacer"></div>
       <span id="version" class="version-chip">v—</span>
@@ -530,6 +652,10 @@
           <h3><span class="dot"></span>Live test results</h3>
           <div id="router-test-out"><div class="log-empty">Run a test to see latency results.</div></div>
         </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>Latency history (sparklines)</h3>
+          <div id="router-sparklines" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;"><div class="log-empty">Run a router test to populate sparkline data.</div></div>
+        </section>
       </div>
     </section>
 
@@ -541,7 +667,7 @@
           <div id="sess-counts"><div class="log-empty">Loading…</div></div>
         </section>
         <section class="card span-8">
-          <h3><span class="dot"></span>Recent sessions</h3>
+          <h3><span class="dot"></span>Recent sessions <span class="right" id="sess-hint">click a View for message trace</span></h3>
           <div id="sess-list"><div class="log-empty">Loading…</div></div>
         </section>
       </div>
@@ -581,11 +707,18 @@
     <section class="panel" id="panel-update">
       <div class="grid">
         <section class="card span-7">
-          <h3><span class="dot"></span>Updater</h3>
+          <h3><span class="dot"></span>Updater <span class="right" id="update-last-check">—</span></h3>
           <div id="update-state" class="log-empty">—</div>
+          <div id="update-banner-inline" style="display:none;align-items:center;gap:10px;margin-top:12px;padding:10px 13px;border-radius:10px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);font-size:13px;color:var(--yellow);font-weight:600;">
+            <span class="pulse" style="flex:0 0 auto;"></span>
+            <span id="update-banner-inline-text">Update available</span>
+            <button class="btn warn" id="btn-update-banner-apply" style="margin-left:auto;">Apply</button>
+          </div>
+          <div class="edit-label" style="margin-top:16px;">changelog</div>
+          <div class="changelog-box" id="update-changelog"><div class="log-empty">Loading changelog…</div></div>
           <div class="btn-row just-end">
-            <button class="btn" id="btn-update-check">Check</button>
-            <button class="btn warn" id="btn-update-apply">Apply</button>
+            <button class="btn" id="btn-update-check">Check now</button>
+            <button class="btn warn" id="btn-update-apply">Apply update</button>
           </div>
         </section>
         <section class="card span-5">
@@ -685,6 +818,15 @@
             <button class="btn" id="btn-cl-save">Save</button>
           </div>
         </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>Claude doctor <span class="right">run `claude doctor` from the dashboard</span></h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Deep diagnostic of the Claude Code install (hooks, permissions, config, auth).</p>
+          <div class="btn-row">
+            <button class="btn" id="btn-cl-doctor">Run claude doctor</button>
+            <button class="btn" id="btn-cl-doctor-clear">Clear output</button>
+          </div>
+          <div class="claude-out" id="cl-doctor-out" style="display:none;"><div class="log-empty">Run to see output.</div></div>
+        </section>
       </div>
     </section>
 
@@ -696,6 +838,10 @@
           <div class="stat-row" id="an-stats"></div>
           <div class="edit-label">state.db tables</div>
           <div id="an-tables" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div>
+        </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>Cost / token spend</h3>
+          <div id="an-cost"><div class="log-empty">Loading cost estimate…</div></div>
         </section>
       </div>
     </section>
@@ -723,6 +869,18 @@
           <div id="bk-latest"><div class="log-empty">—</div></div>
           <div class="btn-row just-end">
             <button class="btn green" id="btn-bk-create">Create backup</button>
+          </div>
+        </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>Backup schedule</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Runs a daily backup automatically via the watch daemon when enabled. Backups older than 24h trigger a new one.</p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.8px;">Period</label>
+            <div style="display:flex;gap:6px;" id="bk-period-select">
+              <span class="tag off" data-period="off" style="cursor:pointer;">off</span>
+              <span class="tag on" data-period="daily" style="cursor:pointer;">daily</span>
+            </div>
+            <span id="bk-period-status" style="font-size:12px;color:var(--muted);">Loading…</span>
           </div>
         </section>
       </div>
@@ -849,15 +1007,90 @@
 
 <div id="toast"></div>
 
+<!-- ── Auth Password Gate ── -->
+<div id="auth-backdrop" class="auth-backdrop">
+  <div class="auth-box">
+    <div style="font-size:26px;margin-bottom:10px;">⚛</div>
+    <h3>Atropos — Password required</h3>
+    <input id="auth-pw" type="password" placeholder="Enter dashboard password…" autocomplete="off">
+    <button class="btn" id="btn-auth-submit" style="width:100%;justify-content:center;">Enter</button>
+    <div class="auth-err" id="auth-err"></div>
+  </div>
+</div>
+
+<!-- ── Command Palette ── -->
+<div id="cmd-backdrop" class="cmd-backdrop">
+  <div class="cmd-modal">
+    <input class="cmd-input" id="cmd-input" type="text" placeholder="Type a panel or action… (Esc to close)" autocomplete="off" autofocus>
+    <div class="cmd-list" id="cmd-list"></div>
+  </div>
+</div>
+
+<!-- ── Mobile sidebar overlay ── -->
+<div id="mobile-overlay" class="mobile-overlay"></div>
+
+<!-- ── Session trace overlay ── -->
+<div id="trace-overlay" class="trace-overlay">
+  <div class="trace-panel">
+    <div class="trace-header">
+      <h3 id="trace-title">Session messages</h3>
+      <button class="trace-close" id="trace-close">✕</button>
+    </div>
+    <div id="trace-messages"><div class="trace-empty">Loading messages…</div></div>
+  </div>
+</div>
+
 <script>
 'use strict';
 /* ── token ─────────────────────────────────────────────────────────────── */
 const TOKEN_KEY = 'atropos_dash_token';
+const PW_KEY = 'atropos_dash_pw';
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function getPw() { return localStorage.getItem(PW_KEY) || ''; }
+function setPw(p) { localStorage.setItem(PW_KEY, p); }
 const tokenInput = document.getElementById('token');
 tokenInput.value = getToken();
 tokenInput.addEventListener('input', () => setToken(tokenInput.value.trim()));
+
+/* ── password gate ─────────────────────────────────────────────────────── */
+async function checkAuthGate() {
+  const backdrop = document.getElementById('auth-backdrop');
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: getPw() }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!d.required) { backdrop.classList.remove('open'); return true; }
+    if (d.ok) { backdrop.classList.remove('open'); return true; }
+    // password configured and not yet authenticated → require gate
+    backdrop.classList.add('open');
+    return false;
+  } catch (_) { return true; } // if auth endpoint fails, let token path continue
+}
+function submitPassword() {
+  const pw = document.getElementById('auth-pw').value;
+  fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pw }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      setPw(pw);
+      document.getElementById('auth-backdrop').classList.remove('open');
+      document.getElementById('auth-err').textContent = '';
+      toast('Password accepted', 'ok');
+    } else {
+      document.getElementById('auth-err').textContent = 'Incorrect password';
+    }
+  }).catch(() => {
+    document.getElementById('auth-err').textContent = 'Auth endpoint unreachable';
+  });
+}
+document.getElementById('btn-auth-submit').addEventListener('click', submitPassword);
+document.getElementById('auth-pw').addEventListener('keydown', e => { if (e.key === 'Enter') submitPassword(); });
 
 function toast(msg, type) {
   const t = document.getElementById('toast');
@@ -893,19 +1126,19 @@ function showPanel(name) {
     overview: [loadStatus, loadRouter, loadOverviewStats],
     doctor: [loadDoctor],
     patches: [loadPatches],
-    routers: [loadRouter, loadRouteTest, loadRouterModels],
+    routers: [loadRouter, loadRouteTest, loadRouterModels, loadRouterSparklines],
     sessions: [loadSessions],
     cron: [loadCron],
     skills: [loadSkills],
     plugins: [loadPlugins],
-    update: [loadUpdate, loadBackup],
+    update: [loadUpdate, loadBackup, loadUpdateState, loadChangelog],
     guest: [loadGuest, loadPersona],
     logs: [loadLogs],
     config: [loadConfig, loadHermesConfig],
     claude: [loadClaude],
-    analytics: [loadAnalytics],
+    analytics: [loadAnalytics, loadCostAnalytics],
     history: [loadHistory],
-    backup: [loadBackupPanel],
+    backup: [loadBackupPanel, loadBackupPeriod],
     effort: [loadEffort],
     jailbreak: [loadJailbreak],
   };
@@ -1131,6 +1364,7 @@ async function runRouteTest(name) {
     }).join('');
     out.innerHTML = rows || '<div class="log-empty">No results.</div>';
     toast(name ? 'Tested ' + name : 'Tested all routers', 'ok');
+    loadRouterSparklines().catch(() => {});
   } catch (e) { out.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
 }
 document.getElementById('btn-test-routers').addEventListener('click', () => runRouteTest());
@@ -1243,10 +1477,12 @@ async function loadSessions() {
     l.innerHTML = `<div class="log-empty">${d.present ? 'No session rows found.' : 'No state.db found.'}</div>`;
     return;
   }
-  const cols = Object.keys(d.recent[0]).slice(0, 6);
-  let html = '<table class="tbl"><tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>';
+  const cols = Object.keys(d.recent[0]).slice(0, 5);
+  let html = '<table class="tbl"><tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '<th style="width:50px;">trace</th></tr>';
   for (const r of d.recent) {
-    html += '<tr>' + cols.map(c => `<td>${esc(String(r[c] == null ? '' : r[c]).slice(0, 60))}</td>`).join('') + '</tr>';
+    const id = r['id'] || r['rowid'] || r['session_id'] || '';
+    html += '<tr>' + cols.map(c => `<td>${esc(String(r[c] == null ? '' : r[c]).slice(0, 50))}</td>`).join('') +
+      `<td>${id ? `<button class="btn" style="font-size:10.5px;padding:3px 8px;" onclick="loadSessionTrace('${esc(String(id))}')">View</button>` : '—'}</td></tr>`;
   }
   l.innerHTML = html + '</table>';
 }
@@ -1308,14 +1544,25 @@ async function loadUpdate() {
   const box = document.getElementById('update-state');
   box.className = 'log-empty';
   box.textContent = 'Checking…';
+  const banner = document.getElementById('update-banner-inline');
+  banner.style.display = 'none';
   try {
     const d = await api('/api/update/check');
+    const lastCheckEl = document.getElementById('update-last-check');
+    if (d.last_check) lastCheckEl.textContent = 'last check: ' + d.last_check;
     if (d.up_to_date) {
       box.className = 'log-empty'; box.innerHTML = `✅ Up to date @ <b style="color:var(--green)">${esc(d.head)}</b>`;
+      banner.style.display = 'none';
     } else if (d.ok) {
+      let diff = d.diff || '';
+      const diffLines = diff.split('\n');
+      if (diffLines.length > 12) diff = diffLines.slice(0, 12).join('\n') + '\n… (+' + (diffLines.length - 12) + ' more lines)';
       box.innerHTML = `⚠️ <b style="color:var(--yellow)">${esc(d.behind)} commit(s) behind</b><br>` +
         `<span style="color:var(--muted);font-size:12px;">${esc(d.head)} → ${esc(d.remote)}</span>` +
-        (d.diff ? `<pre style="margin-top:8px;font-size:11px;color:var(--muted);overflow-x:auto;">${esc(d.diff)}</pre>` : '');
+        (diff ? `<pre style="margin-top:8px;font-size:11px;color:var(--muted);overflow-x:auto;">${esc(diff)}</pre>` : '');
+      banner.style.display = 'flex';
+      document.getElementById('update-banner-inline-text').textContent =
+        `Update available (${esc(d.behind)} commits behind) — head ${esc(d.head)} → ${esc(d.remote)}`;
     } else if (d.error) {
       box.innerHTML = `<span style="color:var(--red)">✖ ${esc(d.error)}</span>`;
     }
@@ -1336,6 +1583,7 @@ async function applyUpdate() {
 }
 document.getElementById('btn-update-check').addEventListener('click', loadUpdate);
 document.getElementById('btn-update-apply').addEventListener('click', applyUpdate);
+document.getElementById('btn-update-banner-apply').addEventListener('click', applyUpdate);
 
 /* ── backup ───────────────────────────────────────────────────────────── */
 async function loadBackup() {
@@ -1817,9 +2065,244 @@ document.getElementById('btn-jb-revert').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'err'); }
 });
 
+/* ── hamburger mobile nav ─────────────────────────────────────────── */
+document.getElementById('hamburger').addEventListener('click', () => {
+  const sb = document.querySelector('.sidebar');
+  const ov = document.getElementById('mobile-overlay');
+  sb.classList.toggle('mobile-open');
+  ov.classList.toggle('open');
+});
+document.getElementById('mobile-overlay').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.remove('mobile-open');
+  document.getElementById('mobile-overlay').classList.remove('open');
+});
+
+/* ── command palette (Ctrl/Cmd + K) ─────────────────────────────── */
+const CMD_ITEMS = [
+  { ico: '◎', name: 'Overview', panel: 'overview' },
+  { ico: '✚', name: 'Doctor', panel: 'doctor', action: 'Run Doctor', fn: () => runDoctor(false) },
+  { ico: '✚', name: 'Doctor — Fix All', action: 'Apply Fix', fn: () => runDoctor(true) },
+  { ico: '⚡', name: 'Patches', panel: 'patches', action: 'Verify patches', fn: () => loadPatches() },
+  { ico: '⚡', name: 'Patches — Apply All', action: 'Apply hacks', fn: () => { toast('Applying all hacks…', 'ok'); api('/api/patches/apply', { method:'POST', body:'{}' }).then(() => { toast('Hacks applied ✓', 'ok'); loadPatches(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '⇄', name: 'Routers', panel: 'routers', action: 'Test all routers', fn: () => { location.hash='routers'; runRouteTest(); }},
+  { ico: '⇄', name: 'Routers → nain', action: 'Set nain', fn: () => { api('/api/router/set', { method:'POST', body: JSON.stringify({name:'nain'}) }).then(() => { toast('Router → nain', 'ok'); location.hash='routers'; loadRouter(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '⇄', name: 'Routers → omni', action: 'Set omni', fn: () => { api('/api/router/set', { method:'POST', body: JSON.stringify({name:'omni'}) }).then(() => { toast('Router → omni', 'ok'); location.hash='routers'; loadRouter(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '⇄', name: 'Routers → local', action: 'Set local', fn: () => { api('/api/router/set', { method:'POST', body: JSON.stringify({name:'local'}) }).then(() => { toast('Router → local', 'ok'); location.hash='routers'; loadRouter(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '▤', name: 'Sessions', panel: 'sessions' },
+  { ico: '◷', name: 'Cron', panel: 'cron' },
+  { ico: '✦', name: 'Skills', panel: 'skills' },
+  { ico: '↻', name: 'Update', panel: 'update', action: 'Check for updates', fn: () => loadUpdate() },
+  { ico: '↻', name: 'Update — Apply', action: 'Apply update', fn: () => applyUpdate() },
+  { ico: '◉', name: 'Guest', panel: 'guest' },
+  { ico: '◉', name: 'Guest — Toggle', action: 'Toggle guest mode', fn: () => toggleGuest() },
+  { ico: '≡', name: 'Logs', panel: 'logs' },
+  { ico: '⚙', name: 'Config', panel: 'config' },
+  { ico: '❖', name: 'Claude', panel: 'claude', action: 'Run claude doctor', fn: () => runClaudeDoctor() },
+  { ico: '◔', name: 'Analytics', panel: 'analytics' },
+  { ico: '↩', name: 'History', panel: 'history' },
+  { ico: '☁', name: 'Backup', panel: 'backup', action: 'Create backup', fn: () => { toast('Creating backup…', 'ok'); api('/api/backup/create', { method:'POST', body:'{}' }).then(d => { toast(d.ok ? 'Backup created ✓' : 'Backup failed', d.ok ? 'ok' : 'err'); loadBackupPanel(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '◈', name: 'Effort', panel: 'effort' },
+  { ico: '◈', name: 'Effort — set tryhard', action: 'Set tryhard (all)', fn: () => { api('/api/effort/set', { method:'POST', body: JSON.stringify({tier:'tryhard', targets:['hermes','claude','atropos']}) }).then(() => toast('Effort → tryhard ✓', 'ok')).catch(e => toast(e.message, 'err')); }},
+  { ico: '✦', name: 'Self-Heal', panel: 'selfheal', action: 'Run self-heal', fn: () => { location.hash='selfheal'; runSelfHeal(); }},
+  { ico: '⚠', name: 'Alerts', panel: 'alerts', action: 'Test alert', fn: () => { toast('Sending test alert…', 'ok'); api('/api/alert/test').then(d => toast(d.ok ? 'Test alert sent ✓' : d.msg, d.ok ? 'ok' : 'err')).catch(e => toast(e.message, 'err')); }},
+  { ico: '⚔', name: 'Jailbreak', panel: 'jailbreak', action: 'Apply all jailbreaks', fn: () => { toast('Applying bypasses…', 'ok'); api('/api/jailbreak/apply-all', { method:'POST', body:'{}' }).then(() => { toast('Apply-all done', 'ok'); loadJailbreak(); }).catch(e => toast(e.message, 'err')); }},
+];
+let _cmdSel = 0;
+function openCmdPalette() {
+  const bd = document.getElementById('cmd-backdrop');
+  const input = document.getElementById('cmd-input');
+  bd.classList.add('open');
+  input.value = '';
+  input.focus();
+  renderCmdList('');
+  _cmdSel = 0;
+}
+function closeCmdPalette() {
+  document.getElementById('cmd-backdrop').classList.remove('open');
+}
+function renderCmdList(query) {
+  const list = document.getElementById('cmd-list');
+  const q = (query || '').toLowerCase();
+  const matches = CMD_ITEMS.filter(it => !q || it.name.toLowerCase().includes(q) || (it.action||'').toLowerCase().includes(q));
+  list.innerHTML = matches.map((it, i) => {
+    const sel = i === _cmdSel ? ' sel' : '';
+    return `<div class="cmd-item${sel}" data-idx="${i}">`
+      + `<span class="cmd-ico">${it.ico}</span>`
+      + `<span class="cmd-name">${esc(it.name)}</span>`
+      + `<span class="cmd-desc">${esc(it.action || it.panel || '')}</span>`
+      + (it.panel ? `<span class="cmd-shortcut">panel</span>` : '')
+      + `</div>`;
+  }).join('');
+  list.querySelectorAll('.cmd-item').forEach(el => el.addEventListener('click', () => execCmd(parseInt(el.dataset.idx), matches)));
+}
+function execCmd(idx, matches) {
+  const it = matches[idx];
+  if (!it) return;
+  closeCmdPalette();
+  if (it.fn) { it.fn(); return; }
+  if (it.panel) { location.hash = it.panel; }
+}
+document.getElementById('cmd-input').addEventListener('input', e => { _cmdSel = 0; renderCmdList(e.target.value); });
+document.getElementById('cmd-input').addEventListener('keydown', e => {
+  const matches = CMD_ITEMS.filter(it => {
+    const q = document.getElementById('cmd-input').value.toLowerCase();
+    return !q || it.name.toLowerCase().includes(q) || (it.action||'').toLowerCase().includes(q);
+  });
+  if (e.key === 'Escape') { closeCmdPalette(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); _cmdSel = Math.min(_cmdSel + 1, matches.length - 1); renderCmdList(document.getElementById('cmd-input').value); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _cmdSel = Math.max(_cmdSel - 1, 0); renderCmdList(document.getElementById('cmd-input').value); }
+  else if (e.key === 'Enter') { e.preventDefault(); execCmd(_cmdSel, matches); }
+});
+document.getElementById('cmd-backdrop').addEventListener('click', e => { if (e.target.id === 'cmd-backdrop') closeCmdPalette(); });
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); } });
+
+/* ── session trace drill-down ───────────────────────────────────── */
+async function loadSessionTrace(sessionId) {
+  const msgs = document.getElementById('trace-messages');
+  const title = document.getElementById('trace-title');
+  title.textContent = 'Session #' + sessionId + ' — messages';
+  msgs.innerHTML = '<div class="trace-empty">Loading messages…</div>';
+  document.getElementById('trace-overlay').classList.add('open');
+  try {
+    const d = await api('/api/session/' + encodeURIComponent(sessionId));
+    if (!d.ok) { msgs.innerHTML = `<div class="trace-empty">${esc(d.error || 'failed')}</div>`; return; }
+    const messages = d.messages || [];
+    if (!messages.length) {
+      msgs.innerHTML = `<div class="trace-empty">No messages found (table: ${esc(d.table || 'none')}, link_col: ${esc(d.link_col || 'none')}). state.db may use a different schema.</div>`;
+      return;
+    }
+    msgs.innerHTML = messages.map(m => {
+      const role = esc((m.role || '').toLowerCase());
+      const roleCls = role === 'user' ? 'user' : role === 'assistant' ? 'assistant' : 'system';
+      return `<div class="trace-msg">
+        <div class="role ${roleCls}">${esc(m.role)}</div>
+        <div class="meta">${esc(m.ts)} · ${m.length} chars</div>
+        <div class="body">${esc(m.content)}</div>
+      </div>`;
+    }).join('');
+  } catch (e) { msgs.innerHTML = `<div class="trace-empty">${esc(e.message)}</div>`; }
+}
+document.getElementById('trace-close').addEventListener('click', () => document.getElementById('trace-overlay').classList.remove('open'));
+document.getElementById('trace-overlay').addEventListener('click', e => { if (e.target.id === 'trace-overlay') document.getElementById('trace-overlay').classList.remove('open'); });
+
+/* ── update state + changelog ───────────────────────────────────── */
+async function loadUpdateState() {
+  try {
+    const d = await api('/api/update/state');
+    const el = document.getElementById('update-last-check');
+    el.textContent = d.last_check ? 'last check: ' + d.last_check : '';
+  } catch (_) {}
+}
+async function loadChangelog() {
+  const box = document.getElementById('update-changelog');
+  try {
+    const d = await api('/api/changelog');
+    if (d.exists && d.content) {
+      box.textContent = d.content;
+      box.scrollTop = 0;
+    } else {
+      box.innerHTML = '<div class="log-empty">No CHANGELOG.md yet.</div>';
+    }
+  } catch (e) { box.innerHTML = `<div class="log-empty">${esc(e.message)}</div>`; }
+}
+
+/* ── router sparklines ──────────────────────────────────────────── */
+function renderSparkline(name, samples) {
+  if (!samples || samples.length < 1) return '';
+  const lats = samples.filter(s => s.latency_ms != null && s.ok).map(s => s.latency_ms);
+  if (lats.length < 1) return '';
+  const min = Math.min(...lats), max = Math.max(...lats);
+  const range = max - min || 1;
+  const W = 120, H = 24, P = 4;
+  const pts = lats.map((v, i) => `${P + (i / (lats.length - 1 || 1)) * (W - 2*P)},${H - P - ((v - min) / range) * (H - 2*P)}`);
+  const avg = Math.round(lats.reduce((a,b)=>a+b,0) / lats.length);
+  return `<div style="text-align:center;">
+    <div class="sparkline-wrap">
+      <svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.join(' ')}" fill="none" stroke="var(--indigo-l)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="spark-val">${esc(name)} · avg ${avg}ms (${lats.length} samples)</div>
+  </div>`;
+}
+async function loadRouterSparklines() {
+  const box = document.getElementById('router-sparklines');
+  if (!box) return;
+  try {
+    const d = await api('/api/router/history');
+    const hist = d.history || {};
+    const names = ['nain', 'omni', 'local'];
+    const html = names.map(n => renderSparkline(n, hist[n] || [])).join('');
+    box.innerHTML = html || '<div class="log-empty">No sparkline data yet — run a router test to populate.</div>';
+  } catch (e) { box.innerHTML = `<div class="log-empty">${esc(e.message)}</div>`; }
+}
+
+/* ── backup period selector ─────────────────────────────────────── */
+async function loadBackupPeriod() {
+  const status = document.getElementById('bk-period-status');
+  try {
+    const d = await api('/api/backup/config');
+    const period = d.period || 'off';
+    status.textContent = `Schedule: ${period}`;
+    status.style.color = period === 'daily' ? 'var(--green)' : 'var(--muted)';
+    document.querySelectorAll('#bk-period-select .tag').forEach(t => {
+      t.className = 'tag ' + (t.dataset.period === period ? 'on' : 'off');
+      t.onclick = async () => {
+        toast(`Setting backup period → ${t.dataset.period}…`, 'ok');
+        try {
+          await api('/api/backup/config', { method: 'POST', body: JSON.stringify({ period: t.dataset.period }) });
+          toast(`Backup period → ${t.dataset.period} ✓`, 'ok');
+          await loadBackupPeriod();
+        } catch (e) { toast(e.message, 'err'); }
+      };
+    });
+  } catch (e) { status.textContent = 'schedule error'; }
+}
+
+/* ── claude doctor runner ───────────────────────────────────────── */
+async function runClaudeDoctor() {
+  const out = document.getElementById('cl-doctor-out');
+  if (!out) return;
+  out.style.display = 'block';
+  out.textContent = 'Running claude doctor…';
+  try {
+    const d = await api('/api/claude/doctor', { method: 'POST', body: '{}' });
+    if (!d.ok) { out.textContent = 'Error: ' + (d.error || 'unreachable'); out.style.color = 'var(--red)'; return; }
+    out.textContent = d.output || '(no output)';
+    out.style.color = '';
+    toast(`claude doctor done (exit=${d.exit})`, 'ok');
+  } catch (e) { out.textContent = 'Error: ' + e.message; out.style.color = 'var(--red)'; }
+}
+document.getElementById('btn-cl-doctor').addEventListener('click', runClaudeDoctor);
+document.getElementById('btn-cl-doctor-clear').addEventListener('click', () => {
+  const out = document.getElementById('cl-doctor-out');
+  out.style.display = 'none';
+  out.textContent = '';
+  out.style.color = '';
+});
+
+/* ── cost analytics ─────────────────────────────────────────────── */
+async function loadCostAnalytics() {
+  const box = document.getElementById('an-cost');
+  if (!box) return;
+  try {
+    const d = await api('/api/analytics/cost');
+    if (!d.available) {
+      box.innerHTML = `<div style="font-size:13px;color:var(--muted);padding:8px 0;">${esc(d.reason || 'Token data not available — enable usage tracking in hermes-agent to populate this card.')}</div>`;
+      return;
+    }
+    const total = (d.total_tokens || 0).toLocaleString();
+    const byRouter = (d.by_router || []);
+    const rows = byRouter.map(r => `<div class="kv"><span class="k">${esc(r.name)}</span><span class="v">${esc(r.tokens.toLocaleString())} tokens · ${r.count} messages</span></div>`).join('');
+    box.innerHTML = `<div class="stat-row">
+      <div class="stat-tile cyan"><div class="n">${total}</div><div class="l">total tokens</div></div>
+      <div class="stat-tile indigo"><div class="n">${byRouter.length}</div><div class="l">routers / channels</div></div>
+    </div>${rows ? '<div style="margin-top:12px;">' + rows + '</div>' : ''}`;
+  } catch (e) { box.innerHTML = `<div class="log-empty">${esc(e.message)}</div>`; }
+}
+
 /* ── boot ─────────────────────────────────────────────────────────────── */
 (async function boot() {
   if (!location.hash) location.hash = 'overview';
+  checkAuthGate().catch(() => {});
   await loadVersion();
   await showPanel(currentPanel());
   loadStatus().catch(() => {});

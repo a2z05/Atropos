@@ -177,6 +177,222 @@ def _sql_rows(query: str, limit=100):
         return []
 
 
+def _tables_in(db: Path):
+    """Table names in a sqlite db, or []."""
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+        try:
+            return [r[0] for r in con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        finally:
+            con.close()
+    except Exception:
+        return []
+
+
+# ── update state (dashboard-native, no cron) ────────────────────────────
+def _update_state_file() -> Path:
+    return detect.atropos_home() / "update_state.json"
+
+
+def _update_state():
+    try:
+        p = _update_state_file()
+        if p.exists():
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def _save_update_state(state: dict):
+    try:
+        p = _update_state_file()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
+# ── router latency history (for sparklines, capped at 200) ──────────────
+def _router_history_file() -> Path:
+    return detect.atropos_home() / "router_history.json"
+
+
+def _router_history():
+    try:
+        p = _router_history_file()
+        if p.exists():
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def _save_router_history(data: dict):
+    try:
+        p = _router_history_file()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _append_router_sample(name: str, ok: bool, latency_ms):
+    data = _router_history()
+    samples = data.get(name, [])
+    samples.append({"ts": _ts(), "ok": bool(ok), "latency_ms": latency_ms})
+    if len(samples) > 200:
+        samples = samples[-200:]
+    data[name] = samples
+    _save_router_history(data)
+
+
+# ── changelog / version ──────────────────────────────────────────────────
+def api_changelog():
+    p = REPO_DIR / "docs" / "CHANGELOG.md"
+    if p.exists():
+        try:
+            content = p.read_text(encoding="utf-8")
+            return {"ok": True, "exists": True, "content": content[-12000:]}
+        except Exception as e:
+            return {"ok": True, "exists": True, "error": str(e), "content": ""}
+    return {"ok": True, "exists": False, "content": ""}
+
+
+def api_session_trace(session_id):
+    """Messages for one session from state.db (last 20, truncated 500 chars)."""
+    db = _find_state_db()
+    if not db.exists():
+        return {"ok": False, "error": "state.db not found"}
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+        try:
+            tables = _tables_in(db)
+            msg_tbl = next((t for t in tables if "message" in t.lower()), None)
+            if not msg_tbl:
+                return {"ok": True, "messages": [], "table": None, "note": "no messages table"}
+            cols = [d[1] for d in con.execute(f"PRAGMA table_info({msg_tbl})")]
+            # find the column that links messages back to a session
+            link_col = next((c for c in ("session_id", "session", "conversation_id",
+                                         "convo_id", "chat_id", "channel", "user_id") if c in cols), None)
+            role_col = next((c for c in cols if "role" in c.lower()), None)
+            content_col = next((c for c in cols if c.lower() in
+                                ("content", "text", "message", "body", "text_content")), None)
+            ts_col = next((c for c in cols if any(
+                t in c.lower() for t in ("ts", "time", "date", "created"))), None)
+            where = f" WHERE CAST({link_col} AS TEXT)=?" if link_col else ""
+            cur = con.cursor()
+            cur.execute(f"SELECT * FROM {msg_tbl}{where} ORDER BY rowid DESC LIMIT 20",
+                        (str(session_id),) if link_col else ())
+            rows = cur.fetchall()
+            names = [d[0] for d in cur.description]
+            out = []
+            for r in rows:
+                rec = dict(zip(names, r))
+                content = ""
+                if content_col and rec.get(content_col) is not None:
+                    content = str(rec[content_col])[:500]
+                out.append({
+                    "role": str(rec.get(role_col, "?"))[:20] if role_col else "?",
+                    "ts": str(rec.get(ts_col, ""))[:30] if ts_col else "",
+                    "length": len(content),
+                    "content": content,
+                })
+            out.reverse()  # chronological order
+            return {"ok": True, "messages": out, "table": msg_tbl,
+                    "link_col": link_col, "total": len(out)}
+        finally:
+            con.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_analytics_cost():
+    """Estimate spend from state.db if token counts are present."""
+    db = _find_state_db()
+    if not db.exists():
+        return {"ok": True, "available": False, "reason": "state.db not found"}
+    tables = _tables_in(db)
+    msg_tbl = next((t for t in tables if "message" in t.lower()), None)
+    if not msg_tbl:
+        return {"ok": True, "available": False, "reason": "no messages table"}
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+        try:
+            cols = [d[1] for d in con.execute(f"PRAGMA table_info({msg_tbl})")]
+            tok_col = next((c for c in cols if "token" in c.lower()), None)
+            if not tok_col:
+                return {"ok": True, "available": False,
+                        "reason": "no token column in messages — enable usage tracking"}
+            total = con.execute(f"SELECT COALESCE(SUM({tok_col}),0) FROM {msg_tbl}").fetchone()[0]
+            provider_col = next((c for c in cols if any(
+                k in c.lower() for k in ("router", "provider", "channel", "platform"))), None)
+            by_router = []
+            if provider_col:
+                rows = con.execute(
+                    f"SELECT {provider_col}, COUNT(*), COALESCE(SUM({tok_col}),0) "
+                    f"FROM {msg_tbl} GROUP BY {provider_col}").fetchall()
+                by_router = [{"name": str(r[0]), "count": r[1], "tokens": int(r[2])} for r in rows]
+            return {"ok": True, "available": True, "total_tokens": int(total),
+                    "by_router": by_router, "column": tok_col}
+        finally:
+            con.close()
+    except Exception as e:
+        return {"ok": True, "available": False, "reason": str(e)}
+
+
+def api_router_history():
+    return {"ok": True, "history": _router_history()}
+
+
+# ── backup schedule (dashboard-native) ──────────────────────────────────
+def api_backup_config():
+    cfg = config.load()
+    period = cfg.get("backup", {}).get("period", "off")
+    return {"ok": True, "period": period}
+
+
+def api_backup_config_set(payload):
+    period = (payload or {}).get("period", "off")
+    if period not in ("daily", "off"):
+        return {"ok": False, "error": "period must be 'daily' or 'off'"}
+    cfg = config.load()
+    cfg.setdefault("backup", {})["period"] = period
+    config.save(cfg)
+    history_log("backup", f"period={period}")
+    return {"ok": True, "period": period}
+
+
+# ── dashboard password gate ──────────────────────────────────────────────
+def api_auth_check(payload):
+    """Optional password gate. If dashboard.password is set in config, the
+    dashboard frontend shows a password field before accepting a token."""
+    cfg = config.load()
+    pw = (cfg.get("dashboard", {}) or {}).get("password", "")
+    if not pw:
+        return {"ok": True, "required": False}
+    given = (payload or {}).get("password", "")
+    return {"ok": given == pw, "required": True}
+
+
+# ── claude doctor runner ────────────────────────────────────────────────
+def api_claude_doctor():
+    bin_path = detect._find_claude()
+    if not bin_path:
+        return {"ok": False, "error": "claude binary not found"}
+    try:
+        out = subprocess.run([bin_path, "doctor"], capture_output=True, text=True, timeout=90)
+        combined = (out.stdout or "") + (out.stderr or "")
+        return {"ok": True, "exit": out.returncode, "output": combined[-4000:]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def api_sessions():
     """Sessions: total count, active count, recent titles."""
     db = _find_state_db()
@@ -640,9 +856,33 @@ def api_update(check=True):
     if not repo:
         return {"ok": False, "error": "hermes-agent not found"}
     if check:
-        return update.update_check(repo)
+        result = update.update_check(repo)
+        result["last_check"] = _ts()
+        _save_update_state({
+            "last_check": result["last_check"],
+            "up_to_date": result.get("up_to_date", False),
+            "behind": result.get("behind"),
+            "head": result.get("head"),
+            "remote": result.get("remote"),
+        })
+        return result
     history_log("update", "apply")
-    return update.apply_update(repo)
+    result = update.apply_update(repo)
+    result["last_check"] = _ts()
+    _save_update_state({
+        "last_check": result["last_check"],
+        "up_to_date": result.get("up_to_date", False),
+        "behind": result.get("behind"),
+        "head": result.get("head"),
+        "remote": result.get("remote"),
+    })
+    return result
+
+
+def api_update_state():
+    """Last update check/apply state + changelog snippet."""
+    state = _update_state()
+    return {"ok": True, **state}
 
 
 def api_route(action=None, name=None):
@@ -674,11 +914,13 @@ def _router_available():
 
 
 def api_route_test(name=None):
-    """Live-ping a router (defaults to all available)."""
+    """Live-ping a router (defaults to all available). Records samples for sparklines."""
     names = [name] if name else router.available()
     results = {}
     for n in names:
-        results[n] = router.ping(n)
+        r = router.ping(n)
+        results[n] = r
+        _append_router_sample(n, r.get("ok", False), r.get("latency_ms"))
     return {"ok": True, "results": results}
 
 
@@ -1063,6 +1305,12 @@ class Handler(BaseHTTPRequestHandler):
             "/api/effort": api_effort,
             "/api/update/check": lambda: api_update(check=True),
             "/api/update/version": api_update_version,
+            "/api/update/state": lambda: api_update_state(),
+            "/api/changelog": api_changelog,
+            "/api/router/history": api_router_history,
+            "/api/analytics/cost": api_analytics_cost,
+            "/api/backup/config": api_backup_config,
+            "/api/claude/doctor": api_claude_doctor,
             # New: self-heal / alert / jailbreak
             "/api/self-heal": lambda: api_self_heal(),
             "/api/alert/test": lambda: api_alert_test(),
@@ -1089,6 +1337,10 @@ class Handler(BaseHTTPRequestHandler):
             parts = path.split("/api/cron/", 1)[1].split("/")
             if len(parts) == 2 and parts[1] in ("pause", "resume"):
                 return api_cron_toggle(parts[0], parts[1] == "resume")
+        # /api/session/{id}  — trace drill-down
+        if path.startswith("/api/session/"):
+            sid = path.split("/api/session/", 1)[1]
+            return api_session_trace(sid)
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def _route_post(self, path, payload):
@@ -1108,12 +1360,18 @@ class Handler(BaseHTTPRequestHandler):
             return api_guest_persona(method="POST", content=payload.get("content"))
         if path == "/api/backup/now":
             return api_backup_create()
+        if path == "/api/backup/config":
+            return api_backup_config_set(payload)
         if path == "/api/patches/apply":
             return api_patches_apply()
         if path == "/api/route/apply":
             return api_route_apply()
         if path == "/api/claude/settings":
             return api_claude_settings(payload.get("content"))
+        if path == "/api/claude/doctor":
+            return api_claude_doctor()
+        if path == "/api/auth":
+            return api_auth_check(payload)
         if path == "/api/hermes-config":
             content = payload.get("content")
             if content is None:
@@ -1175,7 +1433,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if not self._auth():
+        if path != "/api/auth" and not self._auth():
             self._send(401, b'{"error":"unauthorized"}')
             return
         payload = self._read_json()

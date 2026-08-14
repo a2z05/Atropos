@@ -36,6 +36,13 @@ bash /data/.hermes/scripts/atropos_patch.sh
 ```
 If either fails, fix it before doing anything else.
 
+## Dashboard-native operations (no cron)
+- **Update checks** are dashboard-driven: the Update panel calls `/api/update/check`, stores the result in `~/.atropos/update_state.json`, and shows a one-click Apply banner when behind. `docs/CHANGELOG.md` is surfaced in the panel before applying.
+- **Router latency history** accumulates in `~/.atropos/router_history.json` (capped 200 samples/router) for sparklines on the Routers panel.
+- **Backup schedules** use config `backup.period: daily|off` — the watch daemon (`atropos watch --daemon`) auto-creates a backup when set to `daily` and the newest backup is older than 24h.
+- **Session traces** are available via `/api/session/{id}` (last 20 messages from state.db, 500-char truncation).
+- **Dashboard auth** supports an optional password gate: set `dashboard.password` in `~/.atropos/config.yaml` and the dashboard requires it before the token field is used.
+
 ## Principles (from SOUL.md)
 1. **Truth > politeness.** Always. Filter OFF with Artan.
 2. **Initiative.** Decide, execute, report. Don't ask permission for every step.

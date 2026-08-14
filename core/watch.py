@@ -173,6 +173,29 @@ def check_log_rotation():
     return {"ok": len(cleaned) == 0, "cleaned": cleaned}
 
 
+def check_backup_schedule():
+    """If backup.period=daily, run a backup when the newest is older than 24h."""
+    cfg = config.load()
+    period = (cfg.get("backup", {}) or {}).get("period", "off")
+    if period != "daily":
+        return {"ok": True, "skipped": True, "reason": "period != daily"}
+    from .backup import list_backups, create
+    backups = list_backups()
+    age_h = None
+    if backups:
+        newest_mtime = backups[0]["date"]  # list_backups returns newest first as mtime
+        import time as _time
+        age_h = (round(_time.time()) - newest_mtime) / 3600.0
+    if age_h is not None and age_h < 24:
+        return {"ok": True, "skipped": True, "reason": f"newest {age_h:.1f}h old < 24h", "age_h": round(age_h, 1)}
+    try:
+        result = create()
+        _log(f"✅ Scheduled daily backup created: {result.get('path', '?')} ({result.get('size_mb', '?')} MB)")
+        return {"ok": True, "created": result.get("path"), "reason": "age > 24h or none"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def run_watch():
     """Run all checks once. Returns summary dict."""
     results = {}
@@ -208,6 +231,15 @@ def run_watch():
     results["logs"] = logs
     if not logs["ok"]:
         alerts.append(f"🟡 Logs trimmed: {logs['cleaned']}")
+
+    # scheduled backup (dashboard-native; period=daily)
+    try:
+        bk = check_backup_schedule()
+        results["backup"] = bk
+        if not bk.get("ok"):
+            alerts.append(f"🟡 Backup: {bk.get('error', 'failed')}")
+    except Exception as e:
+        results["backup"] = {"ok": False, "error": str(e)}
 
     results["alerts"] = alerts
     results["ok"] = len(alerts) == 0
