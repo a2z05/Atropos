@@ -3,17 +3,39 @@
 
 Config lives at ~/.atropos/config.yaml. Fallbacks: env vars. Nothing
 hardcoded — all paths come from detect.py or this file.
+
+The parser is a pragmatic YAML *subset* tuned for Atropos's own config and
+the hacks/*.yml files:
+
+  * mappings  ``key: value`` (nested by 2-space indentation)
+  * sequences ``- item`` (block form) and ``[a, b]`` (flow form)
+  * scalars   quoted strings, booleans, null, ints, floats
+  * comments  ``#`` to end of line
+  * block scalars  ``|``  keep exactly one trailing newline
+                   ``|-`` strip all trailing newlines
+                   ``|+`` keep all trailing newlines
+  * blank lines inside blocks are preserved
+
+Block-scalar convention (documented, project-specific): every body line is
+stripped of exactly *base* = (indentation of the line holding the ``|``
+indicator) + 2 spaces. Deeper indentation inside the body is preserved
+verbatim. This lets us store Python source anchors — which always begin
+with leading whitespace — exactly as they appear in the target file, which
+is required for the patches engine's exact-string replacement.
+
+``dump_yaml`` emits the same convention, so config round-trips cleanly.
 """
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 from . import detect
 
 DEFAULTS = {
     "router": {
-        "active": "deepmo",
+        "active": "nain",
         "base_url": "",
         "api_key_env": "OPENAI_API_KEY",
         "model": "deepmo",
@@ -24,19 +46,36 @@ DEFAULTS = {
     },
     "claude": {
         "model": "sonnet",
-        "alias": "deepmo",
+        "alias": "nain",
     },
     "dashboard": {
         "port": 8787,
         "host": "127.0.0.1",
     },
+    "guest": {
+        "enabled": False,
+        "persona_path": "",  # empty → hermes_home()/assets/guest_persona.md
+    },
+    "version": "1.0.0",
 }
 
 
+def _indent_of(raw: str) -> int:
+    return len(raw) - len(raw.lstrip(" "))
+
+
+def _content(raw: str) -> str:
+    """Line without leading spaces."""
+    return raw.lstrip(" ")
+
+
 # ── minimal YAML subset parser ────────────────────────────────────────────
-# Supports: key: value, nested 2-space blocks, lists ("- item"), quotes,
-# comments (#), blank lines. Enough for our config + hacks files.
+# ``|``/``|-``/``|+`` literal block scalars.
+BLOCK_SCALAR_RE = re.compile(r"^(\|[-+]?)\s*(#.*)?$")
+
+
 def _parse_block(lines, idx=0, indent=0):
+    """Parse a mapping block. Returns (dict, next_index)."""
     result = {}
     i = idx
     while i < len(lines):
@@ -44,14 +83,13 @@ def _parse_block(lines, idx=0, indent=0):
         if not raw.strip() or raw.lstrip().startswith("#"):
             i += 1
             continue
-        cur_indent = len(raw) - len(raw.lstrip(" "))
+        cur_indent = _indent_of(raw)
         if cur_indent < indent:
             break
         if cur_indent > indent:
-            # should not happen; skip malformed
-            i += 1
+            i += 1  # malformed (parent already consumed a sub-block)
             continue
-        line = raw.strip()
+        line = _content(raw)
         # list item at block level -> parent handles it; bail here
         if line.startswith("- "):
             break
@@ -61,36 +99,153 @@ def _parse_block(lines, idx=0, indent=0):
         key, _, val = line.partition(":")
         key = key.strip().strip('"').strip("'")
         val = val.strip()
+
+        # inline block-scalar indicator: "old: |-"
+        bm = BLOCK_SCALAR_RE.match(val)
+        if bm:
+            block, ni = _parse_block_scalar(lines, i + 1, cur_indent, bm.group(1))
+            result[key] = block
+            i = ni
+            continue
+
         if val.startswith("#") or val == "":
-            # nested block or empty
-            if i + 1 < len(lines) and _next_indented(lines, i + 1):
-                sub, ni = _parse_block(lines, i + 1, cur_indent + 2)
-                result[key] = sub
-                i = ni
-                continue
+            nxt = _peek_next(lines, i + 1)
+            if nxt is not None:
+                nxt_idx = i + 1 + nxt[1]
+                nxt_indent = _indent_of(lines[nxt_idx])
+                if nxt_indent > cur_indent:
+                    # block scalar opener on its own line
+                    if _looks_like_block_scalar(nxt[0]):
+                        indicator = BLOCK_SCALAR_RE.match(nxt[0]).group(1)
+                        block, ni = _parse_block_scalar(lines, nxt_idx + 1,
+                                                        nxt_indent, indicator)
+                        result[key] = block
+                        i = ni
+                        continue
+                    if nxt[0].startswith("- "):
+                        sub, ni = _parse_list(lines, i + 1, nxt_indent)
+                    else:
+                        sub, ni = _parse_block(lines, i + 1, nxt_indent)
+                    result[key] = sub
+                    i = ni
+                    continue
             result[key] = ""
             i += 1
             continue
-        # list value: "- a, - b" on same line or following
+
+        # inline flow list: [a, b]
         if val.startswith("["):
-            val = val.strip("[]")
-            result[key] = [v.strip() for v in val.split(",") if v.strip()]
+            if val.endswith("]"):
+                result[key] = [v.strip() for v in val.strip("[]").split(",") if v.strip()]
+                i += 1
+                continue
+            # multiline flow list: accumulate until ]
+            items, buf = [], val[1:]
             i += 1
+            while i < len(lines):
+                cur = _content(lines[i]).rstrip()
+                if "]" in cur:
+                    buf += " " + cur.split("]")[0]
+                    i += 1
+                    break
+                buf += " " + cur
+                i += 1
+            result[key] = [v.strip() for v in buf.split(",") if v.strip()]
             continue
-        val = _scalar(val)
-        result[key] = val
+
+        result[key] = _scalar(val)
         i += 1
     return result, i
 
 
-def _next_indented(lines, i):
+def _peek_next(lines, i):
+    """Return (content, offset) of next non-blank/non-comment line, or None."""
+    offset = 0
+    while i < len(lines):
+        raw = lines[i]
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            i += 1
+            offset += 1
+            continue
+        return _content(raw), offset
+    return None
+
+
+def _looks_like_block_scalar(content: str) -> bool:
+    return bool(BLOCK_SCALAR_RE.match(content))
+
+
+def _parse_block_scalar(lines, start, opener_indent, indicator):
+    """Parse a literal block scalar body starting at ``lines[start]``.
+
+    Every body line is stripped of exactly ``base = opener_indent + 2``
+    leading spaces; deeper indentation is preserved. The block ends at the
+    first non-blank line dedented back to (or above) the opener.
+    """
+    base = opener_indent + 2
+    body_lines = []
+    k = start
+    while k < len(lines):
+        raw = lines[k]
+        if not raw.strip():
+            body_lines.append("")
+            k += 1
+            continue
+        if _indent_of(raw) <= opener_indent:
+            break
+        if len(raw) <= base:
+            body_lines.append("")
+        else:
+            body_lines.append(raw[base:])
+        k += 1
+
+    if indicator == "|+":
+        body = "\n".join(body_lines)
+        if body_lines:
+            body += "\n"
+    else:
+        while body_lines and body_lines[-1] == "":
+            body_lines.pop()
+        if indicator == "|":
+            body = "\n".join(body_lines) + ("\n" if body_lines else "")
+        else:  # |-
+            body = "\n".join(body_lines)
+    return body, k
+
+
+def _parse_list(lines, idx=0, indent=0):
+    """Parse a block list at the given indentation. Returns (list, next_index)."""
+    items = []
+    i = idx
     while i < len(lines):
         raw = lines[i]
         if not raw.strip() or raw.lstrip().startswith("#"):
             i += 1
             continue
-        return len(raw) - len(raw.lstrip(" ")) > 0
-    return False
+        cur_indent = _indent_of(raw)
+        if cur_indent < indent:
+            break
+        if cur_indent > indent:
+            i += 1
+            continue
+        line = _content(raw)
+        if not line.startswith("- "):
+            break
+        rest = line[2:].strip()
+        if rest.startswith("[") and rest.endswith("]"):
+            items.append([v.strip() for v in rest.strip("[]").split(",") if v.strip()])
+            i += 1
+            continue
+        # nested mapping: "- key: value"
+        if ":" in rest and not rest.startswith(("'", '"')):
+            sub_lines = ["  " * cur_indent + rest] + list(lines[i + 1:])
+            sub, ni = _parse_block(sub_lines, 0, cur_indent + 2)
+            items.append(sub)
+            i += ni
+            continue
+        items.append(_scalar(rest))
+        i += 1
+    return items, i
 
 
 def _scalar(val: str):
@@ -112,14 +267,28 @@ def _scalar(val: str):
 
 def parse_yaml(text: str) -> dict:
     lines = text.splitlines()
-    data, _ = _parse_block(lines)
+    data, _ = parse_lines(lines)
     return data
 
 
+def parse_lines(lines) -> tuple:
+    """Parse a list of lines. Returns (data, next_index). Used by tests."""
+    if not lines:
+        return {}, 0
+    if _content(lines[0]).startswith("- "):
+        return _parse_list(lines, 0, 0)
+    return _parse_block(lines, 0, 0)
+
+
+# ── YAML writer ───────────────────────────────────────────────────────────
 def dump_yaml(obj: dict, indent=0) -> str:
-    """Serialize dict (scalars, nested dicts, lists) to our YAML subset."""
+    """Serialize dict (scalars, nested dicts, lists, multi-line strings)."""
     out = []
     pad = " " * indent
+    if isinstance(obj, list):
+        for item in obj:
+            out.append(f"{pad}- {_dump_scalar(item)}")
+        return "\n".join(out)
     for k, v in obj.items():
         if isinstance(v, dict):
             out.append(f"{pad}{k}:")
@@ -127,14 +296,29 @@ def dump_yaml(obj: dict, indent=0) -> str:
         elif isinstance(v, list):
             out.append(f"{pad}{k}:")
             for item in v:
-                out.append(f"{pad}  - {_quote(str(item))}")
+                out.append(f"{pad}  - {_dump_scalar(item)}")
         elif isinstance(v, bool):
             out.append(f"{pad}{k}: {'true' if v else 'false'}")
         elif v is None:
             out.append(f"{pad}{k}: null")
+        elif isinstance(v, str) and ("\n" in v or v != v.strip()):
+            # multi-line / leading-space strings must round-trip exactly.
+            # Body lines are emitted with 2 extra spaces (base); the parser
+            # strips base back off, so anchor indentation is preserved.
+            out.append(f"{pad}{k}: |-")
+            for line in v.rstrip("\n").split("\n"):
+                out.append(f"{pad}  {line}")
         else:
             out.append(f"{pad}{k}: {_quote(str(v))}")
     return "\n".join(out)
+
+
+def _dump_scalar(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if v is None:
+        return "null"
+    return _quote(str(v))
 
 
 def _quote(s: str) -> str:
@@ -164,7 +348,7 @@ def load() -> dict:
             _deep_merge(cfg, user)
         except Exception as e:
             # corrupt config: keep defaults, log to stderr
-            print(f"[config] warning: failed to parse {p}: {e}", file=os.sys.stderr)
+            print(f"[config] warning: failed to parse {p}: {e}", file=sys.stderr)
     return cfg
 
 
@@ -206,7 +390,6 @@ def set_path(key: str, value):
 
 
 if __name__ == "__main__":
-    import sys
     if len(sys.argv) > 1 and sys.argv[1] == "dump":
         print(dump_yaml(load()))
     else:

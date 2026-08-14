@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+"""Atropos CLI — single entrypoint, stdlib only.
+
+Usage:
+  atropos doctor [--fix] [--json]
+  atropos status
+  atropos update [--check]
+  atropos guest [--status|--toggle]
+  atropos config get <key> | config set <key> <value>
+  atropos logs [--tail N]
+  atropos route [set <name>]
+  atropos patch [--verify|--apply]
+  atropos init
+  atropos dashboard [--port N]
+  atropos detect
+  atropos version
+"""
+import argparse
+import json
+import os
+import sys
+
+# ── sys.path fix: ensure `core` package is importable when run as script ──
+_REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+if _REPO_DIR not in sys.path:
+    sys.path.insert(0, _REPO_DIR)
+
+from core import config, detect, doctor, guest, logs, patches, router, update
+
+_VERSION_FILE = os.path.join(_REPO_DIR, "VERSION")
+try:
+    with open(_VERSION_FILE, "r") as _vf:
+        __version__ = _vf.read().strip()
+except Exception:
+    __version__ = "0.1.0"
+
+# ── ANSI colours (no deps; auto-disabled if not a tty) ─────────────────────
+_IS_TTY = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+_C_RESET = "\033[0m" if _IS_TTY else ""
+_C_GREEN = "\033[92m" if _IS_TTY else ""
+_C_RED   = "\033[91m" if _IS_TTY else ""
+_C_YELLOW= "\033[93m" if _IS_TTY else ""
+_C_CYAN  = "\033[96m" if _IS_TTY else ""
+_C_BOLD  = "\033[1m"  if _IS_TTY else ""
+_C_DIM   = "\033[2m"  if _IS_TTY else ""
+
+
+def _ok(msg):   print(f"  {_C_GREEN}{_C_BOLD}OK{_C_RESET}  {msg}")
+def _fail(msg): print(f"  {_C_RED}{_C_BOLD}ERR{_C_RESET} {msg}")
+def _warn(msg): print(f"  {_C_YELLOW}{_C_BOLD}WARN{_C_RESET} {msg}")
+def _info(msg): print(f"  {_C_CYAN}{_C_BOLD}>>{_C_RESET}  {msg}")
+
+
+def cmd_version(args):
+    print(f"atropos {_C_CYAN}{__version__}{_C_RESET}")
+    rt = detect.detect()
+    print(f"  python  {rt.get('python_version','?')}")
+    print(f"  os      {rt.get('os','?')} / {rt.get('os_release','?')}")
+    print(f"  cloud   {rt.get('cloud','none')}")
+
+
+def cmd_detect(args):
+    d = detect.save_runtime()
+    for k, v in d.items():
+        print(f"  {k}: {v}")
+
+
+def cmd_doctor(args):
+    results = doctor.doctor(fix=args.fix)
+    if args.json_mode:
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+        failed = [r for r in results if not r["ok"]]
+        sys.exit(0 if not failed else 1)
+    for r in results:
+        if r["ok"]:
+            _ok(f"{r['name']}: {r['msg']}")
+        elif r.get("fixed"):
+            _warn(f"{r['name']}: {r['msg']} (fixed)")
+        else:
+            _fail(f"{r['name']}: {r['msg']}")
+    failed = [r for r in results if not r["ok"]]
+    if failed and not args.fix:
+        print(f"\n  {len(failed)} issue(s). Run `atropos doctor --fix` to auto-fix.")
+    sys.exit(0 if not failed else 1)
+
+
+def cmd_status(args):
+    print(f"{_C_BOLD}Atropos status{_C_RESET}")
+    print(f"  atropos home: {detect.atropos_home()}")
+    print(f"  hermes home:  {detect.hermes_home()}")
+    print(f"  hermes agent: {detect.hermes_agent() or 'not found'}")
+    print(f"  claude:       {detect._find_claude() or 'not found'}")
+    print(f"  cloud:        {detect.detect_cloud()}")
+    print(f"  router:       {router.get().get('active', '?')} ({router.get().get('model','')})")
+    g = guest.status()
+    print(f"  guest:        {'enabled' if g['enabled'] else 'disabled'}" +
+          (f" (persona loaded)" if g['persona_loaded'] else ""))
+    for line in doctor.status_line():
+        print(f"  {line}")
+
+
+def cmd_update(args):
+    repo = detect.hermes_agent()
+    if not repo:
+        _fail("hermes-agent not found — can't update")
+        sys.exit(1)
+    if args.check:
+        r = update.update_check(repo)
+        if r.get("up_to_date"):
+            _ok(f"up to date @ {r['head']}")
+        elif r.get("ok"):
+            _warn(f"behind: {r.get('behind')} commits")
+            print(f"  head={r.get('head')} → remote={r.get('remote')}")
+            print(f"  diff:\n{r.get('diff', '(no diff)')}")
+            print("  Run `atropos update` to apply.")
+        else:
+            _fail(f"error: {r.get('error')}")
+            sys.exit(1)
+    else:
+        r = update.apply_update(repo)
+        if r.get("up_to_date"):
+            _ok(f"up to date @ {r.get('head')}")
+            sys.exit(0)
+        if r.get("ok"):
+            _ok(f"update applied: {r.get('prev_head')} → {r.get('head')}")
+            if r.get("rolled_back"):
+                _fail("rolled back to previous revision")
+        else:
+            _fail(f"update failed: {r.get('error')}")
+        for a in r.get("applied", []):
+            _ok(f"patch: {a}")
+        for sid, reason in r.get("skipped", []):
+            _warn(f"  {sid}: {reason}")
+        for e in r.get("errors", []):
+            _fail(f"patch error: {e}")
+        for c in r.get("doctor", []):
+            icon = _C_GREEN + "OK" + _C_RESET if c["ok"] else _C_RED + "FAIL" + _C_RESET
+            print(f"  doctor: {icon}  {c['name']}: {c['msg']}")
+        if r.get("backup"):
+            _info(f"backup: {r['backup']}")
+        sys.exit(0 if r.get("ok") else 1)
+
+
+def cmd_guest(args):
+    # bare "atropos guest" without flags shows status
+    if not args.status and not args.toggle:
+        args.status = True
+    if args.toggle:
+        st = guest.toggle()
+        state = "enabled" if st["enabled"] else "disabled"
+        _ok(f"guest mode {state}")
+        _info(f"persona loaded: {'yes' if st['persona_loaded'] else 'no'} ({st['persona_path']})")
+        _info("re-applying patches to sync guest handling…")
+        applied, skipped, errors = patches.apply_hacks(force_guest=False)
+        _ok(f"applied: {len(applied)} patches")
+        for sid, reason in skipped:
+            _warn(f"  skipped: {sid} ({reason})")
+        for e in errors:
+            _fail(f"  {e}")
+        sys.exit(0 if not errors else 1)
+    st = guest.status()
+    state = "enabled" if st["enabled"] else "disabled"
+    print(f"  guest mode:  {state}")
+    print(f"  persona:     {'loaded' if st['persona_loaded'] else 'missing'}")
+    print(f"  persona dir: {st['persona_path']}")
+    if st["enabled"]:
+        print("  command:     atropos guest --toggle  to disable")
+    else:
+        print("  command:     atropos guest --toggle  to enable")
+
+
+def cmd_logs(args):
+    name, lines = logs.tail(n=args.tail)
+    if not name:
+        _fail(f"no gateway logs found in {detect.hermes_home() / 'logs'}")
+        sys.exit(1)
+    _info(f"tailing {name} ({args.tail} lines)")
+    for line in lines:
+        print(line, end="")
+
+
+def cmd_config(args):
+    if args.action == "get":
+        if args.key:
+            val = config.get(args.key)
+            if val is None:
+                _fail(f"key not found: {args.key}")
+                sys.exit(1)
+            print(json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else val)
+        else:
+            print(config.dump_yaml(config.load()))
+    elif args.action == "set":
+        key, value = args.key, args.value
+        parsed = _coerce(value)
+        config.set_path(key, parsed)
+        _ok(f"config set: {key} = {json.dumps(parsed, ensure_ascii=False)}")
+    else:
+        _fail(f"unknown config action: {args.action}")
+        sys.exit(1)
+
+
+def _coerce(value: str):
+    """Try to parse `value` as JSON/bool/int/float, else keep as string."""
+    if value.lower() in ("true", "yes", "on"):
+        return True
+    if value.lower() in ("false", "no", "off"):
+        return False
+    if value.lower() in ("null", "none"):
+        return None
+    if value.isdigit():
+        return int(value)
+    try:
+        return json.loads(value)
+    except Exception:
+        return value
+
+
+def cmd_route(args):
+    if args.set_name:
+        try:
+            r = router.set_active(args.set_name)
+            _ok(f"router set: {args.set_name}")
+            for target, ok, msg in router.apply_all():
+                if ok:
+                    _ok(f"  {target}: {msg}")
+                else:
+                    _fail(f"  {target}: {msg}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+    else:
+        r = router.get()
+        print(f"  active:    {r.get('active','?')}")
+        print(f"  model:     {r.get('model','?')}")
+        print(f"  base_url:  {r.get('base_url','default') or 'default'}")
+        print(f"  available: {', '.join(router.available())}")
+
+
+def cmd_patch(args):
+    if args.verify:
+        results = patches.verify()
+        for r in results:
+            if r["applied"]:
+                _ok(r["id"])
+            else:
+                _fail(r["id"])
+        sys.exit(0 if all(r["applied"] for r in results) else 1)
+    applied, skipped, errors = patches.apply_hacks()
+    _ok(f"applied: {len(applied)}")
+    for a in applied:
+        _ok(f"  {a}")
+    for sid, reason in skipped:
+        _warn(f"  {sid}: {reason}")
+    for e in errors:
+        _fail(f"  {e}")
+    sys.exit(0 if not errors else 1)
+
+
+def cmd_init(args):
+    print(f"{_C_BOLD}Atropos init{_C_RESET}")
+    d = detect.save_runtime()
+    _info(f"detected: {d['os']} / python {d['python_version']} / cloud={d['cloud']}")
+    home = detect.atropos_home()
+    home.mkdir(parents=True, exist_ok=True)
+    if not (home / "config.yaml").exists():
+        config.save(config.load())
+        _ok(f"wrote {home / 'config.yaml'}")
+    from core import doctor as _doctor
+    for r in _doctor.doctor(fix=True):
+        if r["ok"]:
+            _ok(f"{r['name']}: {r['msg']}")
+        else:
+            _fail(f"{r['name']}: {r['msg']}")
+    applied, skipped, errors = patches.apply_hacks()
+    _ok(f"patches applied: {len(applied)}")
+    from core.dashboard import _auth_token
+    _info(f"dashboard token: {_auth_token()}")
+    _ok("init done. Next: atropos doctor && atropos dashboard")
+
+
+def cmd_dashboard(args):
+    from core.dashboard import serve
+    cfg = config.load()
+    d = cfg.get("dashboard", {})
+    serve(d.get("host", "127.0.0.1"), args.port or int(d.get("port", 8787)))
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="atropos", description="Atropos — Hermes + Claude fusion harness")
+    sub = ap.add_subparsers(dest="cmd")
+
+    p = sub.add_parser("detect",  help="detect runtime environment")
+    p = sub.add_parser("doctor",  help="health checks + auto-fix")
+    p.add_argument("--fix",  action="store_true", help="auto-fix issues")
+    p.add_argument("--json", dest="json_mode", action="store_true", help="JSON output")
+    p = sub.add_parser("status",  help="system status overview")
+    p = sub.add_parser("version", help="show atropos version")
+    p = sub.add_parser("update",  help="update hermes-agent from upstream (full)")
+    p.add_argument("--check", action="store_true", help="check only, don't apply")
+    p = sub.add_parser("guest",   help="guest mode status / toggle")
+    p.add_argument("--status", action="store_true", help="show guest mode status")
+    p.add_argument("--toggle", action="store_true", help="enable/disable guest mode")
+    p = sub.add_parser("logs",    help="tail recent gateway logs")
+    p.add_argument("--tail", type=int, default=40, help="number of lines")
+    p = sub.add_parser("config",  help="get/set config keys")
+    p.add_argument("action", choices=["get", "set"])
+    p.add_argument("key", nargs="?", default=None)
+    p.add_argument("value", nargs="?", default=None)
+    p = sub.add_parser("route",   help="get or set model router")
+    p.add_argument("set_name", nargs="?", default=None, help="router name to activate")
+    p = sub.add_parser("patch",   help="apply or verify hacks")
+    p.add_argument("--verify", action="store_true", help="verify only")
+    p = sub.add_parser("init",    help="first-time initialization")
+    p = sub.add_parser("dashboard", help="start web dashboard")
+    p.add_argument("--port", type=int, default=None)
+    args = ap.parse_args()
+    if not args.cmd:
+        ap.print_help()
+        sys.exit(0)
+    handlers = {
+        "detect": cmd_detect,
+        "doctor": cmd_doctor,
+        "status": cmd_status,
+        "update": cmd_update,
+        "guest": cmd_guest,
+        "logs": cmd_logs,
+        "config": cmd_config,
+        "route": cmd_route,
+        "patch": cmd_patch,
+        "init": cmd_init,
+        "dashboard": cmd_dashboard,
+        "version": cmd_version,
+    }
+    handlers[args.cmd](args)
+
+
+if __name__ == "__main__":
+    main()

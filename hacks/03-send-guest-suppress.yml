@@ -1,0 +1,20 @@
+# hack: send suppress
+id: "send suppress"
+target: plugins/platforms/telegram/adapter.py
+old: |-
+  # Skip whitespace-only text to prevent Telegram 400 empty-text errors.
+          if not content or not content.strip():
+              return SendResult(success=True, message_id=None)
+new: |-
+  # Skip whitespace-only text to prevent Telegram 400 empty-text errors.
+          if not content or not content.strip():
+              return SendResult(success=True, message_id=None)
+  
+          # Guest-mode suppression: when _handle_guest_message is answering a
+          # guest query, the gateway must NOT deliver the reply to the event's
+          # source chat (which for guest messages resolves to Artan's DM).
+          # The guest reply is delivered separately via answer_guest_query.
+          if getattr(self, "_suppress_send", False):
+              return SendResult(success=True, message_id=None)
+verify:
+  - "if not content or not content.strip():"

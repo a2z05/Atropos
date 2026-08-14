@@ -1,0 +1,145 @@
+# ── Log channel hook (template) ───────────────────────────────────────────
+# Copy this directory to $HERMES_HOME/hooks/log_channel/
+# The gateway invokes handle(event_type, payload) when a message arrives
+# from the log channel (ATRA_LOG_CHANNEL).
+#
+# Event types:
+#   "command:bang"  — a !command was typed (e.g. !status, !route set nain)
+#   "message:log"   — plain log message (for forwarding, digest, etc.)
+
+import os
+import sys
+import json
+from pathlib import Path
+
+# Add hermes scripts to path so guest_notify, patch commands, etc. resolve.
+_HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+_SCRIPTS_DIR = str(_HERMES_HOME / "scripts")
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+_ALLOWED_USERS = [
+    uid.strip()
+    for uid in os.environ.get("TELEGRAM_ALLOWED_USERS", "5838175445").split(",")
+    if uid.strip()
+]
+
+# Map of bang commands to handler functions.
+COMMANDS = {}
+
+
+def command(name):
+    """Decorator to register a !command handler."""
+    def wrapper(fn):
+        COMMANDS[name] = fn
+        return fn
+    return wrapper
+
+
+async def handle(event_type: str, payload: dict) -> None:
+    """Main entrypoint called by the Telegram adapter (ATRA P10 hack)."""
+    if event_type == "command:bang":
+        await _handle_bang(payload)
+    elif event_type == "message:log":
+        await _handle_log(payload)
+
+
+async def _handle_bang(payload: dict) -> None:
+    """Route a !command from the log channel."""
+    user_id = str(payload.get("user_id", ""))
+    if user_id not in _ALLOWED_USERS:
+        return
+
+    message = payload.get("message", "")
+    parts = message.strip().split()
+    if not parts or not parts[0].startswith("!"):
+        return
+
+    cmd = parts[0].lstrip("!").lower()
+    args = parts[1:]
+
+    if cmd in COMMANDS:
+        await COMMANDS[cmd](payload, args)
+    # Unknown command — silently ignore.
+
+
+async def _handle_log(payload: dict) -> None:
+    """Handle plain log messages in the log channel (extend as needed)."""
+    pass
+
+
+# ── Built-in commands ─────────────────────────────────────────────────────
+
+@command("status")
+async def cmd_status(payload: dict, args: list) -> None:
+    """!status — show quick system status summary."""
+    try:
+        from core import detect
+        rt = detect.detect()
+        summary = (
+            f"🟢 atropos running\n"
+            f"  os: {rt['os']} / python {rt['python_version']}\n"
+            f"  cloud: {rt['cloud']}\n"
+            f"  hermes_agent: {'found' if rt['hermes_agent'] else 'missing'}"
+        )
+        # If running inside the gateway, the adapter will forward the reply
+        # via the log channel hook. If invoked standalone, just print it.
+        print(summary)
+    except Exception as e:
+        print(f"status failed: {e}")
+
+
+@command("route")
+async def cmd_route(payload: dict, args: list) -> None:
+    """!route [set <name>] — show or change model router."""
+    try:
+        from core import router
+        if args and args[0] == "set" and len(args) > 1:
+            r = router.set_active(args[1])
+            router.apply_all()
+            print(f"router set to {r['active']} (model: {r['model']})")
+        else:
+            r = router.get()
+            print(f"active: {r.get('active')} | model: {r.get('model')}")
+    except Exception as e:
+        print(f"route failed: {e}")
+
+
+@command("patch")
+async def cmd_patch(payload: dict, args: list) -> None:
+    """!patch verify — show which hacks are applied."""
+    try:
+        from core import patches
+        results = patches.verify()
+        ok = sum(1 for r in results if r["applied"])
+        total = len(results)
+        print(f"patches: {ok}/{total} applied")
+    except Exception as e:
+        print(f"patch check failed: {e}")
+
+
+@command("doctor")
+async def cmd_doctor(payload: dict, args: list) -> None:
+    """!doctor — run health checks."""
+    try:
+        from core import doctor
+        for r in doctor.doctor():
+            icon = "✅" if r["ok"] else "❌"
+            print(f"  {icon} {r['name']}: {r['msg']}")
+    except Exception as e:
+        print(f"doctor failed: {e}")
+
+
+@command("logs")
+async def cmd_logs(payload: dict, args: list) -> None:
+    """!logs [N] — tail last N lines of gateway log."""
+    try:
+        from core import logs
+        n = int(args[0]) if args else 20
+        name, lines = logs.tail(n=n)
+        if name:
+            print(f"--- {name} (last {n}) ---")
+            for line in lines:
+                print(line, end="")
+    except Exception as e:
+        print(f"logs failed: {e}")
