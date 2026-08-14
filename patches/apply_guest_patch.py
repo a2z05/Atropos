@@ -595,6 +595,32 @@ apply2('p10 log-channel !-command intercept',
             _chat_id_val = 0
         if _chat_id_val == _log_ch and isinstance(getattr(msg, "text", None), str) and msg.text.startswith("!"):
             logger.info("[Telegram] !-command intercepted in log channel: %s", msg.text[:80])
+            # ATRA P10b: invoke the log_channel hook handler directly so !commands
+            # work even though agent:start never fires for intercepted messages.
+            try:
+                import importlib.util as _ilu, sys as _sys
+                _hook_dir = "/data/.hermes/hooks/log_channel"
+                _spec = _ilu.spec_from_file_location(
+                    "log_channel_hook", f"{_hook_dir}/handler.py"
+                )
+                if _spec and _spec.loader:
+                    _mod = _ilu.module_from_spec(_spec)
+                    _sys.modules["log_channel_hook"] = _mod
+                    _spec.loader.exec_module(_mod)
+                    await _mod.handle(
+                        "command:bang",
+                        {
+                            "platform": "telegram",
+                            "user_id": getattr(getattr(msg, "from_user", None), "id", None),
+                            "chat_id": _chat_id_val,
+                            "chat_type": getattr(getattr(msg, "chat", None), "type", None) or "",
+                            "username": getattr(getattr(msg, "from_user", None), "username", None) or "",
+                            "first_name": getattr(getattr(msg, "from_user", None), "first_name", None) or "",
+                            "message": getattr(msg, "text", None) or "",
+                        },
+                    )
+            except Exception as _p10_err:
+                logger.warning("[Telegram] P10b hook invoke failed: %s", _p10_err)
             return
         if not self._should_process_message(msg):''')
 
