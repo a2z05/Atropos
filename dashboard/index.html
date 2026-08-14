@@ -81,7 +81,7 @@
   .side-foot b { color: var(--indigo-l); }
 
   /* ── Main ── */
-  .main { flex: 1; min-width: 0; padding: 24px 26px 60px; }
+  .main { flex: 1; min-width: 0; padding: 24px 26px 80px; }
   .topbar {
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
     padding: 16px 20px; border-radius: var(--radius);
@@ -309,10 +309,77 @@
     .sidebar { display: none; }
     .router-grid { grid-template-columns: 1fr; }
   }
+  /* bottom status strip */
+  .status-strip {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    background: linear-gradient(135deg, rgba(15,23,42,.88), rgba(19,26,46,.82));
+    backdrop-filter: blur(16px); border-top: var(--card-border);
+    padding: 9px 18px; font-size: 11.5px; color: var(--muted);
+  }
+  .status-strip .s-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .status-strip .s-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 8px var(--green); flex: 0 0 auto;
+  }
+  .status-strip .s-dot.warn { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .status-strip .s-dot.bad  { background: var(--red);    box-shadow: 0 0 8px var(--red); }
+  .status-strip .s-val { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); font-weight: 600; }
+  .status-strip .s-sep { width: 1px; height: 14px; background: rgba(148,163,184,.18); }
+
+  /* live SSE badge */
+  .live-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10.5px; font-weight: 700; color: var(--green);
+    background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.35);
+    padding: 3px 10px; border-radius: 99px; cursor: pointer; user-select: none;
+  }
+  .live-badge.off { color: var(--muted); background: rgba(15,23,42,.4); border-color: rgba(148,163,184,.2); }
+  .live-badge .ldot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 8px var(--green); animation: pulse 1.2s infinite;
+  }
+  .live-badge.off .ldot { background: var(--muted); box-shadow: none; animation: none; }
+
+  /* effort tier colors */
+  .tier-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700; padding: 4px 10px;
+    border-radius: 99px; border: 1px solid;
+  }
+  .tier-chip.minimal { color: #94a3b8; border-color: rgba(148,163,184,.3); background: rgba(15,23,42,.5); }
+  .tier-chip.low     { color: #60a5fa; border-color: rgba(96,165,250,.35); background: rgba(59,130,246,.1); }
+  .tier-chip.medium  { color: var(--text); border-color: rgba(226,232,240,.25); background: rgba(30,41,59,.6); }
+  .tier-chip.high    { color: #fbbf24; border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.1); }
+  .tier-chip.xhigh   { color: #f97316; border-color: rgba(249,115,22,.4); background: rgba(249,115,22,.1); }
+  .tier-chip.ultracode{ color: var(--violet); border-color: rgba(139,92,246,.4); background: rgba(139,92,246,.1); }
+  .tier-chip.tryhard  { color: var(--red); border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.12); }
+
+  /* models list */
+  .model-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .model-chip {
+    font-size: 10.5px; font-weight: 600; color: var(--muted);
+    background: rgba(15,23,42,.5); border: 1px solid rgba(148,163,184,.16);
+    padding: 3px 8px; border-radius: 7px; font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .model-chip.current { color: var(--indigo-l); border-color: rgba(99,102,241,.4); background: rgba(99,102,241,.1); }
+
+  /* backup file grid */
+  .bk-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .bk-file {
+    display: flex; flex-direction: column; gap: 2px;
+    background: rgba(15,23,42,.5); border: 1px solid rgba(148,163,184,.14);
+    border-radius: 11px; padding: 11px 13px; font-size: 12px;
+  }
+  .bk-file .nm { font-weight: 700; font-size: 12.5px; }
+  .bk-file .sz { color: var(--muted); font-size: 10.5px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .bk-file .dt { color: var(--muted); font-size: 10px; }
+
   @media (max-width: 800px) {
     .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
     .token-input { width: 100%; }
     .main { padding: 14px; }
+    .bk-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -341,6 +408,8 @@
     <div class="nav-item" data-panel="claude"><span class="ico">❖</span>Claude</div>
     <div class="nav-item" data-panel="analytics"><span class="ico">◔</span>Analytics</div>
     <div class="nav-item" data-panel="history"><span class="ico">↩</span>History</div>
+    <div class="nav-item" data-panel="backup"><span class="ico">☁</span>Backup</div>
+    <div class="nav-item" data-panel="effort"><span class="ico">◈</span>Effort</div>
     <div class="side-foot">
       <b>Atropos</b> · Hermes + Claude fusion<br>
       <span id="side-ver">v—</span>
@@ -425,13 +494,17 @@
     <section class="panel" id="panel-routers">
       <div class="grid">
         <section class="card span-12">
-          <h3><span class="dot"></span>Routers <span class="right">nain · omni · local</span></h3>
+          <h3><span class="dot"></span>Routers <span class="right" id="router-active-label">nain · omni · local</span></h3>
           <div class="router-grid" id="router-grid" style="grid-template-columns:repeat(3,1fr);"></div>
           <div class="router-state" id="router-state">—</div>
           <div class="btn-row just-end">
             <button class="btn" id="btn-test-routers">Test all routers</button>
             <button class="btn green" id="btn-apply-route">Apply active to Hermes + Claude</button>
           </div>
+        </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>Available models <span class="right" id="router-models-state"></span></h3>
+          <div id="router-models"><div class="log-empty">Load the routers panel to fetch models from the active endpoint.</div></div>
         </section>
         <section class="card span-12">
           <h3><span class="dot"></span>Live test results</h3>
@@ -539,9 +612,11 @@
               <input id="log-filter" class="token-input" style="width:150px;padding:5px 10px;" placeholder="filter…">
               <select id="log-tail"><option>80</option><option selected>200</option><option>500</option></select>
               <button class="btn" id="btn-log-refresh">Refresh</button>
+              <span id="log-live" class="live-badge off" title="Stream logs live over SSE"><span class="ldot"></span>LIVE</span>
             </div>
           </div>
           <div class="log-box" id="log-box"><div class="log-empty">No log loaded yet.</div></div>
+          <p style="font-size:11px;color:var(--muted);margin-top:8px;">LIVE streams new log lines over SSE in real time.</p>
         </section>
       </div>
     </section>
@@ -615,8 +690,70 @@
       </div>
     </section>
 
+    <!-- ════════ BACKUP ════════ -->
+    <section class="panel" id="panel-backup">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Backup history</h3>
+          <div id="bk-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Create backup</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Creates a full backup of config, hacks, patches, state.db and scripts to <code style="font-family:ui-monospace,monospace;color:var(--text);">~/.atropos/backups/</code>.</p>
+          <div id="bk-latest"><div class="log-empty">—</div></div>
+          <div class="btn-row just-end">
+            <button class="btn green" id="btn-bk-create">Create backup</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ EFFORT ════════ -->
+    <section class="panel" id="panel-effort">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Per-harness effort tiers</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Controls the reasoning depth and thoroughness of each harness independently. Higher tiers use more tokens and time but produce better results.</p>
+          <div id="effort-tiers" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-7">
+          <h3><span class="dot"></span>Set tier</h3>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <div id="effort-tier-select" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+          </div>
+          <div style="margin-top:10px;">
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Apply to</label>
+            <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+              <label class="btn" id="eff-hermes-btn" style="cursor:pointer;"><input type="checkbox" checked style="accent-color:var(--indigo);"> hermes</label>
+              <label class="btn" id="eff-claude-btn" style="cursor:pointer;"><input type="checkbox" checked style="accent-color:var(--indigo);"> claude</label>
+              <label class="btn" id="eff-atropos-btn" style="cursor:pointer;"><input type="checkbox" checked style="accent-color:var(--indigo);"> atropos</label>
+            </div>
+          </div>
+          <div class="btn-row just-end">
+            <button class="btn warn" id="btn-eff-set">Apply tier</button>
+          </div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Tier descriptions</h3>
+          <div id="effort-desc-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
     <p class="sec-note">Atropos control plane — token stored locally in your browser only · v1.0</p>
   </main>
+</div>
+
+<div class="status-strip" id="status-strip">
+  <span class="s-item"><span class="s-dot" id="strip-dot"></span><span id="strip-disk">—</span></span>
+  <span class="s-sep"></span>
+  <span class="s-item">up <span class="s-val" id="strip-uptime">—</span></span>
+  <span class="s-sep"></span>
+  <span class="s-item">router <span class="s-val" id="strip-router">—</span></span>
+  <span class="s-sep"></span>
+  <span class="s-item">model <span class="s-val" id="strip-model">—</span></span>
+  <span class="s-sep"></span>
+  <span class="s-item">msgs <span class="s-val" id="strip-msgs">—</span></span>
 </div>
 
 <div id="toast"></div>
@@ -641,12 +778,13 @@ function toast(msg, type) {
 
 /* ── hash routing ─────────────────────────────────────────────────────── */
 const PANELS = ['overview','doctor','patches','routers','sessions','cron','skills','plugins',
-                'update','guest','logs','config','claude','analytics','history'];
+                'update','guest','logs','config','claude','analytics','history','backup','effort'];
 const TITLES = {
   overview: 'Overview', doctor: 'Doctor', patches: 'Patches', routers: 'Routers',
   sessions: 'Sessions', cron: 'Cron', skills: 'Skills', plugins: 'Plugins',
   update: 'Update', guest: 'Guest', logs: 'Logs', config: 'Config',
-  claude: 'Claude', analytics: 'Analytics', history: 'History'
+  claude: 'Claude', analytics: 'Analytics', history: 'History',
+  backup: 'Backup', effort: 'Effort'
 };
 function currentPanel() {
   const h = location.hash.replace('#', '');
@@ -662,7 +800,7 @@ function showPanel(name) {
     overview: [loadStatus, loadRouter, loadOverviewStats],
     doctor: [loadDoctor],
     patches: [loadPatches],
-    routers: [loadRouter, loadRouteTest],
+    routers: [loadRouter, loadRouteTest, loadRouterModels],
     sessions: [loadSessions],
     cron: [loadCron],
     skills: [loadSkills],
@@ -674,6 +812,8 @@ function showPanel(name) {
     claude: [loadClaude],
     analytics: [loadAnalytics],
     history: [loadHistory],
+    backup: [loadBackupPanel],
+    effort: [loadEffort],
   };
   (loaders[name] || []).forEach(fn => { try { fn(); } catch (_) {} });
 }
@@ -761,17 +901,24 @@ function renderRouterCards(router, available, containerId, detailId, withSwitch)
   const grid = document.getElementById(containerId);
   grid.innerHTML = '';
   const active = (router && router.active) || '';
-  for (const name of available || []) {
+  for (const item of available || []) {
+    const name = typeof item === 'string' ? item : (item.name || '');
+    const model = typeof item === 'object' ? (item.model || '') : (router && router.model) || '';
+    const base = typeof item === 'object' ? (item.base_url || '') : (router && router.base_url) || '';
+    const desc = typeof item === 'object' ? (item.description || '') : '';
     const b = document.createElement('button');
     b.className = 'rbtn' + (name === active ? ' active' : '');
-    b.innerHTML = `<b>${esc(name)}</b><small>${esc((router && router.base_url) || 'default url')}</small>`;
+    b.title = desc;
+    b.innerHTML = `<b>${esc(name)}</b><small>${esc(model || '')} · ${esc(base || 'default url')}</small>`;
     if (withSwitch) {
       b.addEventListener('click', async () => {
         try {
-          const d = await api('/api/route/set', { method: 'POST', body: JSON.stringify({ name }) });
+          const d = await api('/api/router/set', { method: 'POST', body: JSON.stringify({ name }) });
           toast(`Router → ${name}`, 'ok');
-          renderRouterCards(d.router, (await api('/api/route')).available, containerId, detailId, true);
+          const rt = await api('/api/router');
+          renderRouterCards(rt.router, rt.available, containerId, detailId, true);
           if (detailId) document.getElementById(detailId).textContent = '';
+          await loadRouterModels();
         } catch (e) { toast(e.message, 'err'); }
       });
     }
@@ -782,12 +929,33 @@ function renderRouterCards(router, available, containerId, detailId, withSwitch)
       `Active: ${esc(active)} · model: ${esc((router && router.model) || '')} · url: ${esc((router && router.base_url) || 'default')}`;
   }
 }
+async function loadRouterModels() {
+  const box = document.getElementById('router-models');
+  const state = document.getElementById('router-models-state');
+  if (!box) return;
+  try {
+    const d = await api('/api/router/models');
+    const list = d.models || [];
+    state.textContent = d.endpoint || '';
+    if (!list.length) {
+      box.innerHTML = '<div class="log-empty">No models returned (' + (d.error || 'empty') + ')</div>';
+      return;
+    }
+    const cfg = (await api('/api/status').catch(() => ({})));
+    const cur = (cfg.router && cfg.router.model) || '';
+    box.innerHTML = '<div class="model-list">' +
+      list.map(m => `<span class="model-chip${m === cur ? ' current' : ''}">${esc(m)}${m === cur ? ' ◉' : ''}</span>`).join('') +
+      '</div>';
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red);font-size:12px;">${esc(e.message)}</span>`;
+  }
+}
 
 async function loadStatus() {
   try {
     const d = await api('/api/status');
     const rt = d.runtime || {};
-    const set = (id, v, cls) => { const el = document.getElementById(id); el.textContent = v || '—'; if (cls) el.className = 'v ' + cls; };
+    const set = (id, v, cls) => { const el = document.getElementById(id); if (el) { el.textContent = v || '—'; if (cls) el.className = 'v ' + cls; } };
     set('ov-os', (rt.os || '?') + (rt.os_release ? ' / ' + rt.os_release : ''));
     set('ov-py', rt.python_version || rt.python, rt.python_version && parseFloat(rt.python_version) >= 3.10 ? 'good' : 'bad');
     set('ov-cloud', rt.cloud || 'none');
@@ -803,16 +971,37 @@ async function loadStatus() {
       barEl.classList.toggle('warn', disk.pct >= 60 && disk.pct < 85);
       barEl.classList.toggle('danger', disk.pct >= 85);
     }
+    // status strip
+    const dot = document.getElementById('strip-dot');
+    const diskPct = disk.pct || 0;
+    dot.className = 's-dot' + (diskPct >= 85 ? ' bad' : diskPct >= 60 ? ' warn' : '');
+    document.getElementById('strip-disk').textContent = diskPct + '% disk';
+    const up = d.uptime || 0;
+    const hrs = Math.floor(up / 3600);
+    const mins = Math.floor((up % 3600) / 60);
+    document.getElementById('strip-uptime').textContent = hrs ? hrs + 'h ' + mins + 'm' : mins + 'm';
+    document.getElementById('strip-router').textContent = (d.router && d.router.active) || '—';
+    document.getElementById('strip-model').textContent = (d.router && d.router.model) || '—';
+  } catch (_) {}
+}
+async function loadStripAnalytics() {
+  try {
+    const d = await api('/api/analytics');
+    const n = (typeof d.messages === 'number') ? d.messages : '—';
+    document.getElementById('strip-msgs').textContent = n.toLocaleString();
   } catch (_) {}
 }
 
 async function loadRouter() {
   try {
-    const d = await api('/api/route');
+    const d = await api('/api/router');
     renderRouterCards(d.router, d.available, 'ov-router-grid', 'ov-router-detail', false);
     renderRouterCards(d.router, d.available, 'router-grid', 'router-state', true);
     document.getElementById('ov-router-state').textContent =
       `active: ${esc(d.router.active)} · model: ${esc(d.router.model)}`;
+    const lbl = document.getElementById('router-active-label');
+    if (lbl) lbl.textContent = `${esc(d.router.active)} · ${esc(d.router.model)}`;
+    loadRouterModels().catch(() => {});
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -1059,12 +1248,11 @@ async function loadBackup() {
   const box = document.getElementById('backup-state');
   try {
     const d = await api('/api/backup');
-    const b = d.latest;
+    const b = d.latest || (d.backups && d.backups[0]);
     if (!b) { box.innerHTML = '<div class="log-empty">No backups yet.</div>'; return; }
     box.innerHTML =
       `<div class="kv"><span class="k">latest</span><span class="v">${esc(b.name)}</span></div>` +
-      `<div class="kv"><span class="k">mtime</span><span class="v">${esc(b.mtime)}</span></div>` +
-      (b.size != null ? `<div class="kv"><span class="k">size</span><span class="v">${esc(b.size)} bytes</span></div>` : '') +
+      `<div class="kv"><span class="k">size</span><span class="v">${esc(String(b.size_mb != null ? b.size_mb + ' MB' : (b.size != null ? b.size + ' bytes' : '—')))}</span></div>` +
       `<div class="kv"><span class="k">dir</span><span class="v">${esc(d.dir || '')}</span></div>`;
   } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
 }
@@ -1218,15 +1406,165 @@ async function loadAnalytics() {
   const stats = [
     { n: d.sessions, l: 'sessions', c: 'violet' },
     { n: d.messages, l: 'messages', c: 'cyan' },
+    { n: d.messages_today, l: 'messages today', c: 'green' },
+    { n: d.avg_msgs_per_session, l: 'avg msgs/session', c: 'indigo' },
     { n: d.tokens, l: 'tokens', c: 'yellow' },
     { n: d.db_present ? 'yes' : 'no', l: 'state.db', c: d.db_present ? 'green' : 'bad' },
   ];
-  document.getElementById('an-stats').innerHTML = stats.map(s => `<div class="stat-tile ${s.c}"><div class="n">${esc(s.n)}</div><div class="l">${esc(s.l)}</div></div>`).join('');
+  document.getElementById('an-stats').innerHTML = stats.map(s =>
+    `<div class="stat-tile ${s.c}"><div class="n">${esc(String(s.n))}</div><div class="l">${esc(s.l)}</div></div>`
+  ).join('');
   const tables = d.tables || [];
   document.getElementById('an-tables').innerHTML = tables.length
     ? tables.map(t => `<span class="tag on">${esc(t)}</span>`).join('')
     : '<div class="log-empty">No tables (db absent).</div>';
 }
+
+/* ── backup panel ────────────────────────────────────────────────────── */
+async function loadBackupPanel() {
+  try {
+    const d = await api('/api/backup/list');
+    const box = document.getElementById('bk-list');
+    const latest = document.getElementById('bk-latest');
+    const backups = d.backups || [];
+    if (!backups.length) {
+      box.innerHTML = '<div class="log-empty">No backups found. Create one to get started.</div>';
+      latest.innerHTML = '<div class="log-empty">No backup yet</div>';
+      return;
+    }
+    box.innerHTML = '<div class="bk-grid">' + backups.map(b =>
+      `<div class="bk-file"><span class="nm">${esc(b.name)}</span><span class="sz">${esc(String(b.size_mb))} MB</span><span class="dt">${esc(String(b.date))}</span></div>`
+    ).join('') + '</div>';
+    const l = backups[0];
+    latest.innerHTML =
+      `<div class="kv"><span class="k">latest</span><span class="v">${esc(l.name)}</span></div>` +
+      `<div class="kv"><span class="k">size</span><span class="v">${esc(String(l.size_mb))} MB</span></div>`;
+  } catch (e) {
+    document.getElementById('bk-list').innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  }
+}
+document.getElementById('btn-bk-create').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-bk-create');
+  btn.disabled = true;
+  toast('Creating backup…', 'ok');
+  try {
+    const d = await api('/api/backup/create', { method: 'POST', body: '{}' });
+    toast(d.ok ? `Backup created (${d.size_mb || '?'} MB) ✓` : 'Backup failed', d.ok ? 'ok' : 'err');
+    await loadBackupPanel();
+  } catch (e) { toast(e.message, 'err'); }
+  btn.disabled = false;
+});
+
+/* ── effort panel ─────────────────────────────────────────────────────── */
+let _effortData = null;
+async function loadEffort() {
+  try {
+    const d = await api('/api/effort');
+    _effortData = d;
+    const current = d.current || {};
+    const tiers = d.tiers || {};
+    const available = d.available || [];
+    // Per-harness cards
+    document.getElementById('effort-tiers').innerHTML = ['hermes','claude','atropos'].map(h => {
+      const tier = current[h] || 'medium';
+      return `<div class="card" style="margin:0;">
+        <h3><span class="dot"></span>${esc(h)}</h3>
+        <span class="tier-chip ${esc(tier)}">${esc(tier)}</span>
+        <p style="font-size:11.5px;color:var(--muted);margin-top:8px;">${esc(tiers[tier] || '')}</p>
+      </div>`;
+    }).join('');
+    // Tier selector buttons
+    document.getElementById('effort-tier-select').innerHTML = available.map(t =>
+      `<span class="tier-chip ${esc(t)}" data-tier="${esc(t)}" style="cursor:pointer;" title="${esc(tiers[t] || '')}">${esc(t)}</span>`
+    ).join('');
+    document.querySelectorAll('#effort-tier-select .tier-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#effort-tier-select .tier-chip').forEach(c => c.style.outline = 'none');
+        chip.style.outline = '2px solid var(--indigo)';
+        _selectedTier = chip.dataset.tier;
+      });
+    });
+    // descriptions list
+    document.getElementById('effort-desc-list').innerHTML = available.map(t =>
+      `<div class="kv"><span class="k"><span class="tier-chip ${esc(t)}" style="font-size:10px;padding:2px 7px;">${esc(t)}</span></span><span class="v" style="font-size:11.5px;font-family:inherit;text-align:left;max-width:260px;">${esc(tiers[t] || '')}</span></div>`
+    ).join('');
+  } catch (e) { toast(e.message, 'err'); }
+}
+let _selectedTier = null;
+document.getElementById('btn-eff-set').addEventListener('click', async () => {
+  if (!_selectedTier) { toast('Select a tier first', 'err'); return; }
+  const targets = [];
+  if (document.querySelector('#eff-hermes-btn input')?.checked)   targets.push('hermes');
+  if (document.querySelector('#eff-claude-btn input')?.checked)   targets.push('claude');
+  if (document.querySelector('#eff-atropos-btn input')?.checked)  targets.push('atropos');
+  if (!targets.length) { toast('Select at least one harness', 'err'); return; }
+  toast(`Setting effort → ${_selectedTier}…`, 'ok');
+  try {
+    const d = await api('/api/effort/set', { method: 'POST', body: JSON.stringify({ tier: _selectedTier, targets }) });
+    toast(d.ok ? `Effort → ${_selectedTier} for ${targets.join(', ')} ✓` : 'Failed', d.ok ? 'ok' : 'err');
+    await loadEffort();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── SSE live log streaming ───────────────────────────────────────────── */
+let _logSSESource = null;
+let _logStreamActive = false;
+function toggleLogStream() {
+  if (_logStreamActive) { stopLogStream(); return; }
+  startLogStream();
+}
+function startLogStream() {
+  stopLogStream();
+  const box = document.getElementById('log-box');
+  const badge = document.getElementById('log-live');
+  const tail = document.getElementById('log-tail').value;
+  badge.classList.remove('off');
+  _logStreamActive = true;
+  try {
+    const url = '/api/logs/stream?tail=' + tail + '&interval=2&token=' + encodeURIComponent(getToken());
+    _logSSESource = new EventSource(url);
+    _logSSESource.onmessage = function(e) {
+      try {
+        const data = JSON.parse(e.data);
+        const filter = document.getElementById('log-filter').value.trim().toLowerCase();
+        const lines = data.lines || [];
+        // on snapshot: replace content
+        if (data.event === 'snapshot') {
+          document.getElementById('log-file').textContent = data.file || '';
+          box.innerHTML = '';
+          const show = filter ? lines.filter(l => l.toLowerCase().includes(filter)) : lines;
+          if (!show.length) { box.innerHTML = '<div class="log-empty">No lines.</div>'; return; }
+        }
+        // append new lines
+        for (const ln of lines) {
+          if (filter && !ln.toLowerCase().includes(filter)) continue;
+          const div = document.createElement('div');
+          const low = ln.toLowerCase();
+          let cls = '';
+          if (low.includes('error') || low.includes('exception') || low.includes('traceback') || low.includes('failed')) cls = 'err-ln';
+          else if (low.includes('warn') || low.includes('warning')) cls = 'warn-ln';
+          div.className = cls;
+          div.textContent = ln.replace(/\n$/, '');
+          if (box.querySelector('.log-empty')) box.innerHTML = '';
+          box.appendChild(div);
+        }
+        box.scrollTop = box.scrollHeight;
+      } catch (_) {}
+    };
+    _logSSESource.onerror = function() {
+      stopLogStream();
+      toast('SSE connection lost — switched to polling', 'err');
+    };
+  } catch (_) { stopLogStream(); }
+  toast('Live stream started', 'ok');
+}
+function stopLogStream() {
+  if (_logSSESource) { _logSSESource.close(); _logSSESource = null; }
+  _logStreamActive = false;
+  const badge = document.getElementById('log-live');
+  if (badge) badge.classList.add('off');
+}
+document.getElementById('log-live').addEventListener('click', toggleLogStream);
 
 /* ── history ──────────────────────────────────────────────────────────── */
 async function loadHistory() {
@@ -1247,15 +1585,22 @@ async function loadHistory() {
 (async function boot() {
   if (!location.hash) location.hash = 'overview';
   await loadVersion();
-  showPanel(currentPanel());
+  await showPanel(currentPanel());
+  loadStatus().catch(() => {});
+  loadStripAnalytics().catch(() => {});
   // self-update polling: check version every 30s
   setInterval(() => { if (getToken()) loadVersion().catch(() => {}); }, 30000);
-  // refresh loop: status + logs every 15s
+  // refresh loop: status strip every 15s, panel-specific every 10s
   setInterval(() => {
     if (!getToken()) return;
-    if (currentPanel() === 'overview') { loadStatus().catch(() => {}); loadRouter().catch(() => {}); loadOverviewStats().catch(() => {}); }
-    if (currentPanel() === 'logs') loadLogs().catch(() => {});
-  }, 15000);
+    loadStatus().catch(() => {});
+    loadStripAnalytics().catch(() => {});
+    const p = currentPanel();
+    if (p === 'overview') { loadRouter().catch(() => {}); loadOverviewStats().catch(() => {}); }
+    if (p === 'logs' && !_logStreamActive) loadLogs().catch(() => {});
+    if (p === 'routers') loadRouterModels().catch(() => {});
+    if (p === 'effort') loadEffort().catch(() => {});
+  }, 10000);
 })();
 </script>
 </body>
