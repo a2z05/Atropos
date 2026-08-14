@@ -464,6 +464,7 @@ print('AST OK')
 #   P6  reaction bridge — add_reaction/remove_reaction for send_message react
 #   P7  personalized processing reactions (loading feel)
 #   P8  DM chat/user mismatch guard (guest-mode DM leak)
+#   P10 log-channel !-command interception (skip agent processing)
 #   P9  guest_notify on unauthorized/guest DMs (log group)
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -570,6 +571,32 @@ apply2('p8 dm chat/user mismatch guard',
             if _cid and _uid and _cid != _uid:
                 logger.info("[Telegram] Dropped DM chat/user mismatch (guest artifact) chat=%s user=%s", _cid, _uid)
                 return''')
+
+# P10: log-channel !-command interception — messages starting with ! in the
+# log supergroup are handled by the log_channel hook, not the agent. Skip
+# normal processing here so the gateway doesn't generate a redundant reply.
+apply2('p10 log-channel !-command intercept',
+'''                return
+        if not self._should_process_message(msg):''',
+'''                return
+        # ATRA P10: log-channel !-command interception
+        _log_ch = getattr(self, "_log_channel_id", None)
+        if _log_ch is None:
+            _log_ch = getattr(self, "_LOG_CHANNEL_ID", None)  # fallback
+        if _log_ch is None:
+            try:
+                _log_ch = int(os.environ.get("ATRA_LOG_CHANNEL", "-1003744718087"))
+                self._log_channel_id = _log_ch
+            except Exception:
+                _log_ch = -1003744718087
+        try:
+            _chat_id_val = int(str(getattr(getattr(msg, "chat", None), "id", "") or "0"))
+        except (ValueError, TypeError):
+            _chat_id_val = 0
+        if _chat_id_val == _log_ch and isinstance(getattr(msg, "text", None), str) and msg.text.startswith("!"):
+            logger.info("[Telegram] !-command intercepted in log channel: %s", msg.text[:80])
+            return
+        if not self._should_process_message(msg):''')
 
 # P9: log unauthorized/guest DMs to the ATRA log group (guest_notify)
 apply2('p9 guest notify on unauthorized',
