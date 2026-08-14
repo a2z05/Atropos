@@ -343,6 +343,10 @@ def main():
                    choices=["minimal", "low", "medium", "high", "xhigh", "ultracode", "tryhard"],
                    help="tier: minimal|low|medium|high|xhigh|ultracode|tryhard")
     p.add_argument("--get", action="store_true", help="show current tiers (alias for 'get')")
+    p.add_argument("--hermes", action="store_true", help="apply tier to hermes only")
+    p.add_argument("--claude", action="store_true", help="apply tier to claude only")
+    p.add_argument("--atropos", action="store_true", help="apply tier to atropos only")
+    p.add_argument("--all", action="store_true", help="apply tier to all harnesses (default)")
     # tui
     p = sub.add_parser("tui", help="interactive terminal UI (Claude Code-style)")
     # setup
@@ -442,6 +446,17 @@ def cmd_effort(args):
     # Hermes uses Anthropic adaptive effort: minimal/low/medium/high/xhigh/ultra/max
     # Claude Code uses permission modes: acceptEdits, --dangerously-skip-permissions
     # Atropos uses patch thoroughness + test coverage.
+    #
+    # NEW: per-harness selection — each harness has its OWN tier:
+    #   atropos effort set --hermes tryhard           # only hermes
+    #   atropos effort set --claude ultracode         # only claude
+    #   atropos effort set --atropos tryhard          # only atropos
+    #   atropos effort set tryhard                    # ALL three + reasoning
+    #   atropos effort set --all tryhard              # same as above
+    #   atropos effort --get                          # show per-harness tiers
+    #
+    # tryhard is the absolute top for EVERY harness — maximum performance,
+    # maximum reasoning, maximum verification. Everything else is below it.
     tiers = {
         "minimal": {
             "hermes": "fastest responses, least reasoning tokens, short answers",
@@ -480,56 +495,73 @@ def cmd_effort(args):
             "thinking": "max",
         },
         "tryhard": {
-            "hermes": "absolute maximum — exhaustive research, multi-delegate in parallel, no stop until answer is perfect and verified",
-            "claude": "claude-code with all permissions, write + test + refactor entire codebases, recursive self-debug, verify with py_compile and unit tests",
-            "atropos": "self-healing at all costs — rebuild broken components, optimize configs, run full test suite, fix every detectable issue, ensure zero failures before reporting success",
+            "hermes": "ABSOLUTE MAXIMUM PERFORMANCE — exhaustive research, multi-delegate in parallel, no stop until answer is perfect AND verified, every possible optimization applied",
+            "claude": "claude-code with ALL permissions + acceptEdits, write + test + refactor entire codebases, recursive self-debug, optimize performance, verify with py_compile AND unit tests AND real execution",
+            "atropos": "PUSH EVERYTHING TO MAX — rebuild broken components, optimize all configs for speed, run FULL test suite, fix every detectable issue, benchmark before/after, ensure ZERO failures AND maximum performance before reporting success",
             "thinking": "max",
         },
     }
 
+    def _thinking_for(tier_name):
+        return tiers.get(tier_name, {}).get("thinking", "medium")
+
     if args.get or args.effort_action == "get" or (not args.effort_action and not args.tier):
         cfg = config.load()
         current = cfg.get("effort", {"hermes": "medium", "claude": "medium", "atropos": "medium"})
-        print(f"  current tiers:")
+        print(f"  {_C_BOLD}{_C_CYAN}current effort tiers (per harness){_C_RESET}")
+        print(f"  {_C_DIM}('*' = max level){_C_RESET}\n")
         for component in ["hermes", "claude", "atropos"]:
             tier = current.get(component, "medium")
             desc = tiers.get(tier, {}).get(component, "") or f"(legacy: {tier})"
-            print(f"    {component}: {tier} — {desc}")
+            star = f" {_C_YELLOW}★ MAX{_C_RESET}" if tier == "tryhard" else ""
+            print(f"    {_C_CYAN}{component:<10}{_C_RESET} {_C_BOLD}{tier:<12}{_C_RESET}{star} — {desc}")
+        print()
+        print(f"  {_C_DIM}available tiers: {', '.join(tiers.keys())}{_C_RESET}")
     else:
+        # per-harness selection
+        targets = []
+        if getattr(args, "hermes", False): targets.append("hermes")
+        if getattr(args, "claude", False): targets.append("claude")
+        if getattr(args, "atropos", False): targets.append("atropos")
+        if getattr(args, "all", False) or not targets:
+            targets = ["hermes", "claude", "atropos"]
+
         if args.effort_action != "set" or not args.tier:
-            _fail("usage: atropos effort set <tier>")
+            _fail("usage: atropos effort set <tier> [--hermes|--claude|--atropos|--all]")
             sys.exit(1)
         tier = args.tier.lower()
         if tier not in tiers:
             _fail(f"unknown tier: {tier}. Available: {', '.join(tiers.keys())}")
             sys.exit(1)
+
         cfg = config.load()
-        cfg["effort"] = {
-            component: tier for component in ["hermes", "claude", "atropos"]
-        }
-        # also push reasoning_effort to hermes config.yaml
-        thinking = tiers[tier].get("thinking", "medium")
-        try:
-            hconfig = detect.hermes_home() / "config.yaml"
-            if hconfig.exists():
-                htext = hconfig.read_text()
-                if "reasoning_effort:" in htext:
-                    htext = htext.replace(
-                        "reasoning_effort: " + (cfg.get("hermes", {}).get("reasoning_effort", "medium")),
-                        f"reasoning_effort: {thinking}",
-                        1
-                    )
-                else:
-                    htext = htext.replace("model:", f"reasoning_effort: {thinking}\nmodel:", 1)
-                hconfig.write_text(htext)
-                _ok(f"hermes config.yaml reasoning_effort → {thinking}")
-        except Exception as e:
-            _warn(f"could not update hermes reasoning_effort: {e}")
+        current = cfg.get("effort", {"hermes": "medium", "claude": "medium", "atropos": "medium"})
+        for t in targets:
+            current[t] = tier
+        cfg["effort"] = current
+        thinking = _thinking_for(tier)
+
+        # only update hermes reasoning_effort when hermes is a target (or all)
+        if "hermes" in targets:
+            try:
+                hconfig = detect.hermes_home() / "config.yaml"
+                if hconfig.exists():
+                    htext = hconfig.read_text()
+                    if "reasoning_effort:" in htext:
+                        import re
+                        htext = re.sub(r"reasoning_effort:\s*\S+", f"reasoning_effort: {thinking}", htext, count=1)
+                    else:
+                        htext = htext.replace("model:", f"reasoning_effort: {thinking}\nmodel:", 1)
+                    hconfig.write_text(htext)
+                    _ok(f"hermes config.yaml reasoning_effort → {thinking}")
+            except Exception as e:
+                _warn(f"could not update hermes reasoning_effort: {e}")
+
         config.save(cfg)
-        _ok(f"effort set to '{tier}' for all components (thinking={thinking})")
-        for component in ["hermes", "claude", "atropos"]:
-            desc = tiers[tier][component]
-            print(f"    {component}: {desc}")
+        _ok(f"effort set to '{tier}' for: {', '.join(targets)} (thinking={thinking})")
+        for t in targets:
+            desc = tiers[tier][t]
+            print(f"    {t}: {desc}")
 
 
 

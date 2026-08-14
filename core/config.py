@@ -17,11 +17,11 @@ the hacks/*.yml files:
   * blank lines inside blocks are preserved
 
 Block-scalar convention (documented, project-specific): every body line is
-stripped of exactly *base* = (indentation of the line holding the ``|``
-indicator) + 2 spaces. Deeper indentation inside the body is preserved
-verbatim. This lets us store Python source anchors — which always begin
-with leading whitespace — exactly as they appear in the target file, which
-is required for the patches engine's exact-string replacement.
+stripped of *base* = the minimum indentation across non-empty body lines.
+Deeper indentation inside the body is preserved verbatim. This lets us store
+Python source anchors — which always begin with leading whitespace — exactly
+as they appear in the target file, which is required for the patches engine's
+exact-string replacement.
 
 ``dump_yaml`` emits the same convention, so config round-trips cleanly.
 """
@@ -99,6 +99,11 @@ def _parse_block(lines, idx=0, indent=0):
         key, _, val = line.partition(":")
         key = key.strip().strip('"').strip("'")
         val = val.strip()
+
+        # strip inline comment: a bare `#` preceded by whitespace starts a
+        # comment in YAML, but only when the value isn't already quoted.
+        if val and not (val[0] in ("'", '"')):
+            val = re.split(r'\s#', val, maxsplit=1)[0].rstrip()
 
         # inline block-scalar indicator: "old: |-"
         bm = BLOCK_SCALAR_RE.match(val)
@@ -309,7 +314,11 @@ def dump_yaml(obj: dict, indent=0) -> str:
             # multi-line / leading-space strings must round-trip exactly.
             # Body lines are emitted with 2 extra spaces (base); the parser
             # strips base back off, so anchor indentation is preserved.
-            out.append(f"{pad}{k}: |-")
+            # Use "|" when the string ends in a newline (keeps one trailing
+            # newline) and "|-" otherwise (strips trailing newlines), so the
+            # parsed value matches the original string byte-for-byte.
+            indicator = "|" if v.endswith("\n") else "|-"
+            out.append(f"{pad}{k}: {indicator}")
             for line in v.rstrip("\n").split("\n"):
                 out.append(f"{pad}  {line}")
         else:
