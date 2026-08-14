@@ -1,0 +1,7 @@
+name: log_channel
+description: "Forward every inbound event (message, /start, command) to the private log supergroup -1003744718087 (ATRA log), record sender ids, and allow manual replies from the channel."
+events:
+  - agent:start
+  - agent:end
+  - command:*
+  - session:start
