@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atropos — Control Plane</title>
+<style>
+  :root {
+    --bg0: #0b1020;
+    --bg1: #131a2e;
+    --slate: #1e293b;
+    --slate2: #27344d;
+    --indigo: #6366f1;
+    --indigo-l: #818cf8;
+    --violet: #8b5cf6;
+    --cyan: #22d3ee;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --green: #34d399;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --radius: 16px;
+    --glow: 0 0 24px rgba(99, 102, 241, .28);
+    --card-border: 1px solid rgba(148, 163, 184, .14);
+    --sidebar-w: 232px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, #1e1b4b 0%, var(--bg0) 55%) no-repeat fixed,
+                radial-gradient(900px 500px at 90% 110%, #172554 0%, var(--bg0) 60%) no-repeat fixed;
+    background-color: var(--bg0);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+  #particles { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+  .shell { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w); flex: 0 0 var(--sidebar-w);
+    background: linear-gradient(180deg, rgba(19,26,46,.72), rgba(11,16,32,.85));
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-right: var(--card-border);
+    padding: 20px 14px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 16px; }
+  .brand .glyph {
+    width: 36px; height: 36px; border-radius: 11px; flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 19px; box-shadow: var(--glow);
+  }
+  .brand .nm { font-weight: 800; font-size: 17px; letter-spacing: 1.5px; line-height: 1.1; }
+  .brand .nm small { display: block; font-size: 9.5px; letter-spacing: 2.5px; color: var(--muted); font-weight: 600; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; border-radius: 11px; cursor: pointer;
+    font-size: 13.5px; color: var(--muted); font-weight: 600; letter-spacing: .2px;
+    border: 1px solid transparent; transition: all .18s ease; user-select: none;
+  }
+  .nav-item:hover { background: rgba(99,102,241,.1); color: var(--text); }
+  .nav-item.active {
+    background: linear-gradient(90deg, rgba(99,102,241,.22), rgba(139,92,246,.14));
+    color: var(--text); border-color: rgba(99,102,241,.32);
+    box-shadow: inset 0 0 18px rgba(99,102,241,.12);
+  }
+  .nav-item .ico { width: 18px; text-align: center; flex: 0 0 auto; font-size: 14px; }
+  .nav-item .count {
+    margin-left: auto; font-size: 10.5px; background: rgba(99,102,241,.18);
+    border: 1px solid rgba(99,102,241,.3); color: var(--indigo-l);
+    padding: 1px 7px; border-radius: 99px; font-weight: 700;
+  }
+  .side-foot { margin-top: auto; padding: 12px 8px 2px; font-size: 10.5px; color: var(--muted); line-height: 1.7; border-top: 1px solid rgba(148,163,184,.1); }
+  .side-foot b { color: var(--indigo-l); }
+
+  /* ── Main ── */
+  .main { flex: 1; min-width: 0; padding: 24px 26px 60px; }
+  .topbar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 16px 20px; border-radius: var(--radius);
+    background: linear-gradient(135deg, rgba(30,41,59,.55), rgba(39,52,77,.35));
+    backdrop-filter: blur(14px); border: var(--card-border); box-shadow: var(--glow);
+    animation: fadeDown .6s ease both; margin-bottom: 20px;
+  }
+  .topbar .title { font-size: 16px; font-weight: 800; letter-spacing: .5px; }
+  .topbar .title span { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 6px; }
+  .topbar .spacer { flex: 1; }
+  .version-chip {
+    font-size: 12px; font-weight: 700; color: var(--indigo-l);
+    background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.3);
+    padding: 5px 12px; border-radius: 999px; white-space: nowrap;
+  }
+  .token-input {
+    background: rgba(15,23,42,.6); border: 1px solid rgba(148,163,184,.25);
+    color: var(--text); padding: 8px 13px; border-radius: 10px; font-size: 12.5px; width: 210px; outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .token-input:focus { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+
+  /* update banner */
+  #update-banner {
+    display: none; align-items: center; gap: 12px;
+    background: linear-gradient(90deg, rgba(99,102,241,.18), rgba(139,92,246,.12));
+    border: 1px solid rgba(99,102,241,.4); border-radius: 13px;
+    padding: 11px 16px; margin-bottom: 18px; font-size: 13.5px; font-weight: 600;
+    animation: fadeDown .4s ease both;
+  }
+  #update-banner.show { display: flex; }
+  #update-banner .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--yellow); box-shadow: 0 0 10px var(--yellow); animation: pulse 1.4s infinite; }
+
+  .panel { display: none; }
+  .panel.active { display: block; animation: fadeUp .4s ease both; }
+
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+  .card {
+    background: linear-gradient(160deg, rgba(30,41,59,.5), rgba(19,26,46,.62));
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: var(--card-border); border-radius: var(--radius); padding: 18px 20px;
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 10px 34px rgba(0,0,0,.35), var(--glow); border-color: rgba(129,140,248,.4); }
+  .card h3 {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.6px;
+    color: var(--muted); margin-bottom: 13px; display: flex; align-items: center; gap: 9px;
+  }
+  .card h3 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--indigo); box-shadow: 0 0 8px var(--indigo); flex: 0 0 auto; }
+  .card h3 .right { margin-left: auto; font-size: 11px; letter-spacing: 0; color: var(--muted); text-transform: none; font-weight: 600; }
+  .span-4 { grid-column: span 4; } .span-5 { grid-column: span 5; } .span-6 { grid-column: span 6; }
+  .span-7 { grid-column: span 7; } .span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
+
+  /* kv rows */
+  .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 6.5px 0; border-bottom: 1px solid rgba(148,163,184,.08); font-size: 13px; }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { color: var(--muted); }
+  .kv .v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); word-break: break-all; text-align: right; }
+  .kv .v.bad { color: var(--red); } .kv .v.good { color: var(--green); } .kv .v.yellow { color: var(--yellow); }
+
+  .bar { height: 8px; background: rgba(148,163,184,.14); border-radius: 99px; overflow: hidden; margin: 12px 0 6px; }
+  .bar > div { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--indigo), var(--cyan)); transition: width .8s ease; }
+  .bar > div.warn { background: linear-gradient(90deg, #f59e0b, var(--yellow)); }
+  .bar > div.danger { background: linear-gradient(90deg, #ef4444, var(--red)); }
+  .bar-label { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+
+  /* stat tiles */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .stat-tile { background: rgba(15,23,42,.55); border: 1px solid rgba(148,163,184,.14); border-radius: 13px; padding: 12px 14px; }
+  .stat-tile .n { font-size: 21px; font-weight: 800; letter-spacing: .3px; }
+  .stat-tile .l { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+  .stat-tile.green .n { color: var(--green); } .stat-tile.indigo .n { color: var(--indigo-l); }
+  .stat-tile.cyan .n { color: var(--cyan); } .stat-tile.violet .n { color: var(--violet); }
+  .stat-tile.yellow .n { color: var(--yellow); } .stat-tile.bad .n { color: var(--red); }
+
+  /* checks */
+  .check { display: flex; align-items: center; gap: 11px; padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,.07); font-size: 13.5px; }
+  .check:last-child { border-bottom: none; }
+  .pulse { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+  .pulse.ok { background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 2s infinite; }
+  .pulse.bad { background: var(--red); box-shadow: 0 0 10px var(--red); animation: pulse 1.2s infinite; }
+  .check .nm { flex: 1; }
+  .check .msg { color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .check .fixed { color: var(--yellow); }
+
+  /* buttons */
+  .btn {
+    font-family: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: .3px;
+    color: var(--text); background: rgba(99,102,241,.14);
+    border: 1px solid rgba(99,102,241,.35); padding: 7px 14px; border-radius: 10px;
+    cursor: pointer; transition: all .2s ease; white-space: nowrap;
+  }
+  .btn:hover { background: rgba(99,102,241,.28); box-shadow: 0 0 16px rgba(99,102,241,.35); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn.warn { background: rgba(251,191,36,.12); border-color: rgba(251,191,36,.35); }
+  .btn.warn:hover { background: rgba(251,191,36,.24); box-shadow: 0 0 16px rgba(251,191,36,.3); }
+  .btn.danger { background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.4); }
+  .btn.danger:hover { background: rgba(248,113,113,.28); box-shadow: 0 0 16px rgba(248,113,113,.32); }
+  .btn.green { background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.4); }
+  .btn.green:hover { background: rgba(52,211,153,.26); box-shadow: 0 0 16px rgba(52,211,153,.3); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+  .btn-row { display: flex; gap: 9px; margin-top: 13px; flex-wrap: wrap; }
+  .btn-row.just-end { justify-content: flex-end; }
+
+  /* router cards */
+  .router-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .rbtn {
+    display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+    font-family: inherit; text-align: left; position: relative;
+    background: rgba(15,23,42,.55); border: 1px solid rgba(148,163,184,.18);
+    color: var(--text); border-radius: 12px; padding: 13px 14px; cursor: pointer;
+    transition: all .2s ease; font-size: 13px; overflow: hidden;
+  }
+  .rbtn b { font-size: 14px; letter-spacing: .4px; display: flex; align-items: center; gap: 7px; }
+  .rbtn small { color: var(--muted); font-size: 10px; word-break: break-all; }
+  .rbtn:hover { border-color: rgba(129,140,248,.5); transform: translateY(-2px); }
+  .rbtn.active {
+    border-color: var(--indigo); background: rgba(99,102,241,.18);
+    box-shadow: 0 0 20px rgba(99,102,241,.35);
+  }
+  .rbtn.active b { color: var(--indigo-l); }
+  .rbtn.active::before {
+    content: "◉ "; color: var(--indigo-l); font-size: 12px;
+  }
+  .rbtn .lat { position: absolute; top: 9px; right: 11px; font-size: 10px; color: var(--muted); }
+  .rbtn .lat.up { color: var(--green); } .rbtn .lat.down { color: var(--red); }
+  .router-state { margin-top: 12px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+
+  /* patches */
+  .patch { display: flex; align-items: center; gap: 9px; padding: 5.5px 0; font-size: 13px; border-bottom: 1px solid rgba(148,163,184,.07); flex-wrap: wrap; }
+  .patch:last-child { border-bottom: none; }
+  .patch .st { width: 17px; text-align: center; font-size: 13px; }
+  .patch .pname { font-weight: 600; }
+  .patch .pid { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--muted); font-size: 11px; }
+  .ok-toggle { color: var(--green); } .bad-toggle { color: var(--red); }
+  .diff-toggle { margin-left: auto; font-size: 11px; cursor: pointer; color: var(--indigo-l); background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.3); padding: 2px 9px; border-radius: 7px; }
+  .diff-toggle:hover { background: rgba(99,102,241,.25); }
+  .diff-box {
+    display: none; width: 100%; margin: 4px 0 6px;
+    background: rgba(2,6,23,.7); border: 1px solid rgba(148,163,184,.12); border-radius: 9px;
+    padding: 9px 11px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+    white-space: pre-wrap; word-break: break-word; line-height: 1.6; max-height: 200px; overflow-y: auto;
+  }
+  .diff-box.open { display: block; }
+  .diff-box .old-l { color: #fca5a5; } .diff-box .new-l { color: #86efac; }
+
+  /* guest pill */
+  .guest-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 999px; border: 1px solid; }
+  .guest-pill.on { color: var(--green); border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.1); }
+  .guest-pill.off { color: var(--muted); border-color: rgba(148,163,184,.25); background: rgba(15,23,42,.5); }
+  .guest-pill .mini-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .guest-pill.on .mini-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .guest-pill.off .mini-dot { background: var(--muted); }
+  .guest-sub { margin-top: 10px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+
+  /* log box */
+  .log-box {
+    background: rgba(2,6,23,.65); border: 1px solid rgba(148,163,184,.12);
+    border-radius: 12px; padding: 13px 15px; height: 320px; overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+  }
+  .log-box .ln { color: var(--muted); } .log-box .warn-ln { color: var(--yellow); } .log-box .err-ln { color: var(--red); }
+  .log-empty { color: var(--muted); font-style: italic; }
+  .log-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; gap: 8px; flex-wrap: wrap; }
+  .log-head select, .log-head input {
+    background: rgba(15,23,42,.7); border: 1px solid rgba(148,163,184,.22); color: var(--text);
+    border-radius: 8px; padding: 5px 9px; font-size: 11.5px; outline: none; font-family: inherit;
+  }
+
+  /* list rows */
+  .row { display: flex; align-items: center; gap: 9px; padding: 6.5px 0; border-bottom: 1px solid rgba(148,163,184,.07); font-size: 12.8px; }
+  .row:last-child { border-bottom: none; }
+  .row .nm { font-weight: 600; }
+  .row .sub { color: var(--muted); font-size: 11px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .row .desc { color: var(--muted); font-size: 11.5px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px; border: 1px solid; }
+  .tag.on { color: var(--green); border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.1); }
+  .tag.off { color: var(--muted); border-color: rgba(148,163,184,.25); background: rgba(15,23,42,.5); }
+  .tag.bad { color: var(--red); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.1); }
+
+  /* tables */
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tbl th { text-align: left; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; padding: 7px 9px; border-bottom: 1px solid rgba(148,163,184,.14); }
+  table.tbl td { padding: 7px 9px; border-bottom: 1px solid rgba(148,163,184,.07); vertical-align: top; word-break: break-word; }
+  table.tbl tr:last-child td { border-bottom: none; }
+
+  /* textarea editor */
+  .editor {
+    width: 100%; min-height: 180px; background: rgba(2,6,23,.7);
+    border: 1px solid rgba(148,163,184,.16); border-radius: 11px; color: var(--text);
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.6;
+    padding: 12px 14px; resize: vertical; outline: none; white-space: pre; tab-size: 2;
+  }
+  .editor:focus { border-color: rgba(99,102,241,.5); box-shadow: 0 0 0 3px rgba(99,102,241,.14); }
+  .edit-label { font-size: 11px; color: var(--muted); margin: 12px 0 5px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+
+  .file-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 7px; }
+  .file-item { display: flex; align-items: center; gap: 8px; background: rgba(15,23,42,.5); border: 1px solid rgba(148,163,184,.12); border-radius: 9px; padding: 7px 10px; font-size: 12px; }
+  .file-item .ft { font-size: 14px; }
+  .file-item .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-item .sz { margin-left: auto; color: var(--muted); font-size: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  /* toast */
+  #toast {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: rgba(15,23,42,.92); border: 1px solid rgba(99,102,241,.45);
+    color: var(--text); padding: 11px 22px; border-radius: 12px; font-size: 13.5px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.5); opacity: 0; pointer-events: none;
+    transition: all .3s ease; z-index: 50; max-width: 90vw;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.err { border-color: rgba(248,113,113,.6); }
+  #toast.ok { border-color: rgba(52,211,153,.55); }
+
+  .sec-note { font-size: 11.5px; color: var(--muted); margin-top: 26px; text-align: center; opacity: .75; }
+
+  /* animations */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeDown { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+  @keyframes gradientFlow { to { background-position: 300% 0; } }
+  @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: .55; transform: scale(.82); } 100% { opacity: 1; transform: scale(1); } }
+
+  @media (max-width: 1000px) {
+    .sidebar { display: none; }
+    .router-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 800px) {
+    .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+    .token-input { width: 100%; }
+    .main { padding: 14px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+<div class="shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="glyph">⚛</div>
+      <div class="nm">ATROPOS<small>control plane</small></div>
+    </div>
+    <div class="nav-item active" data-panel="overview"><span class="ico">◎</span>Overview</div>
+    <div class="nav-item" data-panel="doctor"><span class="ico">✚</span>Doctor</div>
+    <div class="nav-item" data-panel="patches"><span class="ico">⚡</span>Patches<span class="count" id="nav-patches">—</span></div>
+    <div class="nav-item" data-panel="routers"><span class="ico">⇄</span>Routers</div>
+    <div class="nav-item" data-panel="sessions"><span class="ico">▤</span>Sessions</div>
+    <div class="nav-item" data-panel="cron"><span class="ico">◷</span>Cron</div>
+    <div class="nav-item" data-panel="skills"><span class="ico">✦</span>Skills</div>
+    <div class="nav-item" data-panel="plugins"><span class="ico">⬡</span>Plugins</div>
+    <div class="nav-item" data-panel="update"><span class="ico">↻</span>Update</div>
+    <div class="nav-item" data-panel="guest"><span class="ico">◉</span>Guest</div>
+    <div class="nav-item" data-panel="logs"><span class="ico">≡</span>Logs</div>
+    <div class="nav-item" data-panel="config"><span class="ico">⚙</span>Config</div>
+    <div class="nav-item" data-panel="claude"><span class="ico">❖</span>Claude</div>
+    <div class="nav-item" data-panel="analytics"><span class="ico">◔</span>Analytics</div>
+    <div class="nav-item" data-panel="history"><span class="ico">↩</span>History</div>
+    <div class="side-foot">
+      <b>Atropos</b> · Hermes + Claude fusion<br>
+      <span id="side-ver">v—</span>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+    <div class="topbar">
+      <div class="title" id="top-title">Overview <span>control plane</span></div>
+      <div class="spacer"></div>
+      <span id="version" class="version-chip">v—</span>
+      <input id="token" class="token-input" type="password" placeholder="Dashboard token…" autocomplete="off">
+    </div>
+
+    <div id="update-banner">
+      <span class="pulse"></span>
+      <span id="update-banner-text">New version available</span>
+      <button class="btn" id="btn-reload">Reload</button>
+      <button class="btn warn" id="btn-dismiss-update">Dismiss</button>
+    </div>
+
+    <!-- ════════ OVERVIEW ════════ -->
+    <section class="panel active" id="panel-overview">
+      <div class="grid">
+        <section class="card span-5">
+          <h3><span class="dot"></span>Runtime</h3>
+          <div class="kv"><span class="k">OS</span><span class="v" id="ov-os">—</span></div>
+          <div class="kv"><span class="k">Python</span><span class="v" id="ov-py">—</span></div>
+          <div class="kv"><span class="k">Cloud</span><span class="v" id="ov-cloud">—</span></div>
+          <div class="kv"><span class="k">Hermes home</span><span class="v" id="ov-home">—</span></div>
+          <div class="kv"><span class="k">Agent</span><span class="v" id="ov-agent">—</span></div>
+          <div class="kv"><span class="k">Claude</span><span class="v" id="ov-claude">—</span></div>
+          <div class="kv"><span class="k">PTB</span><span class="v" id="ov-ptb">—</span></div>
+          <div class="bar"><div id="disk-bar" style="width:0%"></div></div>
+          <div class="bar-label"><span>disk used</span><span id="disk-pct">—</span></div>
+        </section>
+        <section class="card span-7">
+          <h3><span class="dot"></span>Router <span class="right" id="ov-router-state">—</span></h3>
+          <div class="router-grid" id="ov-router-grid"></div>
+          <div class="router-state" id="ov-router-detail">—</div>
+          <div class="btn-row just-end">
+            <button class="btn" id="ov-test-routers">Test all routers</button>
+          </div>
+        </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>Quick stats</h3>
+          <div class="stat-row" id="ov-stats"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ DOCTOR ════════ -->
+    <section class="panel" id="panel-doctor">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Doctor checks</h3>
+          <div id="doctor-list"><div class="log-empty">Loading…</div></div>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-run-doctor">Run Doctor</button>
+            <button class="btn warn" id="btn-apply-fix">Apply Fix</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ PATCHES ════════ -->
+    <section class="panel" id="panel-patches">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Hacks <span class="right" id="patch-total">0/12 applied</span></h3>
+          <div id="patches-list"><div class="log-empty">Loading…</div></div>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-verify">Verify</button>
+            <button class="btn warn" id="btn-apply-patches">Apply all</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ ROUTERS ════════ -->
+    <section class="panel" id="panel-routers">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Routers <span class="right">nain · omni · local</span></h3>
+          <div class="router-grid" id="router-grid" style="grid-template-columns:repeat(3,1fr);"></div>
+          <div class="router-state" id="router-state">—</div>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-test-routers">Test all routers</button>
+            <button class="btn green" id="btn-apply-route">Apply active to Hermes + Claude</button>
+          </div>
+        </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>Live test results</h3>
+          <div id="router-test-out"><div class="log-empty">Run a test to see latency results.</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ SESSIONS ════════ -->
+    <section class="panel" id="panel-sessions">
+      <div class="grid">
+        <section class="card span-4">
+          <h3><span class="dot"></span>Counts</h3>
+          <div id="sess-counts"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-8">
+          <h3><span class="dot"></span>Recent sessions</h3>
+          <div id="sess-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ CRON ════════ -->
+    <section class="panel" id="panel-cron">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Cron jobs <span class="right" id="cron-dir"></span></h3>
+          <div id="cron-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ SKILLS ════════ -->
+    <section class="panel" id="panel-skills">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Skills <span class="right" id="skills-total"></span></h3>
+          <div id="skills-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ PLUGINS ════════ -->
+    <section class="panel" id="panel-plugins">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Plugins <span class="right" id="plugins-dir"></span></h3>
+          <div id="plugins-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ UPDATE ════════ -->
+    <section class="panel" id="panel-update">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Updater</h3>
+          <div id="update-state" class="log-empty">—</div>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-update-check">Check</button>
+            <button class="btn warn" id="btn-update-apply">Apply</button>
+          </div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Backup</h3>
+          <div id="backup-state"><div class="log-empty">Loading…</div></div>
+          <div class="btn-row just-end">
+            <button class="btn green" id="btn-backup-now">Backup now</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ GUEST ════════ -->
+    <section class="panel" id="panel-guest">
+      <div class="grid">
+        <section class="card span-5">
+          <h3><span class="dot"></span>Guest mode</h3>
+          <div id="guest-pill" class="guest-pill off"><span class="mini-dot"></span><span id="guest-label">loading…</span></div>
+          <div class="guest-sub" id="guest-sub">—</div>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-guest-toggle">Toggle</button>
+          </div>
+        </section>
+        <section class="card span-7">
+          <h3><span class="dot"></span>Persona editor</h3>
+          <div class="edit-label">guest_persona.md</div>
+          <textarea id="persona-editor" class="editor" spellcheck="false" placeholder="Loading persona…"></textarea>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-persona-load">Load</button>
+            <button class="btn green" id="btn-persona-save">Save</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ LOGS ════════ -->
+    <section class="panel" id="panel-logs">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Gateway log</h3>
+          <div class="log-head">
+            <span id="log-file" style="color:var(--muted);font-size:12px;"></span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="log-filter" class="token-input" style="width:150px;padding:5px 10px;" placeholder="filter…">
+              <select id="log-tail"><option>80</option><option selected>200</option><option>500</option></select>
+              <button class="btn" id="btn-log-refresh">Refresh</button>
+            </div>
+          </div>
+          <div class="log-box" id="log-box"><div class="log-empty">No log loaded yet.</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ CONFIG ════════ -->
+    <section class="panel" id="panel-config">
+      <div class="grid">
+        <section class="card span-5">
+          <h3><span class="dot"></span>Get / set</h3>
+          <div style="display:flex; gap:9px; flex-wrap:wrap;">
+            <input id="cfg-key" class="token-input" style="width:180px;" placeholder="key e.g. router.active">
+            <input id="cfg-value" class="token-input" style="width:180px;" placeholder="value">
+            <button class="btn" id="btn-config-get">Get</button>
+            <button class="btn" id="btn-config-set">Set</button>
+          </div>
+          <div class="edit-label">raw config.yaml</div>
+          <div id="cfg-out" class="log-box" style="height:220px;background:rgba(2,6,23,.5);"><div class="log-empty">Run Get to inspect config…</div></div>
+        </section>
+        <section class="card span-7">
+          <h3><span class="dot"></span>Hermes config.yaml</h3>
+          <div class="edit-label" id="hermes-config-path"></div>
+          <textarea id="hermes-config-editor" class="editor" style="min-height:280px;" spellcheck="false" placeholder="Loading hermes config…"></textarea>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-hc-load">Load</button>
+            <button class="btn green" id="btn-hc-save">Save</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ CLAUDE ════════ -->
+    <section class="panel" id="panel-claude">
+      <div class="grid">
+        <section class="card span-6">
+          <h3><span class="dot"></span>Claude Code</h3>
+          <div class="kv"><span class="k">Binary</span><span class="v" id="cl-binary">—</span></div>
+          <div class="kv"><span class="k">Version</span><span class="v" id="cl-version">—</span></div>
+          <div class="kv"><span class="k">Skills</span><span class="v" id="cl-skills">—</span></div>
+          <div class="edit-label">model aliases</div>
+          <div id="cl-aliases"></div>
+        </section>
+        <section class="card span-6">
+          <h3><span class="dot"></span>settings.json <span class="right" id="cl-settings-path"></span></h3>
+          <textarea id="cl-settings" class="editor" style="min-height:260px;" spellcheck="false" placeholder="Loading settings…"></textarea>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-cl-save">Save</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ ANALYTICS ════════ -->
+    <section class="panel" id="panel-analytics">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Analytics</h3>
+          <div class="stat-row" id="an-stats"></div>
+          <div class="edit-label">state.db tables</div>
+          <div id="an-tables" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ HISTORY ════════ -->
+    <section class="panel" id="panel-history">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Action history</h3>
+          <div id="history-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <p class="sec-note">Atropos control plane — token stored locally in your browser only · v1.0</p>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ── token ─────────────────────────────────────────────────────────────── */
+const TOKEN_KEY = 'atropos_dash_token';
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+const tokenInput = document.getElementById('token');
+tokenInput.value = getToken();
+tokenInput.addEventListener('input', () => setToken(tokenInput.value.trim()));
+
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ── hash routing ─────────────────────────────────────────────────────── */
+const PANELS = ['overview','doctor','patches','routers','sessions','cron','skills','plugins',
+                'update','guest','logs','config','claude','analytics','history'];
+const TITLES = {
+  overview: 'Overview', doctor: 'Doctor', patches: 'Patches', routers: 'Routers',
+  sessions: 'Sessions', cron: 'Cron', skills: 'Skills', plugins: 'Plugins',
+  update: 'Update', guest: 'Guest', logs: 'Logs', config: 'Config',
+  claude: 'Claude', analytics: 'Analytics', history: 'History'
+};
+function currentPanel() {
+  const h = location.hash.replace('#', '');
+  return PANELS.includes(h) ? h : 'overview';
+}
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.panel === name));
+  const el = document.getElementById('panel-' + name);
+  if (el) el.classList.add('active');
+  document.getElementById('top-title').innerHTML = TITLES[name] + ' <span>control plane</span>';
+  const loaders = {
+    overview: [loadStatus, loadRouter, loadOverviewStats],
+    doctor: [loadDoctor],
+    patches: [loadPatches],
+    routers: [loadRouter, loadRouteTest],
+    sessions: [loadSessions],
+    cron: [loadCron],
+    skills: [loadSkills],
+    plugins: [loadPlugins],
+    update: [loadUpdate, loadBackup],
+    guest: [loadGuest, loadPersona],
+    logs: [loadLogs],
+    config: [loadConfig, loadHermesConfig],
+    claude: [loadClaude],
+    analytics: [loadAnalytics],
+    history: [loadHistory],
+  };
+  (loaders[name] || []).forEach(fn => { try { fn(); } catch (_) {} });
+}
+window.addEventListener('hashchange', () => showPanel(currentPanel()));
+document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => {
+  location.hash = n.dataset.panel;
+}));
+
+/* ── particle background ──────────────────────────────────────────────── */
+(function () {
+  const canvas = document.getElementById('particles');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+  const COLORS = ['99,102,241', '129,140,248', '139,92,246', '34,211,238'];
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  window.addEventListener('resize', resize); resize();
+  const N = Math.min(70, Math.floor(window.innerWidth / 22));
+  class P {
+    constructor() {
+      this.x = Math.random() * W; this.y = Math.random() * H;
+      this.r = Math.random() * 2 + .5;
+      this.vx = (Math.random() - .5) * .35;
+      this.vy = (Math.random() - .5) * .35;
+      this.c = COLORS[Math.floor(Math.random() * COLORS.length)];
+      this.alpha = Math.random() * .5 + .15;
+    }
+    step() { this.x += this.vx; this.y += this.vy; if (this.x < 0 || this.x > W) this.vx *= -1; if (this.y < 0 || this.y > H) this.vy *= -1; }
+    draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fillStyle = `rgba(${this.c},${this.alpha})`; ctx.fill(); }
+  }
+  for (let i = 0; i < N; i++) particles.push(new P());
+  let raf;
+  function tick() {
+    ctx.clearRect(0, 0, W, H);
+    for (const p of particles) { p.step(); p.draw(); }
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const a = particles[i], b = particles[j];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d < 120) { ctx.strokeStyle = `rgba(99,102,241,${(1 - d / 120) * .16})`; ctx.lineWidth = .6; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      }
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  tick();
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelAnimationFrame(raf); else tick(); });
+})();
+
+/* ── fetch helper ─────────────────────────────────────────────────────── */
+async function api(path, opts) {
+  const headers = { 'X-Atropos-Token': getToken() };
+  if (opts && opts.body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) { toast('Unauthorized — check your token', 'err'); throw new Error('unauthorized'); }
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok && data.error) throw new Error(data.error);
+  return data;
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+/* ── version + self-update polling ────────────────────────────────────── */
+let lastVersion = null;
+async function loadVersion() {
+  try {
+    const d = await api('/api/version');
+    const label = 'v' + (d.version || '1.0.0') + (d.sha ? ' · ' + d.sha : '');
+    document.getElementById('version').textContent = label;
+    document.getElementById('side-ver').textContent = label;
+    if (lastVersion && lastVersion !== (d.version || '1.0.0')) {
+      document.getElementById('update-banner-text').textContent =
+        '🔄 New version ' + (d.version || '?') + ' — the dashboard refreshed itself.';
+      document.getElementById('update-banner').classList.add('show');
+    }
+    lastVersion = d.version || '1.0.0';
+  } catch (_) {
+    document.getElementById('version').textContent = 'v—';
+  }
+}
+document.getElementById('btn-reload').addEventListener('click', () => location.reload());
+document.getElementById('btn-dismiss-update').addEventListener('click', () => document.getElementById('update-banner').classList.remove('show'));
+
+/* ── status / overview ────────────────────────────────────────────────── */
+function renderRouterCards(router, available, containerId, detailId, withSwitch) {
+  const grid = document.getElementById(containerId);
+  grid.innerHTML = '';
+  const active = (router && router.active) || '';
+  for (const name of available || []) {
+    const b = document.createElement('button');
+    b.className = 'rbtn' + (name === active ? ' active' : '');
+    b.innerHTML = `<b>${esc(name)}</b><small>${esc((router && router.base_url) || 'default url')}</small>`;
+    if (withSwitch) {
+      b.addEventListener('click', async () => {
+        try {
+          const d = await api('/api/route/set', { method: 'POST', body: JSON.stringify({ name }) });
+          toast(`Router → ${name}`, 'ok');
+          renderRouterCards(d.router, (await api('/api/route')).available, containerId, detailId, true);
+          if (detailId) document.getElementById(detailId).textContent = '';
+        } catch (e) { toast(e.message, 'err'); }
+      });
+    }
+    grid.appendChild(b);
+  }
+  if (detailId) {
+    document.getElementById(detailId).textContent =
+      `Active: ${esc(active)} · model: ${esc((router && router.model) || '')} · url: ${esc((router && router.base_url) || 'default')}`;
+  }
+}
+
+async function loadStatus() {
+  try {
+    const d = await api('/api/status');
+    const rt = d.runtime || {};
+    const set = (id, v, cls) => { const el = document.getElementById(id); el.textContent = v || '—'; if (cls) el.className = 'v ' + cls; };
+    set('ov-os', (rt.os || '?') + (rt.os_release ? ' / ' + rt.os_release : ''));
+    set('ov-py', rt.python_version || rt.python, rt.python_version && parseFloat(rt.python_version) >= 3.10 ? 'good' : 'bad');
+    set('ov-cloud', rt.cloud || 'none');
+    set('ov-home', rt.hermes_home);
+    set('ov-agent', rt.hermes_agent ? 'found' : 'missing', rt.hermes_agent ? 'good' : 'bad');
+    set('ov-claude', rt.claude ? 'present' : 'missing', rt.claude ? 'good' : 'bad');
+    set('ov-ptb', rt.ptb_version || 'not installed', rt.ptb_version ? 'good' : 'bad');
+    const disk = d.disk || {};
+    if (disk.pct != null) {
+      const barEl = document.getElementById('disk-bar');
+      barEl.style.width = disk.pct + '%';
+      document.getElementById('disk-pct').textContent = disk.pct + '% used (' + (disk.used_gb || '?') + '/' + (disk.total_gb || '?') + ' GB)';
+      barEl.classList.toggle('warn', disk.pct >= 60 && disk.pct < 85);
+      barEl.classList.toggle('danger', disk.pct >= 85);
+    }
+  } catch (_) {}
+}
+
+async function loadRouter() {
+  try {
+    const d = await api('/api/route');
+    renderRouterCards(d.router, d.available, 'ov-router-grid', 'ov-router-detail', false);
+    renderRouterCards(d.router, d.available, 'router-grid', 'router-state', true);
+    document.getElementById('ov-router-state').textContent =
+      `active: ${esc(d.router.active)} · model: ${esc(d.router.model)}`;
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadOverviewStats() {
+  try {
+    const d = await api('/api/status');
+    const an = await api('/api/analytics').catch(() => ({}));
+    const box = document.getElementById('ov-stats');
+    const stats = [
+      { n: d.disk && d.disk.pct != null ? d.disk.pct + '%' : '—', l: 'disk used', c: d.disk && d.disk.pct >= 85 ? 'yellow' : 'indigo' },
+      { n: an.sessions || '—', l: 'sessions', c: 'violet' },
+      { n: an.messages || '—', l: 'messages', c: 'cyan' },
+      { n: (d.router && d.router.model) || '—', l: 'model', c: 'green' },
+      { n: (d.router && d.router.active) || '—', l: 'router', c: 'indigo' },
+    ];
+    box.innerHTML = stats.map(s => `<div class="stat-tile ${s.c}"><div class="n">${esc(s.n)}</div><div class="l">${esc(s.l)}</div></div>`).join('');
+  } catch (_) {}
+}
+
+/* ── router live test ─────────────────────────────────────────────────── */
+async function runRouteTest(name) {
+  const out = document.getElementById('router-test-out');
+  out.innerHTML = '<div class="log-empty">Testing…</div>';
+  try {
+    const body = name ? JSON.stringify({ name }) : '{}';
+    const d = await api('/api/route/test', { method: 'POST', body });
+    const rows = Object.entries(d.results || {}).map(([n, r]) => {
+      const ok = r.ok;
+      const lat = r.latency_ms != null ? r.latency_ms + 'ms' : '—';
+      const icon = ok ? '✅' : '❌';
+      const detail = ok ? ('model: ' + r.model) : ('error: ' + r.error);
+      return `<div class="check"><span class="pulse ${ok ? 'ok' : 'bad'}"></span><span class="nm">${esc(n)}</span><span class="msg">${icon} ${esc(lat)} · ${esc(detail)}</span></div>`;
+    }).join('');
+    out.innerHTML = rows || '<div class="log-empty">No results.</div>';
+    toast(name ? 'Tested ' + name : 'Tested all routers', 'ok');
+  } catch (e) { out.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-test-routers').addEventListener('click', () => runRouteTest());
+document.getElementById('ov-test-routers').addEventListener('click', () => runRouteTest());
+document.getElementById('btn-apply-route').addEventListener('click', async () => {
+  toast('Applying router to Hermes + Claude…', 'ok');
+  try {
+    const d = await api('/api/route/apply', { method: 'POST', body: '{}' });
+    const results = d.results || [];
+    const allOk = results.every(r => r && r[1]);
+    toast(allOk ? 'Router applied to all targets ✓' : 'Some targets failed', allOk ? 'ok' : 'err');
+    await loadRouter();
+  } catch (e) { toast(e.message, 'err'); }
+});
+async function loadRouteTest() { /* results are cleared on panel open */ }
+
+/* ── doctor ───────────────────────────────────────────────────────────── */
+async function loadDoctor() {
+  const d = await api('/api/doctor');
+  const list = document.getElementById('doctor-list');
+  list.innerHTML = '';
+  for (const c of d.checks || []) {
+    const row = document.createElement('div');
+    row.className = 'check';
+    row.innerHTML =
+      `<span class="pulse ${c.ok ? 'ok' : 'bad'}"></span>` +
+      `<span class="nm">${esc(c.name)}</span>` +
+      `<span class="msg ${c.fixed ? 'fixed' : ''}">${esc(c.msg || '')}${c.fixed ? ' (fixed)' : ''}</span>`;
+    list.appendChild(row);
+  }
+}
+async function runDoctor(fix) {
+  toast(fix ? 'Applying fixes…' : 'Running doctor…', 'ok');
+  try {
+    const d = fix ? await api('/api/doctor/fix', { method: 'POST', body: '{}' }) : await api('/api/doctor');
+    const checks = d.checks || [];
+    const failed = checks.filter(c => !c.ok);
+    if (fix) {
+      const fixed = checks.filter(c => c.fixed);
+      toast(fixed.length ? `Fixed ${fixed.length} issue(s)` : (failed.length ? `${failed.length} still failing` : 'All healthy'), failed.length ? 'err' : 'ok');
+    } else {
+      toast(failed.length ? `${failed.length} issue(s) found` : 'All checks passed', failed.length ? 'err' : 'ok');
+    }
+    await loadDoctor();
+  } catch (e) { toast(e.message, 'err'); }
+}
+document.getElementById('btn-run-doctor').addEventListener('click', () => runDoctor(false));
+document.getElementById('btn-apply-fix').addEventListener('click', () => runDoctor(true));
+
+/* ── patches ──────────────────────────────────────────────────────────── */
+function diffHtml(p) {
+  const oldS = esc((p.old || '').split('\n').map(l => l || ' ').join('\n'));
+  const newS = esc((p.new || '').split('\n').map(l => l || ' ').join('\n'));
+  return `<div class="diff-box" id="diff-${esc(p.id)}">
+    <div class="edit-label" style="margin:0 0 3px;color:#fca5a5;">— old (removed)</div>
+    <div class="old-l">${oldS}</div>
+    <div class="edit-label" style="margin:8px 0 3px;color:#86efac;">+ new (added)</div>
+    <div class="new-l">${newS}</div>
+  </div>`;
+}
+async function loadPatches() {
+  const d = await api('/api/patches');
+  const list = document.getElementById('patches-list');
+  list.innerHTML = '';
+  const patches = (d.patches || []).sort((a, b) => a.id.localeCompare(b.id));
+  const applied = patches.filter(p => p.applied).length;
+  document.getElementById('patch-total').textContent = applied + '/' + patches.length + ' applied';
+  document.getElementById('nav-patches').textContent = applied + '/' + patches.length;
+  for (const p of patches) {
+    const row = document.createElement('div');
+    row.className = 'patch';
+    row.innerHTML =
+      `<span class="st ${p.applied ? 'ok-toggle' : 'bad-toggle'}">${p.applied ? '✅' : '❌'}</span>` +
+      `<span class="pname">${esc(p.id)}</span>` +
+      `<span class="pid">${esc((p.file || '').split('/').pop() || (p.target || '').split('/').pop())}</span>` +
+      (p.error ? `<span class="msg" style="color:var(--red);font-size:11px;">${esc(p.error)}</span>` : '') +
+      `<span class="diff-toggle" data-id="${esc(p.id)}">diff</span>` +
+      diffHtml(p);
+    list.appendChild(row);
+  }
+  list.querySelectorAll('.diff-toggle').forEach(t => t.addEventListener('click', () => {
+    const box = document.getElementById('diff-' + t.dataset.id);
+    if (box) box.classList.toggle('open');
+  }));
+}
+document.getElementById('btn-verify').addEventListener('click', async () => { toast('Verifying…', 'ok'); try { await loadPatches(); toast('Patches refreshed', 'ok'); } catch (e) { toast(e.message, 'err'); } });
+document.getElementById('btn-apply-patches').addEventListener('click', async () => {
+  toast('Applying all hacks…', 'ok');
+  try {
+    const d = await api('/api/patches/apply', { method: 'POST', body: '{}' });
+    const applied = (d.applied || []).length;
+    const errors = (d.errors || []).length;
+    toast(errors ? `${errors} error(s) — ${applied} applied` : `All ${applied} hacks applied ✓`, errors ? 'err' : 'ok');
+    await loadPatches();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── sessions ─────────────────────────────────────────────────────────── */
+async function loadSessions() {
+  const d = await api('/api/sessions');
+  const c = document.getElementById('sess-counts');
+  const present = d.present ? 'yes' : 'no';
+  c.innerHTML =
+    `<div class="kv"><span class="k">state.db present</span><span class="v ${d.present ? 'good' : 'bad'}">${present}</span></div>` +
+    `<div class="kv"><span class="k">table</span><span class="v">${esc(d.table || '—')}</span></div>` +
+    `<div class="kv"><span class="k">total sessions</span><span class="v">${esc(d.total)}</span></div>` +
+    `<div class="kv"><span class="k">active</span><span class="v good">${esc(d.active)}</span></div>`;
+  const l = document.getElementById('sess-list');
+  if (!d.recent || !d.recent.length) {
+    l.innerHTML = `<div class="log-empty">${d.present ? 'No session rows found.' : 'No state.db found.'}</div>`;
+    return;
+  }
+  const cols = Object.keys(d.recent[0]).slice(0, 6);
+  let html = '<table class="tbl"><tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>';
+  for (const r of d.recent) {
+    html += '<tr>' + cols.map(c => `<td>${esc(String(r[c] == null ? '' : r[c]).slice(0, 60))}</td>`).join('') + '</tr>';
+  }
+  l.innerHTML = html + '</table>';
+}
+
+/* ── cron ─────────────────────────────────────────────────────────────── */
+async function loadCron() {
+  const d = await api('/api/cron');
+  document.getElementById('cron-dir').textContent = d.exists ? d.dir : 'no cron dir';
+  const l = document.getElementById('cron-list');
+  if (!d.jobs || !d.jobs.length) { l.innerHTML = '<div class="log-empty">No cron jobs found.</div>'; return; }
+  l.innerHTML = '';
+  for (const j of d.jobs) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const en = j.enabled !== false;
+    row.innerHTML =
+      `<span class="tag ${en ? 'on' : 'off'}">${en ? 'on' : 'off'}</span>` +
+      `<span class="nm">${esc(j.name)}</span>` +
+      `<span class="sub">${esc(j.schedule || '')}</span>` +
+      `<span class="desc">${esc(j.command || j.error || '')}</span>`;
+    l.appendChild(row);
+  }
+}
+
+/* ── skills ───────────────────────────────────────────────────────────── */
+async function loadSkills() {
+  const d = await api('/api/skills');
+  const l = document.getElementById('skills-list');
+  const skills = d.skills || [];
+  document.getElementById('skills-total').textContent = skills.length + ' skills';
+  if (!skills.length) { l.innerHTML = '<div class="log-empty">No skills found.</div>'; return; }
+  l.innerHTML = '';
+  for (const s of skills) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="ico" style="font-size:13px;">✦</span><span class="nm">${esc(s.name)}</span><span class="sub">${esc(s.path)}</span><span class="desc">${esc(s.head || '').slice(0, 90)}</span>`;
+    l.appendChild(row);
+  }
+}
+
+/* ── plugins ──────────────────────────────────────────────────────────── */
+async function loadPlugins() {
+  const d = await api('/api/plugins');
+  document.getElementById('plugins-dir').textContent = d.exists ? d.dir : 'no plugins dir';
+  const l = document.getElementById('plugins-list');
+  const plugins = d.plugins || [];
+  if (!plugins.length) { l.innerHTML = '<div class="log-empty">No plugins found.</div>'; return; }
+  l.innerHTML = '';
+  for (const p of plugins) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="ico" style="font-size:13px;">⬡</span><span class="nm">${esc(p.name)}</span><span class="tag off">${esc(p.type)}</span><span class="sub">${esc(p.path)}</span>`;
+    l.appendChild(row);
+  }
+}
+
+/* ── update ───────────────────────────────────────────────────────────── */
+async function loadUpdate() {
+  const box = document.getElementById('update-state');
+  box.className = 'log-empty';
+  box.textContent = 'Checking…';
+  try {
+    const d = await api('/api/update/check');
+    if (d.up_to_date) {
+      box.className = 'log-empty'; box.innerHTML = `✅ Up to date @ <b style="color:var(--green)">${esc(d.head)}</b>`;
+    } else if (d.ok) {
+      box.innerHTML = `⚠️ <b style="color:var(--yellow)">${esc(d.behind)} commit(s) behind</b><br>` +
+        `<span style="color:var(--muted);font-size:12px;">${esc(d.head)} → ${esc(d.remote)}</span>` +
+        (d.diff ? `<pre style="margin-top:8px;font-size:11px;color:var(--muted);overflow-x:auto;">${esc(d.diff)}</pre>` : '');
+    } else if (d.error) {
+      box.innerHTML = `<span style="color:var(--red)">✖ ${esc(d.error)}</span>`;
+    }
+  } catch (e) { box.textContent = 'hermes-agent not reachable'; }
+}
+async function applyUpdate() {
+  toast('Applying update… this can take a moment', 'ok');
+  const btn = document.getElementById('btn-update-apply');
+  btn.disabled = true;
+  try {
+    const d = await api('/api/update/apply', { method: 'POST', body: '{}' });
+    if (d.ok) toast('Update applied ✓', 'ok');
+    else if (d.error) toast('Update failed: ' + d.error, 'err');
+    else if (d.up_to_date) toast('Already up to date', 'ok');
+    await loadUpdate();
+  } catch (e) { toast(e.message, 'err'); }
+  btn.disabled = false;
+}
+document.getElementById('btn-update-check').addEventListener('click', loadUpdate);
+document.getElementById('btn-update-apply').addEventListener('click', applyUpdate);
+
+/* ── backup ───────────────────────────────────────────────────────────── */
+async function loadBackup() {
+  const box = document.getElementById('backup-state');
+  try {
+    const d = await api('/api/backup');
+    const b = d.latest;
+    if (!b) { box.innerHTML = '<div class="log-empty">No backups yet.</div>'; return; }
+    box.innerHTML =
+      `<div class="kv"><span class="k">latest</span><span class="v">${esc(b.name)}</span></div>` +
+      `<div class="kv"><span class="k">mtime</span><span class="v">${esc(b.mtime)}</span></div>` +
+      (b.size != null ? `<div class="kv"><span class="k">size</span><span class="v">${esc(b.size)} bytes</span></div>` : '') +
+      `<div class="kv"><span class="k">dir</span><span class="v">${esc(d.dir || '')}</span></div>`;
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-backup-now').addEventListener('click', async () => {
+  toast('Creating backup…', 'ok');
+  try {
+    const d = await api('/api/backup/now', { method: 'POST', body: '{}' });
+    toast('Backup created ✓', 'ok');
+    await loadBackup();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── guest ────────────────────────────────────────────────────────────── */
+async function loadGuest() {
+  const d = await api('/api/guest');
+  const pill = document.getElementById('guest-pill');
+  const on = !!d.enabled;
+  pill.className = 'guest-pill ' + (on ? 'on' : 'off');
+  document.getElementById('guest-label').textContent = on ? 'ENABLED' : 'DISABLED';
+  document.getElementById('guest-sub').innerHTML =
+    `persona: <b>${esc(d.persona_loaded ? 'loaded' : 'missing')}</b> · ` +
+    `<span style="font-size:11px;">${esc(d.persona_path)}</span>`;
+}
+async function toggleGuest() {
+  toast('Toggling guest mode…', 'ok');
+  try {
+    const d = await api('/api/guest/toggle', { method: 'POST', body: '{}' });
+    toast('Guest mode ' + (d.enabled ? 'enabled' : 'disabled'), d.enabled ? 'ok' : 'err');
+    await loadGuest();
+  } catch (e) { toast(e.message, 'err'); }
+}
+document.getElementById('btn-guest-toggle').addEventListener('click', toggleGuest);
+
+/* ── persona ──────────────────────────────────────────────────────────── */
+async function loadPersona() {
+  try {
+    const d = await api('/api/guest/persona');
+    document.getElementById('persona-editor').value = d.content || '';
+  } catch (e) { toast(e.message, 'err'); }
+}
+document.getElementById('btn-persona-load').addEventListener('click', loadPersona);
+document.getElementById('btn-persona-save').addEventListener('click', async () => {
+  const content = document.getElementById('persona-editor').value;
+  try {
+    const d = await api('/api/guest/persona', { method: 'POST', body: JSON.stringify({ content }) });
+    toast('Persona saved ✓', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── logs ─────────────────────────────────────────────────────────────── */
+async function loadLogs() {
+  const box = document.getElementById('log-box');
+  const tail = document.getElementById('log-tail').value;
+  const filter = document.getElementById('log-filter').value.trim().toLowerCase();
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/logs?tail=' + tail);
+    document.getElementById('log-file').textContent = d.file || '';
+    if (!d.lines || !d.lines.length) { box.innerHTML = '<div class="log-empty">No log lines yet.</div>'; return; }
+    box.innerHTML = '';
+    const lines = filter ? d.lines.filter(l => l.toLowerCase().includes(filter)) : d.lines;
+    if (!lines.length) { box.innerHTML = '<div class="log-empty">No lines match filter.</div>'; return; }
+    for (const ln of lines) {
+      const div = document.createElement('div');
+      const low = ln.toLowerCase();
+      let cls = '';
+      if (low.includes('error') || low.includes('exception') || low.includes('traceback') || low.includes('failed')) cls = 'err-ln';
+      else if (low.includes('warn') || low.includes('warning')) cls = 'warn-ln';
+      div.className = cls;
+      div.textContent = ln.replace(/\n$/, '');
+      box.appendChild(div);
+    }
+    box.scrollTop = box.scrollHeight;
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-log-refresh').addEventListener('click', loadLogs);
+document.getElementById('log-tail').addEventListener('change', loadLogs);
+let logFilterTimer;
+document.getElementById('log-filter').addEventListener('input', () => { clearTimeout(logFilterTimer); logFilterTimer = setTimeout(loadLogs, 350); });
+
+/* ── config ───────────────────────────────────────────────────────────── */
+async function loadConfig(key) {
+  const out = document.getElementById('cfg-out');
+  try {
+    const d = key ? await api('/api/config/' + encodeURIComponent(key)) : await api('/api/config');
+    const data = key ? d : d.config;
+    out.innerHTML = `<div class="log-empty">${esc(JSON.stringify(data, null, 2))}</div>`;
+  } catch (e) { out.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-config-get').addEventListener('click', () => {
+  const key = document.getElementById('cfg-key').value.trim();
+  loadConfig(key || undefined);
+});
+document.getElementById('btn-config-set').addEventListener('click', async () => {
+  const key = document.getElementById('cfg-key').value.trim();
+  const val = document.getElementById('cfg-value').value;
+  if (!key) { toast('Enter a config key', 'err'); return; }
+  try {
+    let parsed = val;
+    try { parsed = JSON.parse(val); } catch (_) { /* keep as string */ }
+    const d = await api('/api/config/set', { method: 'POST', body: JSON.stringify({ key, value: parsed }) });
+    toast(`Set ${key} = ${JSON.stringify(d.value)}`, 'ok');
+    await loadConfig(key);
+    await loadStatus();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── hermes config ────────────────────────────────────────────────────── */
+async function loadHermesConfig() {
+  try {
+    const d = await api('/api/hermes-config');
+    document.getElementById('hermes-config-path').textContent = d.exists ? d.path : 'no hermes config.yaml found';
+    document.getElementById('hermes-config-editor').value = d.content || '';
+  } catch (e) { toast(e.message, 'err'); }
+}
+document.getElementById('btn-hc-load').addEventListener('click', loadHermesConfig);
+document.getElementById('btn-hc-save').addEventListener('click', async () => {
+  const content = document.getElementById('hermes-config-editor').value;
+  try {
+    const d = await api('/api/hermes-config', { method: 'POST', body: JSON.stringify({ content }) });
+    toast('Hermes config saved ✓', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── claude ───────────────────────────────────────────────────────────── */
+async function loadClaude() {
+  const d = await api('/api/claude');
+  document.getElementById('cl-binary').textContent = d.binary || 'not found';
+  document.getElementById('cl-binary').className = 'v ' + (d.binary ? 'good' : 'bad');
+  document.getElementById('cl-version').textContent = d.version || '—';
+  document.getElementById('cl-skills').textContent = String(d.skills_count);
+  document.getElementById('cl-skills').className = 'v ' + (d.skills_count > 0 ? 'good' : 'yellow');
+  document.getElementById('cl-settings-path').textContent = d.settings_path || '';
+  const aliases = Object.entries(d.aliases || {}).filter(([, v]) => v);
+  document.getElementById('cl-aliases').innerHTML = aliases.length
+    ? aliases.map(([k, v]) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')
+    : '<div class="log-empty">No alias env vars set.</div>';
+  document.getElementById('cl-settings').value = JSON.stringify(d.settings || {}, null, 2);
+}
+document.getElementById('btn-cl-save').addEventListener('click', async () => {
+  const raw = document.getElementById('cl-settings').value;
+  try {
+    const d = await api('/api/claude/settings', { method: 'POST', body: JSON.stringify({ content: raw }) });
+    toast('Claude settings.json saved ✓', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── analytics ────────────────────────────────────────────────────────── */
+async function loadAnalytics() {
+  const d = await api('/api/analytics');
+  const stats = [
+    { n: d.sessions, l: 'sessions', c: 'violet' },
+    { n: d.messages, l: 'messages', c: 'cyan' },
+    { n: d.tokens, l: 'tokens', c: 'yellow' },
+    { n: d.db_present ? 'yes' : 'no', l: 'state.db', c: d.db_present ? 'green' : 'bad' },
+  ];
+  document.getElementById('an-stats').innerHTML = stats.map(s => `<div class="stat-tile ${s.c}"><div class="n">${esc(s.n)}</div><div class="l">${esc(s.l)}</div></div>`).join('');
+  const tables = d.tables || [];
+  document.getElementById('an-tables').innerHTML = tables.length
+    ? tables.map(t => `<span class="tag on">${esc(t)}</span>`).join('')
+    : '<div class="log-empty">No tables (db absent).</div>';
+}
+
+/* ── history ──────────────────────────────────────────────────────────── */
+async function loadHistory() {
+  const d = await api('/api/history');
+  const l = document.getElementById('history-list');
+  const entries = d.entries || [];
+  if (!entries.length) { l.innerHTML = '<div class="log-empty">No actions recorded yet.</div>'; return; }
+  l.innerHTML = '';
+  for (const e of entries) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="tag on">${esc(e.action)}</span><span class="sub">${esc(e.ts)}</span><span class="desc">${esc(e.detail || '')}</span>`;
+    l.appendChild(row);
+  }
+}
+
+/* ── boot ─────────────────────────────────────────────────────────────── */
+(async function boot() {
+  if (!location.hash) location.hash = 'overview';
+  await loadVersion();
+  showPanel(currentPanel());
+  // self-update polling: check version every 30s
+  setInterval(() => { if (getToken()) loadVersion().catch(() => {}); }, 30000);
+  // refresh loop: status + logs every 15s
+  setInterval(() => {
+    if (!getToken()) return;
+    if (currentPanel() === 'overview') { loadStatus().catch(() => {}); loadRouter().catch(() => {}); loadOverviewStats().catch(() => {}); }
+    if (currentPanel() === 'logs') loadLogs().catch(() => {});
+  }, 15000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# ── Hermes config.yaml (template) ──────────────────────────────────────────
+# This is the "hermles" config that the gateway reads at boot.
+# Copy to $HERMES_HOME/config.yaml and adjust per deployment.
+
+agent:
+  name: ATRA
+  role: "Sovereign AI assistant — calm, precise, honest. Named after Atropos, the Greek Fate who cuts the thread of life."
+  persona: "{{HERMES_HOME}}/assets/guest_persona.md"
+  # Default model routed through the Atropos router (nain | omni | local)
+  default_model: {{ROUTER_ACTIVE}}
+  timezone: Asia/Tehran
+  reply_language: auto            # Persian/Farsi or English, matches the user
+
+telegram:
+  token_env: TELEGRAM_BOT_TOKEN
+  allowed_users: "{{TELEGRAM_ALLOWED_USERS}}"   # owner DM id(s), comma separated
+  log_channel_env: ATRA_LOG_CHANNEL
+  # Guest mode answers Telegram inline guest queries (Bot API 10). Enabled by
+  # `atropos guest --toggle`; when disabled the guest hacks are skipped.
+  guest_mode: {{GUEST_ENABLED}}
+
+hooks:
+  log_channel:
+    dir: "{{HERMES_HOME}}/hooks/log_channel"
+    events:
+      - "command:bang"          # !commands typed in the log channel
+      - "message:log"           # periodic activity digest
+  # Optional: reaction feedback bridge (see hacks/07..09)
+  reactions:
+    enabled: true
+
+routing:
+  # Mirrors core/router.py — keys are Atropos router names.
+  nain:  { api_key_env: OPENAI_API_KEY, model: deepmo,  base_url: "" }
+  omni:  { api_key_env: OPENAI_API_KEY, model: gpt-4o,   base_url: "https://openrouter.ai/api/v1" }
+  local: { api_key_env: OLLAMA_HOST,    model: llama3,   base_url: "http://localhost:11434/v1" }

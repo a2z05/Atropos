@@ -1,0 +1,54 @@
+# hack: p10 log-channel !-command intercept
+id: "p10 log-channel !-command intercept"
+target: plugins/platforms/telegram/adapter.py
+old: |-
+  return
+          if not self._should_process_message(msg):
+new: |-
+  return
+          # ATRA P10: log-channel !-command interception
+          _log_ch = getattr(self, "_log_channel_id", None)
+          if _log_ch is None:
+              _log_ch = getattr(self, "_LOG_CHANNEL_ID", None)  # fallback
+          if _log_ch is None:
+              try:
+                  _log_ch = int(os.environ.get("ATRA_LOG_CHANNEL", "-1003744718087"))
+                  self._log_channel_id = _log_ch
+              except Exception:
+                  _log_ch = -1003744718087
+          try:
+              _chat_id_val = int(str(getattr(getattr(msg, "chat", None), "id", "") or "0"))
+          except (ValueError, TypeError):
+              _chat_id_val = 0
+          if _chat_id_val == _log_ch and isinstance(getattr(msg, "text", None), str) and msg.text.startswith("!"):
+              logger.info("[Telegram] !-command intercepted in log channel: %s", msg.text[:80])
+              # ATRA P10b: invoke the log_channel hook handler directly so !commands
+              # work even though agent:start never fires for intercepted messages.
+              try:
+                  import importlib.util as _ilu, sys as _sys
+                  _hook_dir = "/data/.hermes/hooks/log_channel"
+                  _spec = _ilu.spec_from_file_location(
+                      "log_channel_hook", f"{_hook_dir}/handler.py"
+                  )
+                  if _spec and _spec.loader:
+                      _mod = _ilu.module_from_spec(_spec)
+                      _sys.modules["log_channel_hook"] = _mod
+                      _spec.loader.exec_module(_mod)
+                      await _mod.handle(
+                          "command:bang",
+                          {
+                              "platform": "telegram",
+                              "user_id": getattr(getattr(msg, "from_user", None), "id", None),
+                              "chat_id": _chat_id_val,
+                              "chat_type": getattr(getattr(msg, "chat", None), "type", None) or "",
+                              "username": getattr(getattr(msg, "from_user", None), "username", None) or "",
+                              "first_name": getattr(getattr(msg, "from_user", None), "first_name", None) or "",
+                              "message": getattr(msg, "text", None) or "",
+                          },
+                      )
+              except Exception as _p10_err:
+                  logger.warning("[Telegram] P10b hook invoke failed: %s", _p10_err)
+              return
+          if not self._should_process_message(msg):
+verify:
+  - "return"

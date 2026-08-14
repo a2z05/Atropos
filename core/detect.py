@@ -25,7 +25,10 @@ def hermes_home() -> Path:
 
 
 def atropos_home() -> Path:
-    """~/.atropos (or %USERPROFILE%\\.atropos)."""
+    """~/.atropos (or %USERPROFILE%\\.atropos), or $ATROPOS_HOME if set."""
+    env = os.environ.get("ATROPOS_HOME")
+    if env:
+        return Path(env)
     return _home() / ".atropos"
 
 
@@ -58,6 +61,11 @@ def _find_hermes_agent() -> str:
         if Path(c).exists():
             return c
     return ""
+
+
+def hermes_agent() -> str:
+    """Public accessor for the detected hermes-agent install dir."""
+    return _find_hermes_agent()
 
 
 def _find_claude() -> str:
@@ -139,6 +147,11 @@ def detect() -> dict:
         "os_home": str(_home()),
         "cwd": str(Path.cwd()),
     }
+
+
+def _ts():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 def save_runtime() -> dict:

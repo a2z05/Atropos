@@ -1,0 +1,42 @@
+# ── Daily backup cron (template) ──────────────────────────────────────────
+# Install with:
+#   crontab -l > /tmp/current_cron && cat templates/backup-cron.tmpl >> /tmp/current_cron
+#   crontab /tmp/current_cron
+#
+# Backs up Atropos config + hacks + Hermes .env (redacted) into a
+# timestamped tarball under $HERMES_HOME/backups. Keep the last 7 days.
+#
+# ┌──────────────────────── minute (0-59)
+# │ ┌────────────────────── hour   (0-23)
+# │ │ ┌──────────────────── day of month (1-31)
+# │ │ │ ┌────────────────── month  (1-12)
+# │ │ │ │ ┌──────────────── day of week (0-7, 0=Sunday)
+# │ │ │ │ │
+# 17 3 * * *  /usr/bin/env bash -c '
+#   set -euo pipefail
+#   HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+#   ATROPOS_HOME="${ATROPOS_HOME:-$HOME/.atropos}"
+#   BACKUP_DIR="$HERMES_HOME/backups"
+#   STAMP="$(date +%Y%m%d_%H%M%S)"
+#   DEST="$BACKUP_DIR/atropos-$STAMP"
+#   mkdir -p "$DEST"
+#
+#   # Atropos config + hacks
+#   [ -f "$ATROPOS_HOME/config.yaml" ] && cp "$ATROPOS_HOME/config.yaml" "$DEST/" || true
+#   [ -d "$ATROPOS_HOME/hacks" ] && cp -r "$ATROPOS_HOME/hacks" "$DEST/" || true
+#   [ -f "$ATROPOS_HOME/auth_token" ] && cp "$ATROPOS_HOME/auth_token" "$DEST/" || true
+#
+#   # Hermes .env, with secret values redacted (keep keys + placeholders)
+#   if [ -f "$HERMES_HOME/.env" ]; then
+#     sed -E "s/=(.*)/=REDACTED/" "$HERMES_HOME/.env" > "$DEST/env.redacted"
+#   fi
+#
+#   # Runtime + persona snapshot
+#   [ -f "$ATROPOS_HOME/runtime.json" ] && cp "$ATROPOS_HOME/runtime.json" "$DEST/" || true
+#   [ -f "$HERMES_HOME/assets/guest_persona.md" ] && cp "$HERMES_HOME/assets/guest_persona.md" "$DEST/guest_persona.md" || true
+#
+#   # Tar it up, keep last 7 backups
+#   tar -czf "$DEST.tar.gz" -C "$BACKUP_DIR" "atropos-$STAMP" && rm -rf "$DEST"
+#   find "$BACKUP_DIR" -name "atropos-*.tar.gz" -mtime +7 -delete
+#   echo "[backup] wrote $DEST.tar.gz"
+# ' >> "$HOME/.atropos/backup-cron.log" 2>&1

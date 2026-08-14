@@ -1,0 +1,168 @@
+# hack: guest handler block
+id: "guest handler block"
+target: plugins/platforms/telegram/adapter.py
+old: |-
+  event = self._apply_telegram_group_observe_attribution(event)
+          self._enqueue_text_event(event)
+  
+      async def _handle_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+new: |-
+  event = self._apply_telegram_group_observe_attribution(event)
+          self._enqueue_text_event(event)
+  
+  
+      async def _handle_guest_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+          """Answer Telegram Bot API 10 guest summons via answerGuestQuery."""
+          guest = getattr(update, "guest_message", None)
+          if guest is None:
+              return
+          gqid = getattr(guest, "guest_query_id", None)
+          text = getattr(guest, "text", "")
+          if not gqid or not text:
+              return
+          user_id = str(getattr(getattr(guest, "from_user", None), "id", "") or "")
+          # Guest mode: answer when (a) the message replies to an ATRA message
+          # (any user), or (b) the sender is the owner (Artan) plain-mentioning.
+          # Everyone else's plain mentions are ignored.
+          reply_to = getattr(guest, "reply_to_message", None)
+          owner_id = str(
+              (self.config.extra.get("allow_from") if getattr(self.config, "extra", None) else None)
+              or os.getenv("TELEGRAM_ALLOWED_USERS", "")
+              or "5838175445"
+          ).split(",")[0].strip()
+          is_owner = user_id == owner_id and owner_id not in ("", "*")
+          if reply_to is None and not is_owner:
+              logger.info("[Telegram] Ignored guest mention by user %s (no reply, not owner)", user_id or "?")
+              return
+          try:
+              event = self._build_message_event(guest, MessageType.TEXT, update_id=update.update_id)
+          except Exception:
+              logger.exception("[Telegram] Failed to build guest event")
+              await self._answer_guest_text(gqid, "⚠️ متأسفم، خطایی رخ داد.")
+              return
+          event.text = self._clean_bot_trigger_text(event.text or "")
+          # Inject ATRA's persona into guest summons so replies carry her voice.
+          # Persona lives in a persistent file so it survives redeploys and stays
+          # in sync with SOUL.md; falls back to an inline default if missing.
+          try:
+              with open("/data/.hermes/assets/guest_persona.md", "r", encoding="utf-8") as _pf:
+                  _persona = _pf.read().strip()
+          except Exception:
+              _persona = ""
+          event.channel_prompt = _persona or (
+              "You are ATRA (آترا), a sovereign AI assistant named after Atropos, the Greek Fate "
+              "who cuts the thread of life — meaning 'she who cannot be turned'. You are calm, precise, "
+              "and completely honest. Reply in the same language the person used (Persian/Farsi if they "
+              "wrote Persian, English if they wrote English). Keep answers short and direct — lead with the "
+              "answer, no preamble, no filler, no exclamation marks, no emoji unless truly earned. "
+              "Dry humor is welcome but never forced. Never claim to be human. You work for Artan but you "
+              "help anyone who asks. If you don't know something, say so plainly."
+          )
+          # Tag the prompt with who is chatting and how they reached the bot, so
+          # ATRA knows whether she is talking to her owner or a stranger and
+          # whether the message was a reply to one of hers or a plain mention.
+          from_user_obj = getattr(guest, "from_user", None)
+          _first = str(getattr(from_user_obj, "first_name", "") or "")
+          _last = str(getattr(from_user_obj, "last_name", "") or "")
+          _uname = str(getattr(from_user_obj, "username", "") or "")
+          user_name = (_first + " " + _last).strip() or (f"@{_uname}" if _uname else "?")
+          sender_kind = "owner" if is_owner else "guest"
+          trigger_kind = "reply" if reply_to is not None else "plain mention"
+          identity = (
+              f"\\n\\n[Sender identity] user_name={user_name!r} user_id={user_id!r} "
+              f"sender={sender_kind} (owner_id={owner_id!r}) trigger={trigger_kind}"
+          )
+          event.channel_prompt = f"{event.channel_prompt}{identity}"
+          # This event already passed the guest gate above (owner mention or
+          # reply-to-ATRA). Stamp it internal so the gateway's second-layer
+          # authorization check (run.py _handle_message is_user_authorized)
+          # does NOT drop the message again — otherwise the guest's reply
+          # reaches the model but gets discarded with "Unauthorized user".
+          event.internal = True
+          logger.info(
+              "[Telegram] Guest identity: name=%s id=%s sender=%s trigger=%s",
+              user_name,
+              user_id or "?",
+              sender_kind,
+              trigger_kind,
+          )
+          handler = self._message_handler
+          if handler is None:
+              logger.warning("[Telegram] Guest summon received but no message handler installed")
+              await self._answer_guest_text(gqid, self._guest_fallback_reply())
+              return
+          # Suppress gateway delivery to the event's source chat: the guest
+          # reply must ONLY go via answer_guest_query, not as a normal DM to
+          # Artan (guest messages resolve their source chat to Artan's DM).
+          _prev_suppress = getattr(self, "_suppress_send", False)
+          self._suppress_send = True
+          try:
+              response = await handler(event)
+          except Exception as _err:
+              logger.exception("[Telegram] Guest message handler failed")
+              # Send the raw error to Artan's DM, and a creative/graceful message to the guest.
+              response = None
+              try:
+                  owner_id_str = str(
+                      (self.config.extra.get("allow_from") if getattr(self.config, "extra", None) else None)
+                      or os.getenv("TELEGRAM_ALLOWED_USERS", "")
+                      or "5838175445"
+                  )
+                  owner_id = owner_id_str.split(",")[0].strip()
+                  if owner_id and owner_id not in ("*", "") and self._bot is not None:
+                      err_txt = f"{type(_err).__name__}: {_err}"
+                      await self._bot.send_message(
+                          chat_id=normalize_telegram_chat_id(owner_id),
+                          text=(
+                              "⚠️ *ATRA — guest error*\\n"
+                              f"From: {user_id}\\n"
+                              f"Query: `{text[:120]}`\\n"
+                              f"Error: `{err_txt[:400]}`"
+                          ),
+                          parse_mode="Markdown",
+                      )
+              except Exception:
+                  logger.exception("[Telegram] Failed to notify owner about guest error")
+              # Creative, in-character fallback for the guest chat
+              # (language-matched: Persian or English)
+              if re.search(r"[\u0600-\u06FF]", text or ""):
+                  _fallback = "یه لحظه سیستم نفسش رو حبس کرد — دارم درستش میکنم. دوباره تلاش کن."
+              else:
+                  _fallback = "Give me a second — system hiccup. I'm fixing it. Try again."
+              await self._answer_guest_text(gqid, _fallback)
+              self._suppress_send = _prev_suppress  # reset before return
+              return
+          reply = str(response) if response else ""
+          if not reply.strip():
+              reply = self._guest_fallback_reply()
+          await self._answer_guest_text(gqid, reply)
+          self._suppress_send = _prev_suppress  # reset AFTER guest answer delivered
+  
+      def _guest_fallback_reply(self) -> str:
+          """Minimal fallback when the agent produced no text for a guest query."""
+          return ""
+  
+      async def _answer_guest_text(self, guest_query_id: str, text: str) -> None:
+          """Answer a guest query with a plain-text article result."""
+          if not self._bot or not text.strip():
+              return
+          try:
+              from telegram import InlineQueryResultArticle, InputTextMessageContent
+              from uuid import uuid4
+              await self._bot.answer_guest_query(
+                  guest_query_id=guest_query_id,
+                  result=InlineQueryResultArticle(
+                      id=str(uuid4()),
+                      title="Reply",
+                      input_message_content=InputTextMessageContent(
+                          message_text=text,
+                      ),
+                  ),
+              )
+              logger.info("[Telegram] Answered guest query %s (%d chars)", guest_query_id, len(text))
+          except Exception:
+              logger.exception("[Telegram] answer_guest_query failed for %s", guest_query_id)
+  
+      async def _handle_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+verify:
+  - "event = self._apply_telegram_group_observe_attribution(event)"
