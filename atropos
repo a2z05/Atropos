@@ -14,6 +14,10 @@ Usage:
   atropos dashboard [--port N]
   atropos detect
   atropos version
+  atropos watch [--daemon] [--interval N]
+  atropos backup [--list|--restore <name>|--prune N]
+  atropos skills [--list|--sync|--export|--import [name]]
+  atropos effort [set <tier>] [get]   # hermes/claude/atropos effort tiers
 """
 import argparse
 import json
@@ -308,11 +312,42 @@ def main():
     p.add_argument("value", nargs="?", default=None)
     p = sub.add_parser("route",   help="get or set model router")
     p.add_argument("set_name", nargs="?", default=None, help="router name to activate")
+    p.add_argument("set_name", nargs="?",
+                   choices=["nain", "omni", "local"], default=None,
+                   help="router name to activate")
     p = sub.add_parser("patch",   help="apply or verify hacks")
     p.add_argument("--verify", action="store_true", help="verify only")
     p = sub.add_parser("init",    help="first-time initialization")
     p = sub.add_parser("dashboard", help="start web dashboard")
     p.add_argument("--port", type=int, default=None)
+    # watch
+    p = sub.add_parser("watch", help="self-healing watchdog")
+    p.add_argument("--daemon", action="store_true", help="run forever")
+    p.add_argument("--interval", type=int, default=1800, help="seconds between checks")
+    # backup
+    p = sub.add_parser("backup", help="full state backup")
+    p.add_argument("--list", action="store_true", help="list backups")
+    p.add_argument("--restore", type=str, default=None, help="backup name to restore")
+    p.add_argument("--prune", type=int, default=None, help="keep N most recent")
+    # skills
+    p = sub.add_parser("skills", help="universal skill management")
+    p.add_argument("--list", action="store_true", help="list skills")
+    p.add_argument("--sync", action="store_true", help="symlink into hermes")
+    p.add_argument("--export", action="store_true", help="copy into hermes")
+    p.add_argument("--import", dest="import_skill", nargs="?", const="", default=None,
+                   help="import skill(s) from hermes")
+    # effort
+    p = sub.add_parser("effort", help="effort tiers (hermes/claude/atropos)")
+    p.add_argument("effort_action", nargs="?", default=None, choices=["set", "get"], help="set or get")
+    p.add_argument("tier", nargs="?", default=None,
+                   choices=["minimal", "low", "medium", "high", "xhigh", "ultracode", "tryhard"],
+                   help="tier: minimal|low|medium|high|xhigh|ultracode|tryhard")
+    p.add_argument("--get", action="store_true", help="show current tiers (alias for 'get')")
+    # tui
+    p = sub.add_parser("tui", help="interactive terminal UI (Claude Code-style)")
+    # setup
+    p = sub.add_parser("setup", help="first-time setup wizard")
+    p.add_argument("--check", action="store_true", help="check only, don't install")
     args = ap.parse_args()
     if not args.cmd:
         ap.print_help()
@@ -330,8 +365,182 @@ def main():
         "init": cmd_init,
         "dashboard": cmd_dashboard,
         "version": cmd_version,
+        "watch": cmd_watch,
+        "backup": cmd_backup,
+        "skills": cmd_skills,
+        "effort": cmd_effort,
+        "tui": cmd_tui,
+        "setup": cmd_setup,
     }
     handlers[args.cmd](args)
+
+
+# (main call moved to end of file after all handlers)
+def cmd_watch(args):
+    from core.watch import run_watch, daemon_loop
+    if args.daemon:
+        daemon_loop(args.interval)
+    else:
+        results = run_watch()
+        if results["ok"]:
+            _ok("all checks passed")
+        else:
+            for a in results["alerts"]:
+                _warn(a)
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+
+
+def cmd_backup(args):
+    from core.backup import create, list_backups, prune, restore
+    if args.list:
+        backups = list_backups()
+        if not backups:
+            _info("no backups yet")
+        else:
+            for b in backups:
+                print(f"  {b['name']}  ({b['size_mb']} MB)")
+    elif args.restore:
+        result = restore(args.restore)
+        if result["ok"]:
+            _ok(f"restored from {args.restore}: {result['restored']}")
+        else:
+            _fail(result.get("error", "restore failed"))
+    elif args.prune:
+        removed = prune(args.prune)
+        _ok(f"pruned: {removed}")
+    else:
+        result = create()
+        if result["ok"]:
+            _ok(f"backup created: {result['path']} ({result['size_mb']} MB)")
+            _info(f"items: {', '.join(result['items'])}")
+            if result["pruned"]:
+                _info(f"pruned: {result['pruned']}")
+        else:
+            _fail(result.get("error", "backup failed"))
+
+
+def cmd_skills(args):
+    from core.skills import list_skills, sync_to_hermes, export_to_hermes, import_from_hermes
+    if args.list:
+        for s in list_skills():
+            print(f"  {s['name']}: {s['category']} → {s['harness']}")
+    elif args.sync:
+        synced = sync_to_hermes()
+        _ok(f"symlinked {len(synced)} skills into hermes: {', '.join(synced)}")
+    elif args.export:
+        exported = export_to_hermes()
+        _ok(f"exported {len(exported)} skills: {', '.join(exported)}")
+    elif args.import_skill is not None:
+        imported = import_from_hermes(args.import_skill or None)
+        _ok(f"imported {len(imported)} skills: {', '.join(imported)}")
+    else:
+        _info("use --list, --sync, --export, or --import")
+
+
+def cmd_effort(args):
+    # Effort tiers — mapped to real harness capabilities.
+    # Hermes uses Anthropic adaptive effort: minimal/low/medium/high/xhigh/ultra/max
+    # Claude Code uses permission modes: acceptEdits, --dangerously-skip-permissions
+    # Atropos uses patch thoroughness + test coverage.
+    tiers = {
+        "minimal": {
+            "hermes": "fastest responses, least reasoning tokens, short answers",
+            "claude": "minimal edits, acceptEdits mode, no test writing",
+            "atropos": "doctor only, no auto-fix, no backup",
+            "thinking": "low",
+        },
+        "low": {
+            "hermes": "low reasoning, quick answers, minimal tool use",
+            "claude": "basic coding, acceptEdits, single-file only",
+            "atropos": "doctor + status, skip patches",
+            "thinking": "low",
+        },
+        "medium": {
+            "hermes": "balanced reasoning, standard tool use, normal responses",
+            "claude": "standard coding, acceptEdits, multi-file edits",
+            "atropos": "full doctor + patch verify + config get/set",
+            "thinking": "medium",
+        },
+        "high": {
+            "hermes": "deep reasoning, long context, exhaustive research",
+            "claude": "agentic coding, multi-file, refactors, write tests",
+            "atropos": "doctor --fix + patch apply + backup + verify all",
+            "thinking": "high",
+        },
+        "xhigh": {
+            "hermes": "maximum reasoning on Claude 4.7+, very deep analysis",
+            "claude": "full agentic mode, acceptEdits, complex multi-step tasks",
+            "atropos": "aggressive patching + full backup + doctor verify + self-heal",
+            "thinking": "xhigh",
+        },
+        "ultracode": {
+            "hermes": "ultra reasoning, every tool, multi-delegate, deep reasoning",
+            "claude": "claude-code --permission-mode acceptEdits, write entire projects, refactor codebases, self-test everything",
+            "atropos": "full pipeline: backup → update → patch → doctor → verify → test suite, zero known issues",
+            "thinking": "max",
+        },
+        "tryhard": {
+            "hermes": "absolute maximum — exhaustive research, multi-delegate in parallel, no stop until answer is perfect and verified",
+            "claude": "claude-code with all permissions, write + test + refactor entire codebases, recursive self-debug, verify with py_compile and unit tests",
+            "atropos": "self-healing at all costs — rebuild broken components, optimize configs, run full test suite, fix every detectable issue, ensure zero failures before reporting success",
+            "thinking": "max",
+        },
+    }
+
+    if args.get or args.effort_action == "get" or (not args.effort_action and not args.tier):
+        cfg = config.load()
+        current = cfg.get("effort", {"hermes": "medium", "claude": "medium", "atropos": "medium"})
+        print(f"  current tiers:")
+        for component in ["hermes", "claude", "atropos"]:
+            tier = current.get(component, "medium")
+            desc = tiers.get(tier, {}).get(component, "") or f"(legacy: {tier})"
+            print(f"    {component}: {tier} — {desc}")
+    else:
+        if args.effort_action != "set" or not args.tier:
+            _fail("usage: atropos effort set <tier>")
+            sys.exit(1)
+        tier = args.tier.lower()
+        if tier not in tiers:
+            _fail(f"unknown tier: {tier}. Available: {', '.join(tiers.keys())}")
+            sys.exit(1)
+        cfg = config.load()
+        cfg["effort"] = {
+            component: tier for component in ["hermes", "claude", "atropos"]
+        }
+        # also push reasoning_effort to hermes config.yaml
+        thinking = tiers[tier].get("thinking", "medium")
+        try:
+            hconfig = detect.hermes_home() / "config.yaml"
+            if hconfig.exists():
+                htext = hconfig.read_text()
+                if "reasoning_effort:" in htext:
+                    htext = htext.replace(
+                        "reasoning_effort: " + (cfg.get("hermes", {}).get("reasoning_effort", "medium")),
+                        f"reasoning_effort: {thinking}",
+                        1
+                    )
+                else:
+                    htext = htext.replace("model:", f"reasoning_effort: {thinking}\nmodel:", 1)
+                hconfig.write_text(htext)
+                _ok(f"hermes config.yaml reasoning_effort → {thinking}")
+        except Exception as e:
+            _warn(f"could not update hermes reasoning_effort: {e}")
+        config.save(cfg)
+        _ok(f"effort set to '{tier}' for all components (thinking={thinking})")
+        for component in ["hermes", "claude", "atropos"]:
+            desc = tiers[tier][component]
+            print(f"    {component}: {desc}")
+
+
+
+def cmd_tui(args):
+    from core.tui import run
+    run()
+
+
+def cmd_setup(args):
+    from core.setup_wizard import run_wizard
+    run_wizard(check_only=args.check)
 
 
 if __name__ == "__main__":

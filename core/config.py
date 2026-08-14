@@ -136,7 +136,7 @@ def _parse_block(lines, idx=0, indent=0):
         # inline flow list: [a, b]
         if val.startswith("["):
             if val.endswith("]"):
-                result[key] = [v.strip() for v in val.strip("[]").split(",") if v.strip()]
+                result[key] = [_scalar(v) for v in val.strip("[]").split(",") if v.strip()]
                 i += 1
                 continue
             # multiline flow list: accumulate until ]
@@ -150,7 +150,7 @@ def _parse_block(lines, idx=0, indent=0):
                     break
                 buf += " " + cur
                 i += 1
-            result[key] = [v.strip() for v in buf.split(",") if v.strip()]
+            result[key] = [_scalar(v) for v in buf.split(",") if v.strip()]
             continue
 
         result[key] = _scalar(val)
@@ -178,26 +178,30 @@ def _looks_like_block_scalar(content: str) -> bool:
 def _parse_block_scalar(lines, start, opener_indent, indicator):
     """Parse a literal block scalar body starting at ``lines[start]``.
 
-    Every body line is stripped of exactly ``base = opener_indent + 2``
-    leading spaces; deeper indentation is preserved. The block ends at the
-    first non-blank line dedented back to (or above) the opener.
+    The body is dedented by the minimum indentation found across its
+    non-empty lines, so deeper anchor indentation is preserved and shallow
+    bodies keep no stray leading spaces. The block ends at the first
+    non-blank line dedented back to (or above) the opener.
     """
-    base = opener_indent + 2
-    body_lines = []
+    # Determine the common indentation to strip. Real-YAML semantics: the
+    # body is dedented by the minimum indentation across its non-empty
+    # lines (relative to the opener), so deeper anchor indentation survives
+    # and shallow bodies aren't left with stray leading spaces.
+    body = []
     k = start
     while k < len(lines):
         raw = lines[k]
         if not raw.strip():
-            body_lines.append("")
+            body.append("")
             k += 1
             continue
         if _indent_of(raw) <= opener_indent:
             break
-        if len(raw) <= base:
-            body_lines.append("")
-        else:
-            body_lines.append(raw[base:])
+        body.append(raw)
         k += 1
+    non_empty = [l for l in body if l.strip()]
+    base = min(_indent_of(l) for l in non_empty) if non_empty else opener_indent + 2
+    body_lines = [l[base:] if len(l) >= base else "" for l in body]
 
     if indicator == "|+":
         body = "\n".join(body_lines)
@@ -233,7 +237,7 @@ def _parse_list(lines, idx=0, indent=0):
             break
         rest = line[2:].strip()
         if rest.startswith("[") and rest.endswith("]"):
-            items.append([v.strip() for v in rest.strip("[]").split(",") if v.strip()])
+            items.append([_scalar(v) for v in rest.strip("[]").split(",") if v.strip()])
             i += 1
             continue
         # nested mapping: "- key: value"
