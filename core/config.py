@@ -51,6 +51,10 @@ DEFAULTS = {
     "dashboard": {
         "port": 8787,
         "host": "127.0.0.1",
+        "password": "",  # optional; when set, dashboard shows a password gate
+    },
+    "backup": {
+        "period": "off",  # daily | off — watch daemon auto-creates when daily
     },
     "guest": {
         "enabled": False,

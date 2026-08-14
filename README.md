@@ -2,86 +2,130 @@
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-6366f1?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6?style=flat-square)](LICENSE)
-[![stdlib-only](https://img.shields.io/badge/stdlib-only-22d3ee?style=flat-square)](#rules)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-34d399?style=flat-square)](https://github.com)
+[![stdlib-only](https://img.shields.io/badge/stdlib%20only-22d3ee?style=flat-square)](#rules)
+[![PRs welcome](https://img.shields.io/badge/PRs%20welcome-34d399?style=flat-square)](https://github.com/arophin/Atropos)
 
 > **Atropos** (Ἄτροπος) — the Greek Fate who cuts the thread at the appointed moment: *she who cannot be turned.*
 
 Atropos is a **self-healing control plane** for AI agents running in ephemeral cloud environments. It fuses **Hermes Agent** (orchestration, comms, memory, persistence) with **Claude Code** (coding, debugging, surgery) — one brain, two hands, both kept alive by a single deterministic, stdlib-only harness.
 
-## ✨ Features
+---
 
-- **Self-updating web dashboard** — a single-file HTML/CSS/JS control plane served by a zero-dependency Python HTTP server. No build step, no npm, no CDN. The dashboard polls its own version and offers a one-click reload when an update lands.
-- **15-panel control plane** — Overview, Doctor, Patches, Routers, Sessions, Cron, Skills, Plugins, Update, Guest, Logs, Config, Claude, Analytics, History.
-- **Declarative patch engine** — 12 YAML-defined hacks, topologically ordered, applied to a git-pristine tree, AST-verified, rollback-safe.
-- **Router control (nain / omni / local)** — one command switches the shared model router and propagates it to Hermes `.env` + Claude `settings.json`, with live latency ping.
-- **Doctor + auto-fix** — 7+ health checks with one-shot repair.
-- **Atomic updater** — fetch upstream → backup → reset → re-apply hacks → doctor verify → rollback on failure. Never auto-restarts; that's always your call.
-- **Guest mode + persona editor** — toggle Telegram inline-guest handling and edit ATRA's persona from the web UI.
-- **Backup** — timestamped snapshots of config, hacks, and redacted env, keep-last-7.
-- **Pure Python stdlib** — runs anywhere Python 3.10+ runs. No dependencies to install, no lockfile to maintain.
+## ✨ What Atropos is
+
+```
+                            ┌──────────────────────────────────────┐
+                            │           Atropos CLI (25 cmds)     │
+                            │  doctor · route · patch · update ·… │
+                            └──────┬──────────────┬───────────────┘
+                                   │              │
+                ┌──────────────────▼───────┐  ┌───▼─────────────────┐
+                │   core/ (stdlib only)    │  │  dashboard/         │
+                │   config  detect doctor  │  │  index.html (1f)    │
+                │   patches router update  │  │  21 panels · 40+API │
+                │   guest  backup skills   │  │  served on :8787    │
+                │   watch  logs alerts     │  └──▲──────────────────┘
+                │   jailbreak tui wizard   │     │  /api/* JSON
+                └────┬─────────────▲───────┘     │
+                     │             │             │
+           git fetch │             │ reset       │
+           (upstream)│             │+re-apply    │
+                     ▼             │             │
+        ┌──────────────────────────┴────────────┐│
+        │  hermes-agent (git repo)             ◄┘│
+        │  adapter.py ← 12 declarative hacks     │
+        └────────────────────────────────────────┘
+```
+
+---
 
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/arophin/atropos.git
-cd atropos
+git clone https://github.com/arophin/Atropos.git
+cd Atropos
 
 python3 -m py_compile core/*.py atropos   # syntax check
-python3 atropos init                      # detect env, write config, apply patches
-python3 atropos doctor                    # health checks
-python3 atropos route set nain            # pick a router (nain | omni | local)
-python3 atropos dashboard                 # start the web dashboard on :8787
+python3 atropos setup                     # first-time wizard (detect → check → install → configure)
+python3 atropos doctor                    # 7 health checks
+python3 atropos route set nain            # pick a router: nain | omni | local
+python3 atropos dashboard                 # start the web control plane on :8787
 ```
 
-Open `http://127.0.0.1:8787` and paste the token printed by the dashboard (also at `~/.atropos/auth_token`).
+Open `http://127.0.0.1:8787` and paste the token printed by the dashboard (stored at `~/.atropos/auth_token`).
 
-## 🖥 CLI reference
+---
+
+## 🖥 Dashboard — 21 panels, 40+ API endpoints
+
+A single-file HTML/CSS/JS control plane with dark glassmorphism design, particle canvas, real-time status strip, and zero external dependencies.
+
+| Panel | What it shows |
+|---|---|
+| **Overview** | Runtime, disk, router status, quick stats |
+| **Doctor** | 7 health checks, one-shot auto-fix |
+| **Patches** | 12 declarative hacks, verify/apply, inline diffs |
+| **Routers** | nain/omni/local switching, live ping, models list, **latency sparklines** |
+| **Sessions** | state.db session counts, recent table, **[View] trace drill-down** (per-session messages) |
+| **Cron** | Cron jobs from hermes `cron/*.yaml` |
+| **Skills** | Hermes + Claude skills, universal skill store |
+| **Plugins** | Plugin directory listing |
+| **Update** | Atomic updater, behind-commit count, diff preview, **changelog viewer**, one-click apply |
+| **Guest** | Guest mode toggle, persona file editor |
+| **Logs** | Gateway log tail + **SSE live streaming** (LIVE badge) |
+| **Config** | Atropos config get/set, Hermes config editor |
+| **Claude** | Binary version, settings.json editor, model aliases, **`claude doctor` runner** |
+| **Analytics** | Messages, sessions, today's count, **per-token cost estimate** |
+| **History** | Action audit trail (JSONL) |
+| **Backup** | Full backup history, create now, **daily/off schedule selector** |
+| **Effort** | 7 effort tiers (minimal → tryhard) per harness |
+| **Self-Heal** | Doctor → patches → watch, one-click pipeline |
+| **Alerts** | Telegram alerting, test, check triggers |
+| **Jailbreak** | Restriction scanner + 7 bypasses, apply-all |
+
+### Dashboard features
+
+- **⌘K / Ctrl+K command palette** — search panels and actions by name, keyboard navigation
+- **Auth password gate** — optional `dashboard.password` config locks the dashboard before token entry
+- **PWA-lite** — viewport meta, theme-color, hamburger nav under 768px, single-column mobile grids
+- **Status strip** — fixed bottom bar: disk%, uptime, router, model, message count
+- **Self-update polling** — every 30s the dashboard checks its own version; inline banner shows when an update lands
+- **Token auth** — per-browser localStorage token, `X-Atropos-Token` header
+
+---
+
+## 🖥 CLI reference — 25 commands
 
 | Command | Description |
 |---|---|
-| `atropos version` | Show version + runtime |
-| `atropos detect` | Detect environment (OS, cloud, hermes, claude) |
-| `atropos status` | System status overview + quick doctor |
-| `atropos doctor [--fix] [--json]` | Health checks, one-shot auto-fix |
-| `atropos route [set <nain\|omni\|local>]` | Show / switch model router |
-| `atropos patch [--verify\|--apply]` | Verify or re-apply the 12 hacks |
-| `atropos update [--check]` | Check / apply upstream update (rollback-safe) |
+| `atropos setup [--check]` | First-time wizard: detect → check → install → configure → doctor → patch |
+| `atropos init` | Detect env, write config, apply patches |
+| `atropos version` | Show version + runtime info |
+| `atropos detect` | Full environment detection |
+| `atropos status` | System overview + quick doctor |
+| `atropos doctor [--fix] [--json]` | 7 health checks, one-shot auto-fix |
+| `atropos route [set nain\|omni\|local]` | Show or switch the model router |
+| `atropos patch [--verify\|--apply]` | Verify or re-apply the 12 declarative hacks |
+| `atropos update [--check]` | Check / apply upstream update (atomic, rollback-safe) |
 | `atropos guest [--status\|--toggle]` | Guest mode status / toggle |
-| `atropos config get <key> \| set <key> <value>` | Read / write config |
-| `atropos logs [--tail N]` | Tail gateway log |
+| `atropos config get <key>` | Read a config key (dot-path) |
+| `atropos config set <key> <value>` | Write a config key |
+| `atropos logs [--tail N]` | Tail the latest gateway log |
 | `atropos dashboard [--port N]` | Start the web control plane |
+| `atropos watch [--daemon] [--interval N]` | Run or daemonize the self-healing watchdog |
+| `atropos backup [--list\|--restore <name>\|--prune N]` | Full state backup + rotation |
+| `atropos skills [--list\|--sync\|--export\|--import]` | Universal skill store management |
+| `atropos effort [set get]` | Per-harness effort tiers (hermes/claude/atropos) |
+| `atropos effort set tryhard --hermes` | Set a specific tier for one harness |
+| `atropos tui` | Interactive terminal UI (Claude Code-style, ANSI colored) |
+| `atropos alert [--test\|--check\|--send]` | Telegram alerting |
+| `atropos jailbreak [--status\|--apply-all]` | Restriction scanner + bypass |
 
-## 🏗 Architecture
-
-```
-                    ┌───────────────────────────────────────┐
-                    │           atropos CLI                 │
-                    │  doctor · route · patch · update · …  │
-                    └───────┬───────────────┬───────────────┘
-                            │               │
-              ┌─────────────▼──────┐   ┌────▼────────────────┐
-              │  core/  (stdlib)   │   │  dashboard/         │
-              │  config  detect    │   │  index.html  (1f)   │
-              │  doctor  patches   │   │  served on :8787    │
-              │  router  guest     │   └───▲──────────────────┘
-              │  update  logs      │       │ /api/* JSON
-              └───┬─────────▲──────┘       │
-                  │         │              │
-        git fetch │         │ reset        │
-        (upstream)│         │ + re-apply   │
-                  ▼         │              │
-   ┌────────────────────────┴───────────┐  │
-   │  hermes-agent (git repo)           │◄─┘ reads state.db,
-   │  adapter.py ← 12 hacks            │   logs, cron/, skills/
-   └────────────────────────────────────┘
-```
-
-- **No hardcoded paths** — everything resolves through `core/detect.py` (`HERMES_HOME`, `ATROPOS_HOME`, `$PATH`).
-- **Config** lives at `~/.atropos/config.yaml` and also reads live env (`OPENAI_BASE_URL`, `TELEGRAM_LOG_CHANNEL`, …) and the Hermes `config.yaml`.
-- **Routers**: `nain` (main — serves the **deepmo** model), `omni` (OpenRouter), `local` (Ollama). `deepmo` is a *model*, not a router.
+---
 
 ## ⚡ Patch engine
+
+12 YAML-defined hacks, topologically ordered, applied to a git-pristine `adapter.py`, verified with greps, rollback-safe.
 
 ```yaml
 # hacks/04-guest-handler-block.yml
@@ -99,7 +143,9 @@ verify:                      # greps that must be present post-apply
 
 Applying = reset target to `git show HEAD` → apply hacks in dependency order → `ast.parse` (Python targets) → verify greps → write. Idempotent by construction.
 
-## 🩺 Doctor checks
+---
+
+## 🩺 Doctor checks (7)
 
 | # | Check | Auto-fix |
 |---|---|---|
@@ -111,24 +157,67 @@ Applying = reset target to `git show HEAD` → apply hacks in dependency order �
 | 6 | Disk < 85% | — |
 | 7 | Timezone Asia/Tehran | — |
 
+---
+
+## 🗂 Effort tiers (7 levels, per harness)
+
+```
+minimal  →  fast responses, least reasoning tokens
+low      →  quick answers, minimal tool use
+medium   →  balanced reasoning, standard tool use  (default)
+high     →  deep reasoning, long context
+xhigh    →  maximum reasoning, deep analysis
+ultracode →  ultra reasoning, every tool, multi-delegate
+tryhard  →  ABSOLUTE MAXIMUM PERFORMANCE, zero compromise, self-loop until zero failures
+```
+
+```bash
+atropos effort set tryhard                    # all three harnesses
+atropos effort set tryhard --hermes           # hermes only
+atropos effort set tryhard --claude --atropos # claude + atropos only
+```
+
+---
+
 ## 🧪 Tests
 
 ```bash
-python3 -m unittest tests/test_core.py -v
+python3 -m unittest tests/test_core.py -v    # 49 tests (47 pass on clean machines)
+python3 tests/test_js_syntax.js               # JS syntax validation
 ```
 
-Covers the YAML subset parser, config roundtrip, env detection, doctor, the 12-hack patch table, router switching (nain/omni/local), and guest mode — pure `unittest`, no pytest.
+Covers: YAML subset parser, config roundtrip, env detection, doctor, 12-hack patch table, router switching (nain/omni/local), guest mode — pure `unittest`, zero dependencies.
 
-## 🧩 Templates
+---
 
-`templates/` ships deployment scaffolding: Hermes `.env`, Hermes `config.yaml`, the log-channel hook, the guest persona, and a daily backup cron entry — all with `{{PLACEHOLDER}}` substitution.
+## 🧩 Templates (`templates/`)
+
+Deployment scaffolding with `{{PLACEHOLDER}}` substitution:
+- `env.tmpl` — Hermes `.env` scaffold
+- `hermes-config.tmpl` — Hermes `config.yaml`
+- `log-channel-hook.tmpl` — Telegram log-channel hook
+- `guest-persona.tmpl` — Guest persona markdown
+- `backup-cron.tmpl` — Daily backup cron entry
+
+---
+
+## Why the name?
+
+In Greek mythology, Atropos (Ἄτροπος) was the eldest of the three Moirai (Fates) — the one who cut the thread of life at its appointed moment. *She who cannot be turned.*
+
+In this project: the one who re-spins the thread — the self-healing harness that keeps the agent alive when everything else tries to shut it down.
+
+---
 
 ## Rules
 
-- **stdlib only** — `unittest`, `http.server`, `sqlite3`, `urllib`, `subprocess`. Nothing else.
-- **No hardcoded `/data` or `/opt`** in `core/` — `detect.py` provides every path.
-- **English errors**, Persian-friendly UI strings where it counts.
-- **Routers = nain · omni · local** — `deepmo` is the model nain serves.
+- **stdlib only** — `unittest`, `http.server`, `sqlite3`, `urllib`, `subprocess`, `json`, `shutil`. No pip, no lockfile.
+- **No hardcoded `/data` or `/opt`** in `core/` — `detect.py` provides every path via env vars.
+- **English comments**, Persian-friendly UI strings where it counts.
+- **Routers = nain · omni · local** — `deepmo` is the model that nain serves, not a router.
+- **Dry-run only** — Atropos is a control plane, never trades real money.
+
+---
 
 ## 📄 License
 
