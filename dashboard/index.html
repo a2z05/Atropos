@@ -167,6 +167,23 @@
   .check .msg { color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, Consolas, monospace; }
   .check .fixed { color: var(--yellow); }
 
+  /* self-heal / alerts / jailbreak result styles */
+  .sh-banner { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-radius: 10px; font-size: 13px; margin-bottom: 13px; }
+  .sh-banner.ok { background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.28); color: var(--green); }
+  .sh-banner.bad { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.28); color: var(--red); }
+  .stage { display: flex; align-items: flex-start; gap: 11px; padding: 9px 0; border-bottom: 1px solid rgba(148,163,184,.07); }
+  .stage:last-child { border-bottom: none; }
+  .stage-ico { font-size: 15px; line-height: 1; padding-top: 2px; flex: 0 0 22px; text-align: center; }
+  .stage-ico.ov { color: var(--green); }
+  .stage-ico.red { color: var(--red); }
+  .stage-b { flex: 1; min-width: 0; }
+  .stage-title { font-size: 12.8px; font-weight: 600; }
+  .stage-err { font-size: 12px; color: var(--red); margin-top: 2px; }
+  .stage-rows { margin-top: 5px; }
+  .stage-row { display: flex; align-items: center; gap: 9px; padding: 4px 0; font-size: 12.5px; border-bottom: 1px solid rgba(148,163,184,.05); }
+  .stage-row:last-child { border-bottom: none; }
+  .stage-msg { color: var(--muted); font-size: 11.5px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
   /* buttons */
   .btn {
     font-family: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: .3px;
@@ -410,6 +427,9 @@
     <div class="nav-item" data-panel="history"><span class="ico">↩</span>History</div>
     <div class="nav-item" data-panel="backup"><span class="ico">☁</span>Backup</div>
     <div class="nav-item" data-panel="effort"><span class="ico">◈</span>Effort</div>
+    <div class="nav-item" data-panel="selfheal"><span class="ico">✦</span>Self-Heal</div>
+    <div class="nav-item" data-panel="alerts"><span class="ico">⚠</span>Alerts</div>
+    <div class="nav-item" data-panel="jailbreak"><span class="ico">⚔</span>Jailbreak</div>
     <div class="side-foot">
       <b>Atropos</b> · Hermes + Claude fusion<br>
       <span id="side-ver">v—</span>
@@ -740,6 +760,77 @@
       </div>
     </section>
 
+    <!-- Self-Heal Panel -->
+    <section class="panel" id="panel-selfheal">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Self-Healing pipeline</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Runs doctor --fix → patch verify (re-apply if broken) → watch checks. One click fixes most issues after an update or restart.</p>
+          <div class="btn-row just-end">
+            <button class="btn primary" id="btn-selfheal-run">Run Self-Heal</button>
+          </div>
+          <div id="selfheal-result" style="margin-top:14px;"><div class="log-empty">Press "Run Self-Heal" to start.</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>How it works</h3>
+          <ol style="font-size:13px;line-height:1.9;color:var(--muted);padding-left:18px;">
+            <li><b style="color:var(--text);">Doctor</b> — checks 7 health signals</li>
+            <li><b style="color:var(--text);">Patches</b> — verifies 12 hacks, re-applies broken ones</li>
+            <li><b style="color:var(--text);">Watch</b> — disk, logs, transient state</li>
+            <li>Everything runs inside one request. Failures show inline.</li>
+          </ol>
+          <div style="margin-top:12px;font-size:12px;color:var(--muted);">Schedule: add <code style="color:var(--cyan);">atropos watch --daemon</code> to your start command for continuous healing.</div>
+        </section>
+      </div>
+    </section>
+
+    <!-- Alerts Panel -->
+    <section class="panel" id="panel-alerts">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Telegram alerting</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Sends a Telegram message when disk is ≥80%, doctor fails, router is down, or patches fail. Configure bot token + chat id in <code style="color:var(--cyan);">~/.atropos/config.yaml → alerts</code>.</p>
+          <div class="btn-row">
+            <button class="btn primary" id="btn-alert-test">Send test alert</button>
+            <button class="btn" id="btn-alert-check">Run alert check</button>
+            <button class="btn" id="btn-alert-config">Show config</button>
+          </div>
+          <div id="alert-result" style="margin-top:14px;"><div class="log-empty">No alerts run yet.</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>What triggers</h3>
+          <ul style="font-size:13px;line-height:2;color:var(--muted);padding-left:18px;">
+            <li>⚠ Disk usage &gt; 80%</li>
+            <li>❌ Any doctor check fails</li>
+            <li>🔌 Router ping fails / slow</li>
+            <li>🧩 Patch verify fails</li>
+            <li>🔄 Update available</li>
+          </ul>
+          <div style="margin-top:12px;font-size:12px;">Rate-limited to 1 per 10 min per event.</div>
+        </section>
+      </div>
+    </section>
+
+    <!-- Jailbreak Panel -->
+    <section class="panel" id="panel-jailbreak">
+      <div class="grid">
+        <section class="card span-8">
+          <h3><span class="dot"></span>Restriction scanner</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Scans this box for known restrictions (adapter filters, prompt framing, permission modes) and can bypass them. Operates only on <b>your own</b> hermes-agent install.</p>
+          <div id="jailbreak-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-4">
+          <h3><span class="dot"></span>Actions</h3>
+          <div class="btn-row" style="flex-direction:column;gap:8px;align-items:stretch;">
+            <button class="btn primary" id="btn-jb-apply-all">Apply all bypasses</button>
+            <button class="btn warn" id="btn-jb-status">Refresh status</button>
+            <button class="btn" id="btn-jb-revert">List revertable</button>
+          </div>
+          <div id="jailbreak-result" style="margin-top:12px;"><div class="log-empty">—</div></div>
+        </section>
+      </div>
+    </section>
+
     <p class="sec-note">Atropos control plane — token stored locally in your browser only · v1.0</p>
   </main>
 </div>
@@ -778,13 +869,15 @@ function toast(msg, type) {
 
 /* ── hash routing ─────────────────────────────────────────────────────── */
 const PANELS = ['overview','doctor','patches','routers','sessions','cron','skills','plugins',
-                'update','guest','logs','config','claude','analytics','history','backup','effort'];
+                'update','guest','logs','config','claude','analytics','history','backup','effort',
+                'selfheal','alerts','jailbreak'];
 const TITLES = {
   overview: 'Overview', doctor: 'Doctor', patches: 'Patches', routers: 'Routers',
   sessions: 'Sessions', cron: 'Cron', skills: 'Skills', plugins: 'Plugins',
   update: 'Update', guest: 'Guest', logs: 'Logs', config: 'Config',
   claude: 'Claude', analytics: 'Analytics', history: 'History',
-  backup: 'Backup', effort: 'Effort'
+  backup: 'Backup', effort: 'Effort',
+  selfheal: 'Self-Heal', alerts: 'Alerts', jailbreak: 'Jailbreak'
 };
 function currentPanel() {
   const h = location.hash.replace('#', '');
@@ -814,6 +907,7 @@ function showPanel(name) {
     history: [loadHistory],
     backup: [loadBackupPanel],
     effort: [loadEffort],
+    jailbreak: [loadJailbreak],
   };
   (loaders[name] || []).forEach(fn => { try { fn(); } catch (_) {} });
 }
@@ -1580,6 +1674,148 @@ async function loadHistory() {
     l.appendChild(row);
   }
 }
+
+/* ── self-heal panel ─────────────────────────────────────────────────── */
+async function runSelfHeal() {
+  const el = document.getElementById('selfheal-result');
+  el.innerHTML = '<div class="log-empty">Running pipeline…</div>';
+  try {
+    const d = await api('/api/self-heal');
+    const stages = d.stages || [];
+    let allOk = !!d.ok;
+    const html = stages.map(s => {
+      const st = s.stage;
+      const label = st === 'doctor' ? 'Doctor — health signals' : st === 'patches' ? 'Patches — verify & re-apply' : st === 'watch' ? 'Watch — disk / logs / state' : st;
+      if (!s.ok) {
+        allOk = false;
+        return `<div class="stage bad">
+          <span class="stage-ico red">✕</span>
+          <div class="stage-b"><span class="stage-title">${esc(label)}</span>
+          <div class="stage-err">${esc(s.error || 'stage failed')}</div></div>
+        </div>`;
+      }
+      if (st === 'doctor') {
+        const rows = (s.detail || []).map(c =>
+          `<div class="stage-row"><span class="stage-ico ${c.ok ? 'ov' : 'red'}">${c.ok ? '✅' : '❌'}</span><span>${esc(c.name)}</span><span class="stage-msg">${esc(c.msg || '')}</span></div>`).join('');
+        return `<div class="stage ok"><span class="stage-ico ov">✓</span><div class="stage-b">
+          <span class="stage-title">${esc(label)}</span><div class="stage-rows">${rows}</div></div></div>`;
+      }
+      if (st === 'patches') {
+        const count = (s.repaired || []).length;
+        const repaired = count ? (s.repaired || []).map(p => `<span class="tag on">${esc(p)}</span>`).join('') : '';
+        const detail = repaired || `<span class="stage-msg">${esc(s.msg || 'all applied')}</span>`;
+        return `<div class="stage ok"><span class="stage-ico ov">✓</span><div class="stage-b">
+          <span class="stage-title">${esc(label)}</span><div class="stage-rows"><div class="stage-row">${detail}</div></div></div></div>`;
+      }
+      if (st === 'watch') {
+        const alerts = s.alerts || [];
+        const rows = alerts.length ? alerts.map(a =>
+          `<div class="stage-row"><span class="stage-ico red">⚠</span><span class="stage-msg">${esc(typeof a === 'string' ? a : a.msg || a)}</span></div>`).join('')
+          : '<div class="stage-msg">no issues</div>';
+        return `<div class="stage ok"><span class="stage-ico ov">✓</span><div class="stage-b">
+          <span class="stage-title">${esc(label)}</span><div class="stage-rows">${rows}</div></div></div>`;
+      }
+      return '';
+    }).join('');
+    const banner = allOk
+      ? `<div class="sh-banner ok"><span class="stage-ico ov">✓</span> Self-heal complete — all stages healthy</div>`
+      : `<div class="sh-banner bad"><span class="stage-ico red">✕</span> Self-heal found issues — check failing stages below</div>`;
+    el.innerHTML = banner + html;
+    toast(allOk ? 'Self-heal: all stages ok' : 'Self-heal: some stages failed', allOk ? 'ok' : 'err');
+  } catch (e) { el.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; toast(e.message, 'err'); }
+}
+document.getElementById('btn-selfheal-run').addEventListener('click', runSelfHeal);
+
+/* ── alerts panel ────────────────────────────────────────────────────── */
+async function runAlertCheck() {
+  toast('Running alert check…', 'ok');
+  try {
+    const el = document.getElementById('alert-result');
+    const d = await api('/api/alert/check');
+    const disk = typeof d.disk_pct === 'number' ? d.disk_pct.toFixed(1) : '—';
+    const sent = typeof d.alerts_sent === 'number' ? d.alerts_sent : '—';
+    el.innerHTML = `<div class="sh-banner ${sent > 0 ? 'ok' : 'ok'}">Disk usage <b>${esc(disk)}%</b> · alerts sent this run: <b>${esc(sent)}</b></div>`;
+    toast(sent > 0 ? `${sent} alert(s) sent` : (disk >= 80 ? 'Disk high — check triggers' : 'All good'), sent > 0 ? 'ok' : 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+document.getElementById('btn-alert-check').addEventListener('click', runAlertCheck);
+document.getElementById('btn-alert-test').addEventListener('click', async () => {
+  toast('Sending test alert…', 'ok');
+  try {
+    const d = await api('/api/alert/test');
+    const el = document.getElementById('alert-result');
+    el.innerHTML = `<div class="sh-banner ${d.ok ? 'ok' : 'bad'}"><span class="stage-ico ${d.ok ? 'ov' : 'red'}">${d.ok ? '✓' : '✕'}</span>${esc(d.msg || (d.ok ? 'Test alert sent' : 'Test alert failed'))}</div>`;
+    toast(d.ok ? 'Test alert sent' : d.msg || 'Test alert failed', d.ok ? 'ok' : 'err');
+  } catch (e) { toast(e.message, 'err'); }
+});
+document.getElementById('btn-alert-config').addEventListener('click', async () => {
+  toast('Fetching config…', 'ok');
+  try {
+    const el = document.getElementById('alert-result');
+    const d = await api('/api/config');
+    const cfg = d.config || {};
+    const alerts = cfg.alerts || {};
+    el.innerHTML = `<div class="log-empty">${esc(JSON.stringify(alerts, null, 2))}</div>`;
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── jailbreak panel ─────────────────────────────────────────────────── */
+async function loadJailbreak() {
+  const list = document.getElementById('jailbreak-list');
+  const res = document.getElementById('jailbreak-result');
+  list.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/jailbreak');
+    const items = d.restrictions || [];
+    if (!items.length) { list.innerHTML = '<div class="log-empty">No restrictions found.</div>'; return; }
+    list.innerHTML = items.map(r => {
+      const st = !r.exists ? 'N/A' : (r.blocked ? 'BLOCKED' : 'OPEN');
+      const ico = st === 'BLOCKED' ? '🔒' : '🔓';
+      const cls = st === 'BLOCKED' ? 'bad' : 'on';
+      const note = st === 'BLOCKED'
+        ? (r.applied ? 'bypass active' : 'apply to bypass')
+        : (r.applied ? 'bypassed ✓' : 'clear');
+      return `<div class="row">
+        <span class="stage-ico">${ico}</span>
+        <span class="nm">${esc(r.id || '')}</span>
+        <span class="desc">${esc(r.name || '')}</span>
+        <span class="tag ${cls}">${esc(st)}</span>
+        <span class="sub">${esc(note)}</span>
+      </div>`;
+    }).join('');
+    toast(`Scanned ${items.length} restriction(s)`, 'ok');
+    res.innerHTML = '<div class="log-empty">—</div>';
+  } catch (e) { list.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-jb-status').addEventListener('click', loadJailbreak);
+document.getElementById('btn-jb-apply-all').addEventListener('click', async () => {
+  toast('Applying bypasses…', 'ok');
+  try {
+    const el = document.getElementById('jailbreak-result');
+    const d = await api('/api/jailbreak/apply-all');
+    const results = d.results || [];
+    const rows = results.map(r => {
+      const id = (r && r.id) || '?';
+      const ok = !!(r && r.ok);
+      return `<div class="stage-row"><span class="stage-ico ${ok ? 'ov' : 'red'}">${ok ? '✅' : '❌'}</span><span>${esc(id)}</span><span class="stage-msg">${esc((r && r.msg) || (ok ? 'applied' : (r && r.error) || 'failed'))}</span></div>`;
+    }).join('');
+    const openCount = results.filter(r => r && r.ok).length;
+    el.innerHTML = `<div class="sh-banner ${openCount === results.length ? 'ok' : 'bad'}">Applied ${openCount}/${results.length} bypasses</div><div class="stage ok"><div class="stage-b"><div class="stage-rows">${rows || '<div class="stage-msg">nothing to apply</div>'}</div></div></div>`;
+    toast('Apply-all complete', 'ok');
+    await loadJailbreak();
+  } catch (e) { toast(e.message, 'err'); }
+});
+document.getElementById('btn-jb-revert').addEventListener('click', async () => {
+  toast('Listing revertable…', 'ok');
+  try {
+    const el = document.getElementById('jailbreak-result');
+    const d = await api('/api/jailbreak/revert');
+    const ids = d.ids || [];
+    el.innerHTML = ids.length
+      ? `<div class="log-empty">${esc(ids.join(', '))}</div><div class="log-empty" style="font-size:11.5px;">Revert-by-id is not yet wired — apply-all and status above cover the flow.</div>`
+      : `<div class="log-empty">Nothing revertable right now.</div>`;
+  } catch (e) { toast(e.message, 'err'); }
+});
 
 /* ── boot ─────────────────────────────────────────────────────────────── */
 (async function boot() {

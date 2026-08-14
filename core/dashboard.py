@@ -874,6 +874,94 @@ def api_update_version():
     }
 
 
+def api_self_heal():
+    """Run the full self-healing pipeline: doctor --fix → patch verify/apply → watch.
+    Returns each stage's result. Safe: patches are re-applied only if verify fails."""
+    import traceback
+    from . import doctor as _doc
+    from . import patches as _pat
+    from .watch import run_watch
+    stages = []
+
+    # 1. doctor + fix
+    try:
+        res = _doc.doctor(fix=True)
+        stages.append({
+            "stage": "doctor",
+            "ok": all(r["ok"] for r in res),
+            "detail": [{"name": r["name"], "ok": r["ok"], "msg": r["msg"]} for r in res],
+        })
+    except Exception as e:
+        stages.append({"stage": "doctor", "ok": False, "error": str(e)})
+
+    # 2. patch verify → apply if needed
+    try:
+        verified = _pat.verify()
+        need_apply = [r for r in verified if not r["applied"]]
+        if need_apply:
+            applied, skipped, errors = _pat.apply_hacks()
+            stages.append({
+                "stage": "patches",
+                "ok": len(errors) == 0,
+                "repaired": [a for a in applied],
+                "errors": [str(e) for e in errors],
+            })
+        else:
+            stages.append({"stage": "patches", "ok": True, "repaired": [], "msg": "all 12 applied"})
+    except Exception as e:
+        stages.append({"stage": "patches", "ok": False, "error": str(e)})
+
+    # 3. watch (disk/log/health)
+    try:
+        w = run_watch()
+        stages.append({
+            "stage": "watch",
+            "ok": w.get("ok", True),
+            "alerts": w.get("alerts", []),
+        })
+    except Exception as e:
+        stages.append({"stage": "watch", "ok": False, "error": str(e)})
+
+    return {"ok": all(s["ok"] for s in stages), "stages": stages}
+
+
+def api_alert_test():
+    from .alerts import send_alert
+    ok = send_alert("Test alert from Atropos dashboard ✅", force=True)
+    return {"ok": ok, "msg": "test alert sent" if ok else "alert failed/config missing"}
+
+
+def api_alert_check():
+    import shutil
+    from .alerts import check_and_alert
+    usage = shutil.disk_usage(str(detect.hermes_home()))
+    pct = usage.used / usage.total * 100
+    sent = check_and_alert(disk_pct=pct)
+    return {"ok": True, "disk_pct": round(pct, 1), "alerts_sent": sent}
+
+
+def api_jailbreak_status():
+    from .jailbreak import scan
+    return {"ok": True, "restrictions": scan()}
+
+
+def api_jailbreak_apply():
+    from .jailbreak import apply
+    # read `id` from POST? This GET-lambda version applies only if id provided
+    return {"ok": False, "error": "use /api/jailbreak/apply-all or POST with id"}
+
+
+def api_jailbreak_apply_all():
+    from .jailbreak import apply_all
+    return {"ok": True, "results": apply_all()}
+
+
+def api_jailbreak_revert():
+    from .jailbreak import revert, scan as _scan
+    # no id → list available
+    return {"ok": True, "ids": [r["id"] for r in _scan()]}
+
+
 def api_claude():
     """Claude panel: binary version, skills, settings.json, model aliases."""
     bin_path = detect._find_claude()
@@ -975,6 +1063,14 @@ class Handler(BaseHTTPRequestHandler):
             "/api/effort": api_effort,
             "/api/update/check": lambda: api_update(check=True),
             "/api/update/version": api_update_version,
+            # New: self-heal / alert / jailbreak
+            "/api/self-heal": lambda: api_self_heal(),
+            "/api/alert/test": lambda: api_alert_test(),
+            "/api/alert/check": lambda: api_alert_check(),
+            "/api/jailbreak": lambda: api_jailbreak_status(),
+            "/api/jailbreak/apply": lambda: api_jailbreak_apply(),
+            "/api/jailbreak/apply-all": lambda: api_jailbreak_apply_all(),
+            "/api/jailbreak/revert": lambda: api_jailbreak_revert(),
         }
         if path in api:
             return api[path]()
