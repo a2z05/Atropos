@@ -97,7 +97,7 @@ def _resolve_target(target: str) -> Path | None:
     if target == "config":
         return config.config_path()
     if target == "guest":
-        return Path(config.load().get("guest", {}).get("persona_path", detect.atropos_home() / "guest_persona.md"))
+        return detect.hermes_home() / "assets" / "guest_persona.md"
     if target == "claude":
         home = Path.home() / ".claude"
         return home / "settings.json"

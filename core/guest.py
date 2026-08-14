@@ -25,7 +25,10 @@ GUEST_HACK_IDS = [
 def _persona_path() -> Path:
     raw = config.get(GUEST_PERSONA_KEY, "") or ""
     if raw:
-        return Path(raw)
+        # empty string "" → Path("") is '.', guard against it
+        p = Path(raw)
+        if str(p) != ".":
+            return p
     return detect.hermes_home() / "assets" / "guest_persona.md"
 
 
