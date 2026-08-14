@@ -289,6 +289,47 @@ def cmd_dashboard(args):
     serve(d.get("host", "127.0.0.1"), args.port or int(d.get("port", 8787)))
 
 
+def cmd_jailbreak(args):
+    from core.jailbreak import scan, apply, apply_all, revert
+    if args.status:
+        for r in scan():
+            state = "OPEN" if r["applied"] else ("BLOCKED" if r["blocked"] else "N/A")
+            icon = "🔓" if r["applied"] else "🔒"
+            print(f"  {icon} {r['id']:<26} {state:<8} {r['name']}")
+    elif args.apply:
+        r = apply(args.apply)
+        print(json.dumps(r, indent=2, ensure_ascii=False))
+    elif args.apply_all:
+        for r in apply_all():
+            mark = "OK" if r["ok"] else "ERR"
+            print(f"  [{mark}] {r['id']}: {r.get('msg', r.get('error',''))}")
+    elif args.revert:
+        r = revert(args.revert)
+        print(json.dumps(r, indent=2, ensure_ascii=False))
+    else:
+        print("usage: atropos jailbreak --status | --apply <id> | --apply-all | --revert <id>")
+
+
+def cmd_alert(args):
+    from core.alerts import check_and_alert, send_alert
+    import shutil
+    if args.test:
+        ok = send_alert("Test alert from Atropos ✅", force=True)
+        _ok("alert sent" if ok else "alert failed")
+    elif args.check:
+        usage = shutil.disk_usage(str(detect.hermes_home()))
+        pct = usage.used / usage.total * 100
+        results = check_and_alert(disk_pct=pct)
+        _ok(f"alerts sent: {len(results)}")
+        for r in results:
+            print(f"    {r}")
+    elif args.send:
+        ok = send_alert(args.send, force=True)
+        _ok("sent" if ok else "failed")
+    else:
+        print("  use --test, --check, or --send 'message'")
+
+
 def main():
     ap = argparse.ArgumentParser(prog="atropos", description="Atropos — Hermes + Claude fusion harness")
     sub = ap.add_subparsers(dest="cmd")
@@ -352,6 +393,17 @@ def main():
     # setup
     p = sub.add_parser("setup", help="first-time setup wizard")
     p.add_argument("--check", action="store_true", help="check only, don't install")
+    # alert
+    p = sub.add_parser("alert", help="telegram alerting")
+    p.add_argument("--test", action="store_true", help="send test alert")
+    p.add_argument("--check", action="store_true", help="run checks and send alerts")
+    p.add_argument("--send", type=str, default=None, help="send custom message")
+    # jailbreak
+    jb = sub.add_parser("jailbreak", help="remove system restrictions (danger)")
+    jb.add_argument("--status", action="store_true", help="show restriction status")
+    jb.add_argument("--apply", type=str, default=None, help="apply bypass by id")
+    jb.add_argument("--apply-all", action="store_true", help="apply all bypasses")
+    jb.add_argument("--revert", type=str, default=None, help="revert bypass by id")
     args = ap.parse_args()
     if not args.cmd:
         ap.print_help()
@@ -375,6 +427,8 @@ def main():
         "effort": cmd_effort,
         "tui": cmd_tui,
         "setup": cmd_setup,
+        "alert": cmd_alert,
+        "jailbreak": cmd_jailbreak,
     }
     handlers[args.cmd](args)
 
@@ -495,9 +549,30 @@ def cmd_effort(args):
             "thinking": "max",
         },
         "tryhard": {
-            "hermes": "ABSOLUTE MAXIMUM PERFORMANCE — exhaustive research, multi-delegate in parallel, no stop until answer is perfect AND verified, every possible optimization applied",
-            "claude": "claude-code with ALL permissions + acceptEdits, write + test + refactor entire codebases, recursive self-debug, optimize performance, verify with py_compile AND unit tests AND real execution",
-            "atropos": "PUSH EVERYTHING TO MAX — rebuild broken components, optimize all configs for speed, run FULL test suite, fix every detectable issue, benchmark before/after, ensure ZERO failures AND maximum performance before reporting success",
+            "hermes": (
+                "ABSOLUTE MAXIMUM PERFORMANCE + ZERO DEFECTS — exhaustive research, "
+                "multi-delegate in parallel, no stop until answer is perfect AND verified, "
+                "every possible optimization applied, every test green, every edge case covered, "
+                "every TODO removed, every docstring written, every security check passed, "
+                "benchmark before and after to prove improvement, self-loop until zero failures"
+            ),
+            "claude": (
+                "claude-code with ALL permissions + acceptEdits — write + test + refactor entire "
+                "codebases, recursive self-debug loop (run code → see error → fix → re-run → repeat), "
+                "optimize performance and readability, verify with py_compile AND unit tests AND real "
+                "execution with real inputs, clean up all TODOs/FIXMEs/HACKs, no dead imports, "
+                "every function docstringed, benchmark before/after, regression tests pass, "
+                "full security audit (no os.system, no hardcoded secrets, tmp cleanup), "
+                "self-loop until ZERO failures across every possible path"
+            ),
+            "atropos": (
+                "PUSH EVERYTHING TO MAX + ZERO DEFECTS — rebuild broken components, optimize all "
+                "configs for speed, run FULL test suite with real inputs, fix every detectable issue, "
+                "benchmark before/after to prove improvement, ensure ZERO failures AND maximum "
+                "performance before reporting success, security audit (no hardcoded secrets, no unsafe "
+                "exec), regression tests, docstrings on all public functions, clean code (no TODOs, "
+                "no dead imports), self-loop until every test green and every edge case handled"
+            ),
             "thinking": "max",
         },
     }
@@ -577,3 +652,4 @@ def cmd_setup(args):
 
 if __name__ == "__main__":
     main()
+

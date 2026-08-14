@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-from . import config, detect, doctor, guest, patches, router, update
+from . import config, detect, doctor, guest, logs, patches, router, skills, update
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 REPO_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +45,14 @@ def _body(status, data):
 
 def _ts():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ── process uptime ───────────────────────────────────────────────────────
+_PROC_START = time.monotonic()
+
+
+def _uptime():
+    return round(time.monotonic() - _PROC_START)
 
 
 # ── history (dashboard action log) ───────────────────────────────────────
@@ -134,7 +142,7 @@ def _find_state_db() -> Path:
     return candidates[0]
 
 
-def _sql_scalar(query: str, default=0):
+def _sql_scalar(query: str, default=0, args=None):
     db = _find_state_db()
     if not db.exists():
         return default
@@ -142,7 +150,7 @@ def _sql_scalar(query: str, default=0):
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
         try:
             cur = con.cursor()
-            cur.execute(query)
+            cur.execute(query, args or ())
             row = cur.fetchone()
             return row[0] if row else default
         finally:
@@ -249,40 +257,154 @@ def _yaml_files(root: Path):
     return sorted([p for p in root.glob("*.yaml")] + [p for p in root.glob("*.yml")])
 
 
+def _cron_state_file():
+    """JSON state file holding last_run/next_run for cron jobs."""
+    return detect.atropos_home() / "cron_state.json"
+
+
+def _cron_state():
+    try:
+        p = _cron_state_file()
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_cron_state(state):
+    try:
+        p = _cron_state_file()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def api_cron():
     """Cron jobs from $HERMES_HOME/cron/*.yaml."""
     cron_dir = detect.hermes_home() / "cron"
+    state = _cron_state()
     jobs = []
     for f in _yaml_files(cron_dir):
         try:
             data = config.parse_yaml(f.read_text(encoding="utf-8"))
+            st = state.get(f.stem, {})
             jobs.append({
-                "name": f.stem,
+                "job_id": f.stem,
+                "name": data.get("name", f.stem),
                 "file": f.name,
                 "schedule": data.get("schedule", data.get("cron", "")),
                 "command": data.get("command", data.get("task", "")),
                 "enabled": data.get("enabled", True),
+                "last_run": st.get("last_run"),
+                "next_run": st.get("next_run"),
             })
         except Exception as e:
-            jobs.append({"name": f.stem, "file": f.name, "error": str(e)})
+            jobs.append({
+                "job_id": f.stem, "name": f.stem, "file": f.name,
+                "schedule": "", "command": "", "enabled": True,
+                "error": str(e),
+            })
     return {"ok": True, "dir": str(cron_dir), "exists": cron_dir.exists(), "jobs": jobs}
 
 
+def api_cron_toggle(job_id: str, resume: bool):
+    """Pause/resume a cron job by editing its `enabled:` line in place.
+
+    Edits the exact line (preserving comments/order) rather than re-encoding
+    the whole file, so YAML comment headers survive.
+    """
+    cron_dir = detect.hermes_home() / "cron"
+    targets = list(_yaml_files(cron_dir))
+    f = None
+    for cand in targets:
+        if cand.stem == job_id:
+            f = cand
+            break
+    if not f:
+        return {"ok": False, "error": f"cron job not found: {job_id}"}
+    try:
+        lines = f.read_text(encoding="utf-8").splitlines()
+    except Exception as e:
+        return {"ok": False, "error": f"read failed: {e}"}
+    new_val = "true" if resume else "false"
+    idx = None
+    for i, ln in enumerate(lines):
+        s = ln.rstrip()
+        # match a top-level `enabled:` key (no leading space → top level)
+        if s.startswith("enabled:") and not ln.startswith(" "):
+            idx = i
+            break
+    if idx is not None:
+        before = lines[idx].split("enabled:", 1)[0]  # preserves any inline comment
+        lines[idx] = before + "enabled: " + new_val
+    else:
+        lines.append("enabled: " + new_val)
+    try:
+        f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "error": f"write failed: {e}"}
+    action = "resume" if resume else "pause"
+    history_log("cron", f"{action} {job_id}")
+    return {"ok": True, "job_id": job_id, "enabled": resume, "action": action}
+
+
 def api_skills():
-    """Skills from $HERMES_HOME/skills/*/SKILL.md (and ~/.claude/skills)."""
+    """Skills from $HERMES_HOME/skills/*/SKILL.md (and ~/.claude/skills).
+
+    Includes universal skills from ~/.atropos/skills with category + harness routing
+    when the skills module is available.
+    """
     dirs = [detect.hermes_home() / "skills", detect._home() / ".claude" / "skills"]
     skills = []
+    seen = set()
     for d in dirs:
         if not d.exists():
             continue
         for sk in sorted(d.iterdir()):
+            if sk.name in seen:
+                continue
+            seen.add(sk.name)
             md = sk / "SKILL.md"
             if md.exists():
                 try:
                     head = md.read_text(encoding="utf-8", errors="replace")[:240]
                 except Exception:
                     head = ""
-                skills.append({"name": sk.name, "path": str(md), "source": str(d), "head": head})
+                meta = {}
+                if head.startswith("---"):
+                    end = head.find("---", 3)
+                    if end > 0:
+                        for line in head[3:end].splitlines():
+                            if ":" in line:
+                                k, _, v = line.partition(":")
+                                meta[k.strip()] = v.strip()
+                skills.append({
+                    "name": sk.name,
+                    "path": str(md),
+                    "source": str(d),
+                    "head": head,
+                    "category": meta.get("category", ""),
+                    "description": meta.get("description", ""),
+                    "harness": meta.get("harness", ""),
+                })
+    # Merge in universal skills (atropos/skills) with routing
+    try:
+        for s in skills.list_skills():
+            if s["name"] not in seen:
+                skills.append({
+                    "name": s["name"],
+                    "path": s["path"],
+                    "source": "atropos/skills",
+                    "head": s.get("description", ""),
+                    "category": s.get("category", ""),
+                    "description": s.get("description", ""),
+                    "harness": s.get("harness", "hermes"),
+                })
+                seen.add(s["name"])
+    except Exception:
+        pass
     return {"ok": True, "skills": skills}
 
 
@@ -329,6 +451,30 @@ def api_channels():
     return {"ok": True, "channels": channels}
 
 
+def api_hermes_skills():
+    """List hermes skills dir contents (dirs + SKILL.md detection)."""
+    hermes_dir = detect.hermes_home() / "skills"
+    skills = []
+    if hermes_dir.exists():
+        for p in sorted(hermes_dir.iterdir()):
+            if not p.is_dir():
+                continue
+            md = p / "SKILL.md"
+            head = ""
+            if md.exists():
+                try:
+                    head = md.read_text(encoding="utf-8", errors="replace")[:240]
+                except Exception:
+                    head = ""
+            skills.append({
+                "name": p.name,
+                "path": str(md),
+                "symlink": p.is_symlink(),
+                "head": head,
+            })
+    return {"ok": True, "dir": str(hermes_dir), "exists": hermes_dir.exists(), "skills": skills}
+
+
 def api_hermes_config():
     """Show + edit hermes config.yaml."""
     p = detect.hermes_home() / "config.yaml"
@@ -359,10 +505,40 @@ def api_analytics():
             tables = []
     msgs = _sql_scalar("SELECT COUNT(*) FROM messages", "n/a") if "messages" in tables else "n/a"
     sesses = _sql_scalar("SELECT COUNT(*) FROM sessions", "n/a") if "sessions" in tables else "n/a"
+    # messages today — crude but env-agnostic: any timestamp col whose string
+    # starts with today's YYYY-MM-DD. Falls back to 'n/a' when no column works.
+    msgs_today = "n/a"
+    avg = "n/a"
+    try:
+        if "messages" in tables:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+            try:
+                cols = [d[1] for d in con.execute("PRAGMA table_info(messages)")]
+            finally:
+                con.close()
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            candidates = [c for c in cols if any(
+                t in c.lower() for t in ("ts", "time", "date", "created"))]
+            for c in candidates:
+                try:
+                    v = _sql_scalar(
+                        f"SELECT COUNT(*) FROM messages WHERE substr({c},1,10)=?",
+                        default=None, args=(today,))
+                    if v is not None:
+                        msgs_today = v
+                        break
+                except Exception:
+                    continue
+            if isinstance(msgs, int) and isinstance(sesses, int) and sesses:
+                avg = round(msgs / sesses, 1)
+    except Exception:
+        pass
     return {
         "ok": True,
         "messages": msgs,
         "sessions": sesses,
+        "messages_today": msgs_today,
+        "avg_msgs_per_session": avg,
         "tokens": "n/a",
         "db_present": present,
         "tables": tables,
@@ -429,6 +605,7 @@ def api_status():
         "disk": {"pct": pct, "total_gb": total, "used_gb": used},
         "router": router.get(),
         "config": config.load(),
+        "uptime": _uptime(),
         "ts": _ts(),
     }
 
@@ -474,10 +651,26 @@ def api_route(action=None, name=None):
             r = router.set_active(name)
             router.apply_all()
             history_log("route", name)
-            return {"ok": True, "router": r}
+            return {"ok": True, "router": r, "available": _router_available()}
         except ValueError as e:
             return {"ok": False, "error": str(e)}
-    return {"ok": True, "router": router.get(), "available": router.available()}
+    return {"ok": True, "router": router.get(), "available": _router_available()}
+
+
+def _router_available():
+    """Rich listing of configured routers: [{name, model, base_url, description, active}]."""
+    active = router.get().get("active", "")
+    out = []
+    for name, info in router.ROUTERS.items():
+        out.append({
+            "name": name,
+            "model": info["model"],
+            "base_url": info["base_url"] or "(env OPENAI_BASE_URL)",
+            "description": info["description"],
+            "api_key_env": info["api_key_env"],
+            "active": name == active,
+        })
+    return out
 
 
 def api_route_test(name=None):
@@ -579,6 +772,108 @@ def api_logs(tail=80):
         return {"ok": False, "error": str(e)}
 
 
+def api_effort():
+    """Current per-harness effort tiers from config."""
+    cfg = config.load()
+    effort = cfg.get("effort", {"hermes": "medium", "claude": "medium", "atropos": "medium"})
+    tiers = {
+        "minimal": "Fastest responses, least reasoning tokens, short answers",
+        "low": "Low reasoning, quick answers, minimal tool use",
+        "medium": "Balanced reasoning, standard tool use, normal responses",
+        "high": "Deep reasoning, long context, exhaustive research",
+        "xhigh": "Maximum reasoning, very deep analysis, full agentic mode",
+        "ultracode": "Ultra reasoning, every tool, multi-delegate, deep reasoning",
+        "tryhard": "ABSOLUTE MAXIMUM PERFORMANCE — every optimization, zero compromise",
+    }
+    return {
+        "ok": True,
+        "current": effort,
+        "tiers": tiers,
+        "available": list(tiers.keys()),
+    }
+
+
+def api_effort_set(payload):
+    """Set effort tier for one or more harnesses."""
+    tier = (payload or {}).get("tier", "")
+    targets = (payload or {}).get("targets", [])
+    available = ["minimal", "low", "medium", "high", "xhigh", "ultracode", "tryhard"]
+    if tier not in available:
+        return {"ok": False, "error": f"unknown tier: {tier}. Available: {', '.join(available)}"}
+    valid_targets = ["hermes", "claude", "atropos"]
+    if not targets:
+        targets = valid_targets
+    targets = [t for t in targets if t in valid_targets]
+    if not targets:
+        return {"ok": False, "error": "no valid targets"}
+    cfg = config.load()
+    current = cfg.get("effort", {"hermes": "medium", "claude": "medium", "atropos": "medium"})
+    for t in targets:
+        current[t] = tier
+    cfg["effort"] = current
+    config.save(cfg)
+    history_log("effort", f"set {tier} for {', '.join(targets)}")
+    return {"ok": True, "current": current, "changed": targets}
+
+
+def api_backup_list():
+    """List all backups."""
+    try:
+        from . import backup as backup_mod
+        backups = backup_mod.list_backups()
+        return {"ok": True, "backups": backups, "dir": str(backup_mod.backup_dir())}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_backup_create():
+    """Create a new backup."""
+    try:
+        from . import backup as backup_mod
+        result = backup_mod.create()
+        history_log("backup", f"created {result.get('path', '?')} size={result.get('size_mb', '?')}MB")
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_router_models():
+    """List available models from the active router's /v1/models endpoint."""
+    import urllib.request
+    import urllib.error
+    cfg = config.load()
+    r = cfg.get("router", {})
+    base_url = r.get("base_url", "") or os.environ.get("OPENAI_BASE_URL", "")
+    # Build models endpoint URL
+    if base_url:
+        endpoint = base_url.rstrip("/") + "/models"
+    else:
+        endpoint = "https://api.openai.com/v1/models"
+    api_key = os.environ.get(r.get("api_key_env", ""), "")
+    headers = {"Content-Type": "application/json"}
+    if api_key and r.get("api_key_env") != "OLLAMA_HOST":
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        req = urllib.request.Request(endpoint, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            models = [m.get("id", "") for m in data.get("data", [])]
+            return {"ok": True, "models": models, "endpoint": endpoint}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"HTTP {e.code}: {e.reason}", "endpoint": endpoint}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "endpoint": endpoint}
+
+
+def api_update_version():
+    """Current version + git info."""
+    return {
+        "ok": True,
+        "version": _version(),
+        "sha": _git_sha(),
+    }
+
+
 def api_claude():
     """Claude panel: binary version, skills, settings.json, model aliases."""
     bin_path = detect._find_claude()
@@ -658,34 +953,46 @@ class Handler(BaseHTTPRequestHandler):
             "/api/doctor": lambda: api_doctor(),
             "/api/patches": api_patches,
             "/api/route": lambda: api_route(),
+            "/api/router": lambda: api_route(),
+            "/api/router/models": api_router_models,
             "/api/guest": api_guest,
             "/api/sessions": api_sessions,
             "/api/models": api_models,
             "/api/cron": api_cron,
             "/api/skills": api_skills,
+            "/api/hermes/skills": api_hermes_skills,
             "/api/plugins": api_plugins,
             "/api/channels": api_channels,
             "/api/hermes-config": api_hermes_config,
             "/api/analytics": api_analytics,
             "/api/files": api_files,
-            "/api/backup": lambda: api_backup(),
+            "/api/backup": lambda: api_backup_list(),
+            "/api/backup/list": api_backup_list,
             "/api/history": lambda: api_history(),
             "/api/claude": api_claude,
             "/api/claude/settings": lambda: api_claude_settings(),
             "/api/config": lambda: api_config_get(),
+            "/api/effort": api_effort,
+            "/api/update/check": lambda: api_update(check=True),
+            "/api/update/version": api_update_version,
         }
         if path in api:
             return api[path]()
         if path == "/api/logs":
             tail = int((q.get("tail") or ["80"])[0])
             return api_logs(tail=tail)
-        if path == "/api/route/test":
+        if path in ("/api/route/test", "/api/router/test"):
             return api_route_test()
         if path.startswith("/api/config/"):
             raw_key = path.split("/api/config/", 1)[1]
             return api_config_get(raw_key)
         if path == "/api/guest/persona":
             return api_guest_persona(method="GET")
+        # /api/cron/{id}/pause|resume  (GET is a no-op read; POST does the mutation)
+        if path.startswith("/api/cron/"):
+            parts = path.split("/api/cron/", 1)[1].split("/")
+            if len(parts) == 2 and parts[1] in ("pause", "resume"):
+                return api_cron_toggle(parts[0], parts[1] == "resume")
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def _route_post(self, path, payload):
@@ -704,7 +1011,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/guest/persona":
             return api_guest_persona(method="POST", content=payload.get("content"))
         if path == "/api/backup/now":
-            return api_backup(trigger=True)
+            return api_backup_create()
         if path == "/api/patches/apply":
             return api_patches_apply()
         if path == "/api/route/apply":
@@ -712,7 +1019,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/claude/settings":
             return api_claude_settings(payload.get("content"))
         if path == "/api/hermes-config":
-            # optional save: {"content": "..."} writes the file back
             content = payload.get("content")
             if content is None:
                 return {"ok": False, "error": "content required"}
@@ -724,6 +1030,29 @@ class Handler(BaseHTTPRequestHandler):
                 return {"ok": True, "saved": str(p)}
             except Exception as e:
                 return {"ok": False, "error": str(e)}
+        if path == "/api/effort/set":
+            return api_effort_set(payload)
+        if path == "/api/backup/create":
+            return api_backup_create()
+        if path in ("/api/backup/now",):
+            return api_backup_create()
+        if path in ("/api/route/set", "/api/router/set"):
+            return api_route("set", payload.get("name"))
+        if path in ("/api/route/test", "/api/router/test"):
+            return api_route_test(payload.get("name"))
+        if path in ("/api/route/apply", "/api/router/apply"):
+            return api_route_apply()
+        if path == "/api/update/check":
+            return api_update(check=True)
+        if path in ("/api/cron/pause",):
+            return api_cron_toggle(payload.get("job_id", ""), False)
+        if path in ("/api/cron/resume",):
+            return api_cron_toggle(payload.get("job_id", ""), True)
+        # generic: /api/cron/{id}/pause  /api/cron/{id}/resume  via POST body
+        if path.startswith("/api/cron/"):
+            parts = path.split("/api/cron/", 1)[1].split("/")
+            if len(parts) == 2 and parts[1] in ("pause", "resume"):
+                return api_cron_toggle(parts[0], parts[1] == "resume")
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def do_GET(self):
@@ -731,6 +1060,9 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(urlparse(self.path).query)
         if path in ("/", "/index.html"):
             self._route_get(path, q)
+            return
+        if path == "/api/logs/stream":
+            self.do_GET_sse(path, q)
             return
         if path.startswith("/api/"):
             if not self._auth():
@@ -761,6 +1093,86 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Atropos-Token")
         self.end_headers()
+
+    def _send_sse(self, data):
+        """Send one SSE frame. data is a JSON-serializable dict."""
+        try:
+            self.wfile.write(("data: " + json.dumps(data, ensure_ascii=False) + "\n\n").encode("utf-8"))
+            self.wfile.flush()
+        except Exception:
+            raise
+
+    def do_GET_sse(self, path, q):
+        """SSE streaming of gateway logs for /api/logs/stream."""
+        if not self._auth():
+            self._send(401, b'{"error":"unauthorized"}')
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        tail = int((q.get("tail") or ["80"])[0])
+        interval = float((q.get("interval") or ["2"])[0])
+        try:
+            # Snapshot: last `tail` lines.
+            name, lines = logs.tail(tail)
+            try:
+                self._send_sse({"event": "snapshot", "file": name or "", "lines": lines})
+            except Exception:
+                return
+            # Follow: offset-based append tracking on the same file.
+            target = logs.latest_log_file()
+            offset = 0
+            if target:
+                try:
+                    offset = target.stat().st_size
+                except Exception:
+                    offset = 0
+            while True:
+                time.sleep(interval)
+                cur = logs.latest_log_file()
+                if cur is None:
+                    continue
+                # File switched → resend snapshot.
+                if target is None or str(cur.resolve()) != str(target.resolve()):
+                    target = cur
+                    name, lines = logs.tail(tail)
+                    offset = target.stat().st_size
+                    try:
+                        self._send_sse({"event": "snapshot", "file": name or "", "lines": lines})
+                    except Exception:
+                        return
+                    continue
+                try:
+                    size = cur.stat().st_size
+                except Exception:
+                    continue
+                if size <= offset:
+                    # Truncated/rotated → restart from beginning.
+                    if size < offset:
+                        offset = 0
+                    else:
+                        continue
+                try:
+                    with open(cur, "rb") as f:
+                        f.seek(offset)
+                        chunk = f.read(size - offset).decode("utf-8", errors="replace")
+                except Exception:
+                    continue
+                offset = size
+                new_lines = [l for l in chunk.splitlines() if l != ""]
+                if new_lines:
+                    try:
+                        self._send_sse({"event": "lines", "file": cur.name, "lines": new_lines})
+                    except Exception:
+                        return
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception:
+            pass
 
     def log_message(self, fmt, *args):
         pass  # quiet
