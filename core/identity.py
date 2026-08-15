@@ -74,15 +74,36 @@ def history_dir() -> Path:
 
 
 def canonical_path(name: str) -> Path:
-    """Canonical location of one artifact (prompts live in prompts/)."""
+    """Canonical location of one artifact (prompts live in prompts/).
+
+    Accepts plain names and the ``prompts/<name>`` form; both resolve to
+    the same file.
+    """
+    if name.startswith("prompts/"):
+        return prompts_dir() / name[len("prompts/"):]
     if name in PROMPT_FILES:
         return prompts_dir() / name
     return identity_dir() / name
 
 
-def valid_name(name: str) -> bool:
-    """True when ``name`` is a safe artifact identifier (no path tricks)."""
+def _valid_stem(name: str) -> bool:
+    """True when a single path component is a safe identifier (no path tricks)."""
     return bool(name and NAME_RE.fullmatch(name))
+
+
+def valid_name(name: str) -> bool:
+    """True when ``name`` is a safe artifact identifier or prompts/<name>.
+
+    Accepts the plain artifact names and prompt templates written with
+    their ``prompts/`` prefix (e.g. ``prompts/welcome.md``). Anything
+    containing ``..``, absolute paths or unknown components is rejected,
+    so a name can never escape the canonical store.
+    """
+    if name in PROMPT_FILES:
+        return True
+    if name.startswith("prompts/"):
+        return name[len("prompts/"):] in PROMPT_FILES
+    return _valid_stem(name)
 
 
 def _claude_home() -> Path:

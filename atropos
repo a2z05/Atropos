@@ -970,7 +970,7 @@ def cmd_mcp(args):
     """Universal MCP registry: list|add|remove|enable|disable|test|rescan|import --from <h>."""
     from core import mcp
     if not args.action or args.action == "list":
-        entries = mcp.list()
+        entries = mcp.list_servers()
         if not entries:
             _info("no MCP servers registered (run `atropos mcp rescan`)")
             return
@@ -1035,7 +1035,7 @@ def cmd_models(args):
     """Universal models: list|add|remove|assign <harness> <name>."""
     from core import models
     if not args.action or args.action == "list":
-        data = models.list()
+        data = models.list_models()
         for m in data:
             state = "on" if m["enabled"] else "off"
             print(f"  [{state}] {m['name']:<12} {m['model']:<12} {m.get('provider','')}")
@@ -1074,7 +1074,7 @@ def cmd_webhooks(args):
     """Universal webhooks: list|add|remove|toggle|test."""
     from core import webhooks
     if not args.action or args.action == "list":
-        items = webhooks.list()
+        items = webhooks.list_webhooks()
         if not items:
             _info("no webhooks registered")
             return
@@ -1097,7 +1097,16 @@ def cmd_webhooks(args):
         return
     if args.action == "toggle":
         try:
-            webhooks.toggle(args.name)
+            from core import webhooks as _wh
+            items = _wh.list_webhooks()
+            hook = next((h for h in items if h.get("name") == args.name), None)
+            if hook is None:
+                _fail(f"webhook not found: {args.name}")
+                sys.exit(1)
+            if hook.get("enabled"):
+                _wh.disable(args.name)
+            else:
+                _wh.enable(args.name)
             _ok(f"toggled: {args.name}")
         except (FileNotFoundError, ValueError) as e:
             _fail(str(e))
@@ -1240,7 +1249,11 @@ def cmd_fleet(args):
     """Multi-box fleet: list|add|remove|ping."""
     from core import fleet
     if not args.action or args.action == "list":
-        for b in fleet.list():
+        boxes = fleet.list_boxes()
+        if not boxes:
+            _info("no fleet boxes registered")
+            return
+        for b in boxes:
             st = b.get("last_status", {})
             lat = st.get("latency_ms", "—")
             print(f"  {b['name']:<16} {b['url']:<40} last={lat}ms")
@@ -1285,7 +1298,11 @@ def cmd_links(args):
     """One-shot share links: create <session>|list|revoke <token>."""
     from core import links
     if not args.action or args.action == "list":
-        for l in links.list():
+        links_l = links.list_links()
+        if not links_l:
+            _info("no share links")
+            return
+        for l in links_l:
             print(f"  {l['token'][:8]}…  session={l['session_id']}  expires={l['expires']}  used={l['used']}")
         return
     if args.action == "create":
@@ -1304,7 +1321,11 @@ def cmd_snapshots(args):
     """Snapshot gallery: list|create <label>|restore <name>."""
     from core import snapshots
     if not args.action or args.action == "list":
-        for s in snapshots.list():
+        snaps = snapshots.list_snapshots()
+        if not snaps:
+            _info("no snapshots yet")
+            return
+        for s in snaps:
             print(f"  {s['name']:<44} {s.get('size_mb', 0):>6}MB  {s.get('label','')}")
         return
     if args.action == "create":
@@ -1334,7 +1355,11 @@ def cmd_memory(args):
     """RAG memory: add <text>|search <q>|list|stats."""
     from core import memory
     if not args.action or args.action == "list":
-        for n in memory.list():
+        notes = memory.list()
+        if not notes:
+            _info("no memory notes yet")
+            return
+        for n in notes:
             print(f"  {n['id'][:8]}  {n['text'][:80]}")
         return
     if args.action == "add":
@@ -1383,7 +1408,11 @@ def cmd_chat(args):
     """Mobile chat: sessions|send <text>|export <session_id>."""
     from core import chat
     if not args.action or args.action == "sessions":
-        for s in chat.session_list():
+        sessions = chat.session_list()
+        if not sessions:
+            _info("no chat sessions yet")
+            return
+        for s in sessions:
             print(f"  {s['id'][:8]}  {s['title']:<30} {s.get('message_count', 0)} msgs")
         return
     if args.action == "send":
