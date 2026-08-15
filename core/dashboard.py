@@ -887,6 +887,7 @@ def api_update(check=True):
         })
         return result
     history_log("update", "apply")
+    _activity_log("update", "apply")
     # changelog auto-bump lives in the Atropos repo (this repo), not the
     # hermes-agent repo that apply_update resets.
     changelog_result = None
@@ -1128,6 +1129,7 @@ def api_backup_create():
         from . import backup as backup_mod
         result = backup_mod.create()
         history_log("backup", f"created {result.get('path', '?')} size={result.get('size_mb', '?')}MB")
+        _activity_log("backup", result.get("path", ""))
         return result
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -2620,3 +2622,12 @@ if __name__ == "__main__":
     cfg = config.load()
     d = cfg.get("dashboard", {})
     serve(d.get("host", "127.0.0.1"), int(d.get("port", 8787)))
+
+
+def _activity_log(event: str, detail: str = ""):
+    """Append to the activity timeline (24h feed) — never raises."""
+    try:
+        from . import activity
+        activity.log(event, detail)
+    except Exception:
+        pass

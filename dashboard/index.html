@@ -3349,7 +3349,6 @@ async function loadMcp() {
           `<span class="mcp-src">${esc(sv.source || 'manual')} · ${esc(sv.type || '')} · ${esc(urlish(sv))}</span></span>` +
           `<span class="mcp-mode" title="${title}" style="cursor:help;"><span class="tag ${modeCls}">${modeLabel[0].toUpperCase()}</span></span>` +
           `<span class="tag ${ok ? 'on' : 'bad'}">${ok ? 'up' : 'down'}</span>` +
-          `<span class="sub" style="display:none;"></span>` +
           `<span class="desc">${esc(err || lat || '')}</span>` +
           toggle + test + del;
         box.appendChild(row);
@@ -3479,9 +3478,16 @@ async function selectIdentityFile(name) {
   try {
     const d = await api('/api/identity/diff?name=' + encodeURIComponent(name));
     const diffs = d.diffs || {};
-    document.getElementById('idf-editor').value = diffs.canonical != null ? diffs.canonical : (diffs.content || '');
+    document.getElementById('idf-editor').value = '';
+    (d.diffs === undefined ? [diffs] : d.diffs).forEach(dd => {
+      if (dd && dd.preview) document.getElementById('idf-editor').value += `— ${dd.harness || 'target'} ${dd.differs ? 'differs' : 'in sync'} —\n${dd.preview}\n\n`;
+    });
+    if (!document.getElementById('idf-editor').value) {
+      const d2 = await api('/api/configs/show?name=' + encodeURIComponent(name)).catch(() => ({}));
+      if (d2.ok) { document.getElementById('idf-editor').value = d2.content || ''; }
+    }
     const md = document.getElementById('idf-mode');
-    md.innerHTML = ['shared', 'separate', 'atropos-only'].map(m => `<option value="${m}" ${m === diffs.mode ? 'selected' : ''}>${m}</option>`).join('');
+    md.innerHTML = ['shared', 'separate', 'atropos-only'].map(m => `<option value="${m}" ${m === (diffs.mode || 'shared') ? 'selected' : ''}>${m}</option>`).join('');
   } catch (e) { toast(e.message, 'err'); }
 }
 document.getElementById('btn-idf-save').addEventListener('click', async () => {
@@ -3500,11 +3506,16 @@ document.getElementById('btn-idf-sync').addEventListener('click', async () => {
 document.getElementById('btn-idf-diff').addEventListener('click', () => {
   if (!_idfSel) { toast('Select an identity file first', 'err'); return; }
   api('/api/identity/diff?name=' + encodeURIComponent(_idfSel)).then(d => {
-    const diffs = d.diffs || {};
-    const keys = ['canonical', 'hermes', 'claude', 'live', 'mode', 'status', 'conflict'];
-    const html = keys.filter(k => diffs[k] != null).map(k => `<div class="kv"><span class="k">${esc(k)}</span><span class="v" style="font-size:10.5px;max-width:260px;">${esc(String(diffs[k]).slice(0, 120))}</span></div>`).join('');
-    document.getElementById('idf-editor').value = '— diff ' + _idfSel + ' —\n\n' + Object.entries(diffs).map(([k, v]) => k + ': ' + String(v).slice(0, 500)).join('\n\n');
-    toast(html ? 'Diff loaded into editor' : 'No diff data', 'ok');
+    const diffs = (Array.isArray(d.diffs) ? d.diffs : d.diffs && d.diffs.diffs) || [];
+    const rows = diffs.map(dd =>
+      `<div class="row"><span class="tag ${dd.differs ? 'bad' : 'on'}">${dd.differs ? 'differs' : 'in sync'}</span>` +
+      `<span class="nm">${esc(dd.harness || '')}</span><span class="sub">${esc(dd.target || '')}</span></div>`).join('');
+    document.getElementById('idf-editor').value = diffs.length
+      ? diffs.map(dd => `— ${dd.harness || 'target'} ${dd.differs ? 'differs' : 'in sync'} —\n${dd.preview || ''}\n`).join('\n')
+      : 'No diff data for ' + _idfSel;
+    toast(diffs.filter(x => x.differs).length ? diffs.filter(x => x.differs).length + ' target(s) out of sync' : 'All targets in sync', 'ok');
+    const res = document.getElementById('configs-out');
+    if (res) res.innerHTML = rows || '<div class="log-empty">No targets mapped.</div>';
   }).catch(e => toast(e.message, 'err'));
 });
 document.getElementById('idf-mode').addEventListener('change', async e => {
