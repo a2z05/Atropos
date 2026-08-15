@@ -115,7 +115,7 @@ def cmd_update(args):
             _ok(f"up to date @ {r['head']}")
         elif r.get("ok"):
             _warn(f"behind: {r.get('behind')} commits")
-            print(f"  head={r.get('head')} → remote={r.get('remote')}")
+            print(f"  head={r.get('head')} -> remote={r.get('remote')}")
             print(f"  diff:\n{r.get('diff', '(no diff)')}")
             print("  Run `atropos update` to apply.")
         else:
@@ -127,7 +127,7 @@ def cmd_update(args):
             _ok(f"up to date @ {r.get('head')}")
             sys.exit(0)
         if r.get("ok"):
-            _ok(f"update applied: {r.get('prev_head')} → {r.get('head')}")
+            _ok(f"update applied: {r.get('prev_head')} -> {r.get('head')}")
             if r.get("rolled_back"):
                 _fail("rolled back to previous revision")
         else:
@@ -419,6 +419,111 @@ def main():
     jb.add_argument("--apply", type=str, default=None, help="apply bypass by id")
     jb.add_argument("--apply-all", action="store_true", help="apply all bypasses")
     jb.add_argument("--revert", type=str, default=None, help="revert bypass by id")
+    # routing hub
+    p = sub.add_parser("routing", help="task routing hub (which harness does what)")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "set", "add", "show"], help="action")
+    p.add_argument("category", nargs="?", default=None, help="category name")
+    p.add_argument("harness", nargs="?", default=None,
+                   help="clotho|lachesis|atropos|auto")
+    p.add_argument("--harness", dest="harness_flag", default=None, help="harness (for add)")
+    # mcp
+    p = sub.add_parser("mcp", help="universal MCP registry")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "add", "remove", "enable", "disable", "test", "rescan", "adopt", "import"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="server name")
+    p.add_argument("mcp_type", nargs="?", default=None, help="stdio|http")
+    p.add_argument("command", nargs="?", default=None, help="command or url")
+    p.add_argument("--from", dest="from_harness", default=None, help="import source")
+    p.add_argument("--yes", action="store_true", help="confirm import")
+    # models
+    p = sub.add_parser("models", help="universal models & providers")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "add", "remove", "assign"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="model name")
+    p.add_argument("model", nargs="?", default=None, help="model id")
+    p.add_argument("harness", nargs="?", default=None, help="harness to assign")
+    p.add_argument("--base-url", dest="base_url", default=None, help="base url")
+    p.add_argument("--api-key-env", dest="api_key_env", default=None, help="env var for key")
+    # webhooks
+    p = sub.add_parser("webhooks", help="universal webhook registry")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "add", "remove", "toggle", "test"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="webhook name")
+    p.add_argument("url", nargs="?", default=None, help="http(s) url")
+    p.add_argument("--events", default=None, help="comma-separated events (default all)")
+    # identity
+    p = sub.add_parser("identity", help="universal identity files (SOUL/AGENTS/SYSTEM/GUEST/CODE_STYLE)")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "edit", "mode", "sync", "diff", "restore"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="file name")
+    p.add_argument("mode", nargs="?", default=None,
+                   choices=["shared", "separate", "atropos-only"], help="deployment mode")
+    p.add_argument("n", nargs="?", default=None, help="snapshot index (restore)")
+    p.add_argument("--content", default=None, help="content for edit (else stdin)")
+    # configs
+    p = sub.add_parser("configs", help="universal config manager")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "show", "edit", "validate", "mode", "diff", "rollback", "sync"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="config name")
+    p.add_argument("mode", nargs="?", default=None,
+                   choices=["shared", "separate", "atropos-only"], help="deployment mode")
+    p.add_argument("n", nargs="?", default=None, help="rollback index")
+    p.add_argument("--content", default=None, help="content for edit (else stdin)")
+    # audit
+    p = sub.add_parser("audit", help="complete-picture resource audit")
+    # fleet
+    p = sub.add_parser("fleet", help="multi-box fleet health")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "add", "remove", "ping"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="box name")
+    p.add_argument("url", nargs="?", default=None, help="box url")
+    p.add_argument("token", nargs="?", default=None, help="box token")
+    p.add_argument("--id", default=None, help="box id (remove)")
+    # budget
+    p = sub.add_parser("budget", help="usage & quota gate")
+    p.add_argument("--check", action="store_true", help="run the gate (alert/failover)")
+    # links
+    p = sub.add_parser("links", help="one-shot share links")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["create", "list", "revoke"], help="action")
+    p.add_argument("session_id", nargs="?", default=None, help="session id")
+    p.add_argument("token", nargs="?", default=None, help="link token")
+    # snapshots
+    p = sub.add_parser("snapshots", help="snapshot gallery")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "create", "restore"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="snapshot name or label")
+    # activity
+    p = sub.add_parser("activity", help="24h activity timeline")
+    # memory
+    p = sub.add_parser("memory", help="RAG memory notes")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["add", "search", "list", "stats"], help="action")
+    p.add_argument("text", nargs="?", default=None, help="text to add")
+    p.add_argument("query", nargs="?", default=None, help="search query")
+    # files
+    p = sub.add_parser("files", help="files panel (read-only)")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "read", "search"], help="action")
+    p.add_argument("path", nargs="?", default=None, help="path (repo-relative)")
+    p.add_argument("query", nargs="?", default=None, help="search query")
+    # chat
+    p = sub.add_parser("chat", help="mobile chat engine")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["sessions", "send", "export"], help="action")
+    p.add_argument("text", nargs="?", default=None, help="message text")
+    p.add_argument("session_id", nargs="?", default=None, help="session id")
+    # announce
+    p = sub.add_parser("announce", help="announcement feed")
+    # commands
+    p = sub.add_parser("commands", help="universal commands & aliases")
+    p.add_argument("action", nargs="?", default=None,
+                   choices=["list", "add", "remove", "alias"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="command name")
+    p.add_argument("template", nargs="?", default=None, help="command template")
+    p.add_argument("description", nargs="?", default=None, help="description")
+    p.add_argument("target", nargs="?", default=None, help="alias target")
     args = ap.parse_args()
     if not args.cmd:
         ap.print_help()
@@ -446,6 +551,23 @@ def main():
         "setup": cmd_setup,
         "alert": cmd_alert,
         "jailbreak": cmd_jailbreak,
+        "routing": cmd_routing,
+        "mcp": cmd_mcp,
+        "models": cmd_models,
+        "webhooks": cmd_webhooks,
+        "identity": cmd_identity,
+        "configs": cmd_configs,
+        "audit": cmd_audit,
+        "fleet": cmd_fleet,
+        "budget": cmd_budget,
+        "links": cmd_links,
+        "snapshots": cmd_snapshots,
+        "activity": cmd_activity,
+        "memory": cmd_memory,
+        "files": cmd_files,
+        "chat": cmd_chat,
+        "announce": cmd_announce,
+        "commands": cmd_commands,
     }
     handlers[args.cmd](args)
 
@@ -499,7 +621,7 @@ def cmd_skills(args):
     from core import extensions
     if args.list:
         for s in list_skills():
-            print(f"  {s['name']}: {s['category']} → {s['harness']}")
+            print(f"  {s['name']}: {s['category']} -> {s['harness']}")
     elif args.sync:
         # Windows-safe: copy fallback when symlinks are not permitted
         try:
@@ -540,7 +662,7 @@ def cmd_skills(args):
             sys.exit(1)
         try:
             result = extensions.remove(args.remove, "skill", "hermes")
-            _ok(f"skill removed → trash: {result['trashed']}")
+            _ok(f"skill removed -> trash: {result['trashed']}")
         except (FileNotFoundError, ValueError) as e:
             _fail(str(e))
             sys.exit(1)
@@ -598,7 +720,7 @@ def cmd_effort(args):
         "ultracode": {
             "hermes": "ultra reasoning, every tool, multi-delegate, deep reasoning",
             "claude": "claude-code --permission-mode acceptEdits, write entire projects, refactor codebases, self-test everything",
-            "atropos": "full pipeline: backup → update → patch → doctor → verify → test suite, zero known issues",
+            "atropos": "full pipeline: backup -> update -> patch -> doctor -> verify -> test suite, zero known issues",
             "thinking": "max",
         },
         "tryhard": {
@@ -611,7 +733,7 @@ def cmd_effort(args):
             ),
             "claude": (
                 "claude-code with ALL permissions + acceptEdits — write + test + refactor entire "
-                "codebases, recursive self-debug loop (run code → see error → fix → re-run → repeat), "
+                "codebases, recursive self-debug loop (run code -> see error -> fix -> re-run -> repeat), "
                 "optimize performance and readability, verify with py_compile AND unit tests AND real "
                 "execution with real inputs, clean up all TODOs/FIXMEs/HACKs, no dead imports, "
                 "every function docstringed, benchmark before/after, regression tests pass, "
@@ -681,7 +803,7 @@ def cmd_effort(args):
                     else:
                         htext = htext.replace("model:", f"reasoning_effort: {thinking}\nmodel:", 1)
                     hconfig.write_text(htext)
-                    _ok(f"hermes config.yaml reasoning_effort → {thinking}")
+                    _ok(f"hermes config.yaml reasoning_effort -> {thinking}")
             except Exception as e:
                 _warn(f"could not update hermes reasoning_effort: {e}")
 
@@ -785,7 +907,7 @@ def cmd_plugin(args):
             _ok(f"plugin disabled: {args.name}")
         elif args.action == "remove":
             result = extensions.remove(args.name, "plugin", "hermes")
-            _ok(f"plugin removed → trash: {result['trashed']}")
+            _ok(f"plugin removed -> trash: {result['trashed']}")
     except (FileNotFoundError, ValueError) as e:
         _fail(str(e))
         sys.exit(1)
@@ -794,6 +916,530 @@ def cmd_plugin(args):
 def cmd_tui(args):
     from core.tui import run
     run()
+
+
+def _print_table(rows, headers=None):
+    """Simple aligned text table for CLI output."""
+    if not rows:
+        _info("(empty)")
+        return
+    if headers:
+        rows = [headers] + rows
+    widths = [max(len(str(r[i])) for r in rows) for i in range(len(rows[0]))]
+    for i, r in enumerate(rows):
+        line = "  " + "  ".join(str(c).ljust(widths[j]) for j, c in enumerate(r))
+        if i == 0 and headers:
+            print(f"  {_C_BOLD}{line.strip()}{_C_RESET}")
+        else:
+            print(line)
+
+
+def cmd_routing(args):
+    """Task routing hub: list | set <cat> <harness> | add <name> --harness <h> | show."""
+    from core import routing
+    if not args.action or args.action == "list":
+        for cat in routing.categories():
+            print(f"  {cat:<14} -> {routing.get(cat)}")
+        print(f"  {'default':<14} -> {settings.get('routing.default', 'auto')}")
+        return
+    if args.action == "set":
+        try:
+            routing.set(args.category, args.harness)
+            _ok(f"{args.category} -> {args.harness}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "add":
+        try:
+            routing.add(args.category, harness=args.harness)
+            _ok(f"category added: {args.category} -> {args.harness}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "show":
+        d = routing.dispatch(args.category)
+        print(json.dumps(d, ensure_ascii=False, indent=2))
+        return
+    _fail("usage: atropos routing list|set <category> <harness>|add <name> --harness <h>|show <phrase>")
+    sys.exit(1)
+
+
+def cmd_mcp(args):
+    """Universal MCP registry: list|add|remove|enable|disable|test|rescan|import --from <h>."""
+    from core import mcp
+    if not args.action or args.action == "list":
+        entries = mcp.list()
+        if not entries:
+            _info("no MCP servers registered (run `atropos mcp rescan`)")
+            return
+        _print_table([[e["name"], e["type"], e["source"],
+                       "on" if e["enabled"] else "off",
+                       e.get("mode", "shared"), "adopted" if e.get("adopted") else "pending"]
+                      for e in entries],
+                     ["name", "type", "source", "state", "mode", "status"])
+        return
+    if args.action == "rescan":
+        res = mcp.rescan()
+        _info(f"found {len(res.get('found', []))} servers; added {len(res.get('added', []))}")
+        for s in res.get("added", []):
+            print(f"  + {s['name']} (source: {s['source']})")
+        return
+    if args.action == "import":
+        res = mcp.rescan()
+        pending = [s for s in res.get("added", [])]
+        if not pending:
+            _info("nothing new to import")
+            return
+        for s in pending:
+            print(f"  + {s['name']} (source: {s['source']})")
+        if not getattr(args, "yes", False):
+            _info("run `atropos mcp adopt` to adopt them (ask-first)")
+        return
+    if args.action == "adopt":
+        res = mcp.adopt(args.name or "all")
+        _ok(f"adopted: {res}")
+        return
+    if args.action == "add":
+        try:
+            mcp.add(name=args.name, type_=args.mcp_type, command=args.command, url=args.url)
+            _ok(f"server added: {args.name}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    from core import extensions
+    if not args.name:
+        _fail("usage: atropos mcp list|add|remove|enable|disable|test|rescan|adopt [name]")
+        sys.exit(1)
+    try:
+        if args.action == "remove":
+            mcp.remove(args.name)
+            _ok(f"removed: {args.name}")
+        elif args.action == "enable":
+            mcp.enable(args.name)
+            _ok(f"enabled: {args.name}")
+        elif args.action == "disable":
+            mcp.disable(args.name)
+            _ok(f"disabled: {args.name}")
+        elif args.action == "test":
+            st = mcp.status(args.name)
+            _ok(f"{args.name}: {st}")
+    except (FileNotFoundError, ValueError) as e:
+        _fail(str(e))
+        sys.exit(1)
+
+
+def cmd_models(args):
+    """Universal models: list|add|remove|assign <harness> <name>."""
+    from core import models
+    if not args.action or args.action == "list":
+        data = models.list()
+        for m in data:
+            state = "on" if m["enabled"] else "off"
+            print(f"  [{state}] {m['name']:<12} {m['model']:<12} {m.get('provider','')}")
+        print(f"  assignments: {json.dumps(models.assignments(), ensure_ascii=False)}")
+        return
+    if args.action == "add":
+        try:
+            models.add(name=args.name, model=args.model, base_url=args.base_url,
+                       api_key_env=args.api_key_env)
+            _ok(f"model added: {args.name}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "remove":
+        try:
+            models.remove(args.name)
+            _ok(f"removed: {args.name}")
+        except (FileNotFoundError, ValueError) as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "assign":
+        try:
+            models.assign(args.harness, args.name)
+            _ok(f"{args.harness} -> {args.name}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    _fail("usage: atropos models list|add|remove|assign <harness> <name>")
+    sys.exit(1)
+
+
+def cmd_webhooks(args):
+    """Universal webhooks: list|add|remove|toggle|test."""
+    from core import webhooks
+    if not args.action or args.action == "list":
+        items = webhooks.list()
+        if not items:
+            _info("no webhooks registered")
+            return
+        for h in items:
+            state = "on" if h["enabled"] else "off"
+            print(f"  [{state}] {h['name']:<20} {h['url']}")
+        return
+    if args.action == "add":
+        try:
+            events = (args.events or "all").split(",")
+            webhooks.add(name=args.name, url=args.url, events=events)
+            _ok(f"webhook added: {args.name}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "remove":
+        webhooks.remove(args.name)
+        _ok(f"removed: {args.name}")
+        return
+    if args.action == "toggle":
+        try:
+            webhooks.toggle(args.name)
+            _ok(f"toggled: {args.name}")
+        except (FileNotFoundError, ValueError) as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "test":
+        try:
+            res = webhooks.ping(args.name)
+            _ok(f"{args.name}: {res}")
+        except (FileNotFoundError, ValueError) as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    _fail("usage: atropos webhooks list|add|remove|toggle|test")
+    sys.exit(1)
+
+
+def cmd_identity(args):
+    """Universal identity: list|edit|mode|sync|diff|restore."""
+    from core import identity
+    if not args.action or args.action == "list":
+        for f in identity.list_files():
+            print(f"  {f['name']:<16} {f.get('mode','shared'):<12} {f.get('size',0):>8}B"
+                  f"  consumed: {', '.join(f.get('consumed_by', []))}")
+        return
+    if args.action == "mode":
+        try:
+            identity.mode(args.name, args.mode)
+            _ok(f"{args.name} -> {args.mode}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "sync":
+        try:
+            res = identity.sync(args.name)
+            _ok(f"synced: {args.name} {res}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "diff":
+        for d in identity.diff(args.name):
+            state = "DIFFERS" if d["differs"] else "same"
+            print(f"  {state:<8} {d['target']}")
+        return
+    if args.action == "restore":
+        try:
+            identity.restore(args.name, int(args.n))
+            _ok(f"restored {args.name} from snapshot {args.n}")
+        except (ValueError, FileNotFoundError) as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "edit":
+        content = sys.stdin.read() if not args.content else args.content
+        try:
+            res = identity.save(args.name, content)
+            if res.get("conflict"):
+                _warn(f"conflict on {res['target']} — resolve via dashboard or `identity sync --force`")
+            else:
+                _ok(f"saved: {args.name}")
+        except (ValueError, FileNotFoundError) as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    _fail("usage: atropos identity list|edit|mode|sync|diff|restore")
+    sys.exit(1)
+
+
+def cmd_configs(args):
+    """Universal configs: list|show|edit|validate|mode|diff|rollback|sync."""
+    from core import conflayer
+    if not args.action or args.action == "list":
+        for c in conflayer.list_configs():
+            print(f"  {c['name']:<20} {c.get('mode','separate'):<10} "
+                  f"{'exists' if c.get('exists') else 'missing'}")
+        return
+    if args.action == "show":
+        print(conflayer.show(args.name))
+        return
+    if args.action == "validate":
+        res = conflayer.validate(args.name)
+        if res.get("ok"):
+            _ok(f"{args.name}: valid")
+        else:
+            for e in res.get("errors", []):
+                print(f"  line {e.get('line','?')}: {e.get('msg','?')}")
+            sys.exit(1)
+        return
+    if args.action == "mode":
+        try:
+            conflayer.mode(args.name, args.mode)
+            _ok(f"{args.name} -> {args.mode}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "rollback":
+        try:
+            conflayer.rollback(args.name, int(args.n or 0))
+            _ok(f"rolled back: {args.name}")
+        except (ValueError, FileNotFoundError) as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "sync":
+        conflayer.sync(args.name)
+        _ok(f"synced: {args.name}")
+        return
+    if args.action == "edit":
+        content = sys.stdin.read() if not args.content else args.content
+        try:
+            res = conflayer.save(args.name, content)
+            if res.get("conflict"):
+                _warn(f"conflict on {res['target']}")
+            else:
+                _ok(f"saved: {args.name}")
+        except (ValueError, FileNotFoundError) as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    _fail("usage: atropos configs list|show|edit|validate|mode|diff|rollback|sync")
+    sys.exit(1)
+
+
+def cmd_audit(args):
+    """Complete-picture audit: resource -> hermes -> claude -> atropos status."""
+    from core import audit
+    table = audit.table()
+    _print_table([[r["resource"], r.get("hermes", ""), r.get("claude", ""),
+                   r.get("atropos_status", ""), r.get("recommendation", "")]
+                  for r in table],
+                 ["resource", "hermes", "claude", "atropos", "recommendation"])
+    stats = audit.summary()
+    _info(f"canonical={stats.get('canonical', 0)} monitored={stats.get('monitored', 0)} ignored={stats.get('ignored', 0)}")
+
+
+def cmd_fleet(args):
+    """Multi-box fleet: list|add|remove|ping."""
+    from core import fleet
+    if not args.action or args.action == "list":
+        for b in fleet.list():
+            st = b.get("last_status", {})
+            lat = st.get("latency_ms", "—")
+            print(f"  {b['name']:<16} {b['url']:<40} last={lat}ms")
+        return
+    if args.action == "add":
+        try:
+            fleet.add(name=args.name, url=args.url, token=args.token or "")
+            _ok(f"box added: {args.name}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "remove":
+        fleet.remove(args.id or args.name)
+        _ok("removed")
+        return
+    if args.action == "ping":
+        rows = fleet.ping(args.name or "all")
+        for r in rows:
+            icon = "OK" if r.get("ok") else "FAIL"
+            print(f"  [{icon}] {r['name']:<16} {r.get('latency_ms', '—')}ms — {r.get('error') or r.get('version', '')}")
+        return
+    _fail("usage: atropos fleet list|add|remove|ping")
+    sys.exit(1)
+
+
+def cmd_budget(args):
+    """Usage & quota: show usage, --check runs the gate."""
+    from core import budget
+    u = budget.usage()
+    pct = f"{u.get('pct', 0):.0f}%" if u.get("budget") else "unlimited"
+    print(f"  total: {u.get('total', 0):,} tokens  budget: {u.get('budget', 0):,} ({pct})"
+          f"  over: {u.get('over', False)}")
+    for r, toks in u.get("per_router", {}).items():
+        print(f"    {r:<10} {toks:,} tokens")
+    if getattr(args, "check", False):
+        res = budget.check_and_alert()
+        _info(json.dumps(res, ensure_ascii=False))
+
+
+def cmd_links(args):
+    """One-shot share links: create <session>|list|revoke <token>."""
+    from core import links
+    if not args.action or args.action == "list":
+        for l in links.list():
+            print(f"  {l['token'][:8]}…  session={l['session_id']}  expires={l['expires']}  used={l['used']}")
+        return
+    if args.action == "create":
+        l = links.create(args.session_id)
+        _ok(f"share link: {l['url']} (expires {l['expires']})")
+        return
+    if args.action == "revoke":
+        links.revoke(args.token)
+        _ok("revoked")
+        return
+    _fail("usage: atropos links create <session_id>|list|revoke <token>")
+    sys.exit(1)
+
+
+def cmd_snapshots(args):
+    """Snapshot gallery: list|create <label>|restore <name>."""
+    from core import snapshots
+    if not args.action or args.action == "list":
+        for s in snapshots.list():
+            print(f"  {s['name']:<44} {s.get('size_mb', 0):>6}MB  {s.get('label','')}")
+        return
+    if args.action == "create":
+        res = snapshots.create(args.label or "manual")
+        _ok(f"snapshot: {res.get('path')}")
+        return
+    if args.action == "restore":
+        res = snapshots.restore(args.name)
+        _ok(json.dumps(res, ensure_ascii=False))
+        return
+    _fail("usage: atropos snapshots list|create <label>|restore <name>")
+    sys.exit(1)
+
+
+def cmd_activity(args):
+    """Activity timeline (24h feed)."""
+    from core import activity
+    feed = activity.feed()
+    print(f"  updates={feed.get('updates',0)} alerts={feed.get('alerts',0)} "
+          f"backups={feed.get('backups',0)} jailbreaks={feed.get('jailbreaks',0)} "
+          f"sessions={feed.get('sessions',0)} routers={feed.get('routers',0)}")
+    for e in feed.get("events", [])[:30]:
+        print(f"  {e['ts']}  {e['event']:<14} {e.get('detail','')}")
+
+
+def cmd_memory(args):
+    """RAG memory: add <text>|search <q>|list|stats."""
+    from core import memory
+    if not args.action or args.action == "list":
+        for n in memory.list():
+            print(f"  {n['id'][:8]}  {n['text'][:80]}")
+        return
+    if args.action == "add":
+        note = memory.add(args.text)
+        _ok(f"memory note {note['id'][:8]}")
+        return
+    if args.action == "search":
+        for hit in memory.search(args.query):
+            print(f"  {hit['id'][:8]}  {hit['text'][:80]}")
+        return
+    if args.action == "stats":
+        print(json.dumps(memory.stats(), ensure_ascii=False, indent=2))
+        return
+    _fail("usage: atropos memory add <text>|search <q>|list|stats")
+    sys.exit(1)
+
+
+def cmd_files(args):
+    """Files panel: list [path]|read <path>|search <q>."""
+    from core import files
+    if not args.action or args.action == "list":
+        res = files.list_dir(args.path)
+        if not res.get("ok"):
+            _fail(res.get("error", "?"))
+            sys.exit(1)
+        for e in res["entries"]:
+            t = "d" if e["type"] == "dir" else " "
+            print(f"  [{t}] {e['name']:<40} {e.get('size',''):>10}")
+        return
+    if args.action == "read":
+        res = files.read_file(args.path)
+        if not res.get("ok"):
+            _fail(res.get("error", "?"))
+            sys.exit(1)
+        print(res["content"])
+        return
+    if args.action == "search":
+        for p in files.search(q=args.query):
+            print(f"  {p}")
+        return
+    _fail("usage: atropos files list [path]|read <path>|search <q>")
+    sys.exit(1)
+
+
+def cmd_chat(args):
+    """Mobile chat: sessions|send <text>|export <session_id>."""
+    from core import chat
+    if not args.action or args.action == "sessions":
+        for s in chat.session_list():
+            print(f"  {s['id'][:8]}  {s['title']:<30} {s.get('message_count', 0)} msgs")
+        return
+    if args.action == "send":
+        res = chat.send(args.text)
+        if res.get("ok"):
+            print(res["reply"])
+        else:
+            _fail(res.get("error", "send failed"))
+            sys.exit(1)
+        return
+    if args.action == "export":
+        print(chat.export(args.session_id))
+        return
+    _fail("usage: atropos chat sessions|send <text>|export <session_id>")
+    sys.exit(1)
+
+
+def cmd_announce(args):
+    """Announcement feed."""
+    from core import notify
+    for item in notify.feed():
+        print(f"  [{item['type']}] {item['text']}")
+
+
+def cmd_commands(args):
+    """Universal commands & aliases: list|add|remove|alias."""
+    from core import commands
+    if not args.action or args.action == "list":
+        data = commands.list()
+        for c in data.get("commands", []):
+            print(f"  {c['name']:<20} {c.get('description','')}")
+        for a, tgt in (data.get("aliases") or {}).items():
+            print(f"  alias {a} -> {tgt}")
+        return
+    if args.action == "add":
+        try:
+            commands.add_command(args.name, args.template, args.description or "")
+            _ok(f"command added: {args.name}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "remove":
+        commands.remove_command(args.name)
+        _ok("removed")
+        return
+    if args.action == "alias":
+        try:
+            commands.add_alias(args.name, args.target)
+            _ok(f"alias {args.name} -> {args.target}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    _fail("usage: atropos commands list|add|remove|alias <alias> <target>")
+    sys.exit(1)
 
 
 def cmd_setup(args):
