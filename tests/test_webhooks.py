@@ -27,6 +27,9 @@ class WebhookBase(unittest.TestCase):
         os.environ["ATROPOS_HOME"] = str(self.home)
         os.environ["HERMES_HOME"] = str(self.home / ".hermes")
         self._urlopen = webhooks.urllib.request.urlopen
+        # keep any real network off the developer's machine
+        webhooks.urllib.request.urlopen = mock.MagicMock(
+            side_effect=OSError("network disabled in tests"))
 
     def tearDown(self):
         webhooks.urllib.request.urlopen = self._urlopen
@@ -38,7 +41,10 @@ class WebhookBase(unittest.TestCase):
                 os.environ.pop(k, None)
 
     def registry(self) -> list:
-        return json.loads((self.home / "webhooks.json").read_text(encoding="utf-8"))
+        p = self.home / "webhooks.json"
+        if not p.exists():
+            return []
+        return json.loads(p.read_text(encoding="utf-8"))
 
     def fake_urlopen(self, status=200):
         """Patch urlopen with a fake 200 response; returns the patcher."""
@@ -163,7 +169,8 @@ class DeliveryTests(WebhookBase):
                 raise OSError("connection refused")
             fake = mock.MagicMock()
             fake.status = 200
-            return fake.__enter__()
+            fake.__enter__.return_value = fake
+            return fake
         with mock.patch.object(webhooks.urllib.request, "urlopen",
                                side_effect=flaky_urlopen) as patched:
             res = webhooks.trigger("alerts")
@@ -182,7 +189,7 @@ class DeliveryTests(WebhookBase):
         webhooks.add("err", "https://example.com/err", ["alerts"])
         webhooks.urllib.request.urlopen = mock.MagicMock(
             side_effect=urllib.error.HTTPError(
-                "https://example.com/err", 502, "bad gateway", None, None))
+                "https://example.com/err", 502, "bad gateway", None, io.BytesIO(b"")))
         res = webhooks.trigger("alerts")  # must not raise
         self.assertEqual(res["failed"], ["err"])
         hook = self.registry()[0]

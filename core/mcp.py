@@ -419,12 +419,17 @@ def _probe_http(e: dict, timeout: float, t0: float) -> dict:
                 "latency_ms": round((time.monotonic() - t0) * 1000),
             }
     except urllib.error.HTTPError as err:
-        ok = err.code < 500
+        try:
+            code = err.code
+            err.close()  # release the response body file
+        except Exception:
+            code = getattr(err, "code", None)
+        ok = code < 500
         return {
             "name": e["name"],
             "ok": ok,
-            "status_code": err.code,
-            "error": None if ok else f"HTTP {err.code}",
+            "status_code": code,
+            "error": None if ok else f"HTTP {code}",
             "latency_ms": round((time.monotonic() - t0) * 1000),
         }
     except Exception as exc:
