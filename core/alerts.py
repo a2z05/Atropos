@@ -22,17 +22,17 @@ import time
 import urllib.request
 import urllib.parse
 
-from . import config, detect
+from . import config, detect, settings
 
 ALERT_STATE_FILE = "alert_state.json"
 
 
 def _bot_config():
-    cfg = config.load()
-    alerts = cfg.get("alerts", {})
-    token = alerts.get("token") or detect.hermes_home().joinpath("config.yaml").exists() and _hermes_token()
-    chat_id = alerts.get("chat_id")
-    enabled = alerts.get("enabled", True)
+    enabled = settings.get("alerts.enabled", True)
+    token = settings.get("alerts.token", "") or (
+        detect.hermes_home().joinpath("config.yaml").exists() and _hermes_token()
+    )
+    chat_id = settings.get("alerts.chat_id", "")
     return enabled, token, chat_id
 
 
@@ -75,7 +75,8 @@ def send_alert(message: str, force: bool = False) -> bool:
     state = _load_state()
     now = time.time()
     last = state.get(key, 0)
-    if not force and now - last < 600:
+    min_interval = settings.get("alerts.min_interval", 600)
+    if not force and now - last < min_interval:
         return False  # rate-limited
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -96,18 +97,22 @@ def send_alert(message: str, force: bool = False) -> bool:
 
 
 def check_and_alert(doctor_results=None, disk_pct=None, router_status=None, patch_results=None) -> list:
-    """Run checks and send alerts for critical issues. Returns alerts sent."""
+    """Run checks and send alerts for critical issues. Returns alerts sent.
+
+    Each event type is gated by its own settings toggle
+    (alerts.events.disk/doctor/router/patches).
+    """
     sent = []
 
     # disk
-    if disk_pct is not None:
-        threshold = config.load().get("alerts", {}).get("thresholds", {}).get("disk", 80)
+    if disk_pct is not None and settings.get("alerts.events.disk", True):
+        threshold = settings.get("alerts.threshold_disk", 80)
         if disk_pct >= threshold:
             if send_alert(f"⚠️ Disk at {disk_pct:.0f}% (threshold {threshold}%) — clean up!"):
                 sent.append(f"disk:{disk_pct:.0f}%")
 
     # doctor
-    if doctor_results:
+    if doctor_results and settings.get("alerts.events.doctor", True):
         failed = [r for r in doctor_results if not r["ok"]]
         if failed:
             names = ", ".join(r["name"] for r in failed)
@@ -115,7 +120,7 @@ def check_and_alert(doctor_results=None, disk_pct=None, router_status=None, patc
                 sent.append(f"doctor:{names}")
 
     # router
-    if router_status:
+    if router_status and settings.get("alerts.events.router", True):
         down = [r for r in router_status if not r.get("ok")]
         if down:
             names = ", ".join(r["name"] for r in down)
@@ -123,7 +128,7 @@ def check_and_alert(doctor_results=None, disk_pct=None, router_status=None, patc
                 sent.append(f"router:{names}")
 
     # patches
-    if patch_results is not None:
+    if patch_results is not None and settings.get("alerts.events.patches", True):
         failed = [r for r in patch_results if not r.get("applied")]
         if failed:
             names = ", ".join(r["id"] for r in failed)

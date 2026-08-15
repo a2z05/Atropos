@@ -23,13 +23,14 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 # ── sys.path fix: ensure `core` package is importable when run as script ──
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 if _REPO_DIR not in sys.path:
     sys.path.insert(0, _REPO_DIR)
 
-from core import config, detect, doctor, guest, logs, patches, router, update
+from core import config, detect, doctor, guest, logs, patches, router, settings, update
 
 _VERSION_FILE = os.path.join(_REPO_DIR, "VERSION")
 try:
@@ -377,6 +378,9 @@ def main():
     p.add_argument("--export", action="store_true", help="copy into hermes")
     p.add_argument("--import", dest="import_skill", nargs="?", const="", default=None,
                    help="import skill(s) from hermes")
+    p.add_argument("--enable", type=str, default=None, help="enable a skill by name")
+    p.add_argument("--disable", type=str, default=None, help="disable a skill by name")
+    p.add_argument("--remove", type=str, default=None, help="remove a skill by name (to trash)")
     # effort
     p = sub.add_parser("effort", help="effort tiers (hermes/claude/atropos)")
     p.add_argument("effort_action", nargs="?", default=None, choices=["set", "get"], help="set or get")
@@ -388,6 +392,17 @@ def main():
     p.add_argument("--claude", action="store_true", help="apply tier to claude only")
     p.add_argument("--atropos", action="store_true", help="apply tier to atropos only")
     p.add_argument("--all", action="store_true", help="apply tier to all harnesses (default)")
+    # settings
+    p = sub.add_parser("settings", help="settings hub (single source of truth)")
+    p.add_argument("action", nargs="?", default=None, choices=["get", "set", "export", "import"], help="get/set/export/import")
+    p.add_argument("key", nargs="?", default=None, help="dot-path key")
+    p.add_argument("value", nargs="?", default=None, help="value (typed per schema)")
+    p.add_argument("--secrets", action="store_true", help="include secret values in export")
+    p.add_argument("--json", dest="json_mode", action="store_true", help="JSON output")
+    # plugin
+    p = sub.add_parser("plugin", help="hermes plugin management (universal extension layer)")
+    p.add_argument("action", nargs="?", default=None, choices=["list", "enable", "disable", "remove"], help="action")
+    p.add_argument("name", nargs="?", default=None, help="plugin name")
     # tui
     p = sub.add_parser("tui", help="interactive terminal UI (Claude Code-style)")
     # setup
@@ -425,6 +440,8 @@ def main():
         "backup": cmd_backup,
         "skills": cmd_skills,
         "effort": cmd_effort,
+        "settings": cmd_settings,
+        "plugin": cmd_plugin,
         "tui": cmd_tui,
         "setup": cmd_setup,
         "alert": cmd_alert,
@@ -479,20 +496,56 @@ def cmd_backup(args):
 
 def cmd_skills(args):
     from core.skills import list_skills, sync_to_hermes, export_to_hermes, import_from_hermes
+    from core import extensions
     if args.list:
         for s in list_skills():
             print(f"  {s['name']}: {s['category']} → {s['harness']}")
     elif args.sync:
-        synced = sync_to_hermes()
-        _ok(f"symlinked {len(synced)} skills into hermes: {', '.join(synced)}")
+        # Windows-safe: copy fallback when symlinks are not permitted
+        try:
+            synced = sync_to_hermes()
+            _ok(f"symlinked {len(synced)} skills into hermes: {', '.join(synced)}")
+        except OSError:
+            exported = export_to_hermes()
+            _ok(f"copied {len(exported)} skills into hermes (symlink not permitted): {', '.join(exported)}")
     elif args.export:
         exported = export_to_hermes()
         _ok(f"exported {len(exported)} skills: {', '.join(exported)}")
     elif args.import_skill is not None:
         imported = import_from_hermes(args.import_skill or None)
         _ok(f"imported {len(imported)} skills: {', '.join(imported)}")
+    elif args.enable:
+        if not extensions.valid_name(args.enable):
+            _fail(f"invalid skill name: {args.enable!r}")
+            sys.exit(1)
+        try:
+            extensions.enable(args.enable, "skill", "hermes")
+            _ok(f"skill enabled: {args.enable}")
+        except (FileNotFoundError, ValueError) as e:
+            _fail(str(e))
+            sys.exit(1)
+    elif args.disable:
+        if not extensions.valid_name(args.disable):
+            _fail(f"invalid skill name: {args.disable!r}")
+            sys.exit(1)
+        try:
+            extensions.disable(args.disable, "skill", "hermes")
+            _ok(f"skill disabled: {args.disable}")
+        except (FileNotFoundError, ValueError) as e:
+            _fail(str(e))
+            sys.exit(1)
+    elif args.remove:
+        if not extensions.valid_name(args.remove):
+            _fail(f"invalid skill name: {args.remove!r}")
+            sys.exit(1)
+        try:
+            result = extensions.remove(args.remove, "skill", "hermes")
+            _ok(f"skill removed → trash: {result['trashed']}")
+        except (FileNotFoundError, ValueError) as e:
+            _fail(str(e))
+            sys.exit(1)
     else:
-        _info("use --list, --sync, --export, or --import")
+        _info("use --list, --sync, --export, --import, --enable, --disable, or --remove")
 
 
 def cmd_effort(args):
@@ -638,6 +691,104 @@ def cmd_effort(args):
             desc = tiers[tier][t]
             print(f"    {t}: {desc}")
 
+
+
+def cmd_settings(args):
+    """Settings hub: table / get / set / export / import (typed + validated)."""
+    if not args.action:
+        groups = {}
+        for key, spec in settings.schema().items():
+            if spec.get("readonly"):
+                continue
+            groups.setdefault(spec["group"], []).append(key)
+        for gname, keys in groups.items():
+            print(f"  {_C_BOLD}{_C_CYAN}[{gname}]{_C_RESET}")
+            for key in keys:
+                val = settings.get(key)
+                if settings.is_secret(key) and val:
+                    val = settings.SECRET_MASK
+                if isinstance(val, dict) or isinstance(val, list):
+                    val = json.dumps(val, ensure_ascii=False)
+                print(f"    {key:<32} {val}")
+        return
+    if args.action == "get":
+        if not args.key:
+            _fail("usage: atropos settings get <key>")
+            sys.exit(1)
+        if args.key not in settings.schema():
+            _fail(f"unknown setting: {args.key}")
+            sys.exit(1)
+        val = settings.get(args.key)
+        if settings.is_secret(args.key) and val:
+            val = settings.SECRET_MASK
+        print(json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else val)
+        return
+    if args.action == "set":
+        if not args.key or args.value is None:
+            _fail("usage: atropos settings set <key> <value>")
+            sys.exit(1)
+        if args.key not in settings.schema():
+            _fail(f"unknown setting: {args.key}")
+            sys.exit(1)
+        parsed = _coerce(args.value)
+        try:
+            settings.set(args.key, parsed)
+        except ValueError as e:
+            _fail(f"rejected: {e}")
+            sys.exit(1)
+        val = settings.get(args.key)
+        if settings.is_secret(args.key):
+            val = settings.SECRET_MASK
+        _ok(f"{args.key} = {json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else val}")
+        return
+    if args.action == "export":
+        print(settings.export_yaml(include_secrets=args.secrets), end="")
+        return
+    if args.action == "import":
+        if not args.value:
+            _fail("usage: atropos settings import <yaml-file>")
+            sys.exit(1)
+        p = Path(args.value)
+        if not p.exists():
+            _fail(f"file not found: {args.value}")
+            sys.exit(1)
+        try:
+            settings.import_yaml(p.read_text(encoding="utf-8"))
+        except ValueError as e:
+            _fail(f"import rejected: {e}")
+            sys.exit(1)
+        _ok(f"imported: {p}")
+        return
+
+
+def cmd_plugin(args):
+    """Plugin management through the universal extension layer."""
+    from core import extensions
+    if not args.action or args.action == "list":
+        items = extensions.list_extensions("plugin")
+        if not items:
+            _info("no plugins installed")
+            return
+        for e in items:
+            state = "on" if e["enabled"] else "off"
+            print(f"  [{state}] {e['name']}")
+        return
+    if not args.name or not extensions.valid_name(args.name):
+        _fail(f"invalid plugin name: {args.name!r}")
+        sys.exit(1)
+    try:
+        if args.action == "enable":
+            extensions.enable(args.name, "plugin", "hermes")
+            _ok(f"plugin enabled: {args.name}")
+        elif args.action == "disable":
+            extensions.disable(args.name, "plugin", "hermes")
+            _ok(f"plugin disabled: {args.name}")
+        elif args.action == "remove":
+            result = extensions.remove(args.name, "plugin", "hermes")
+            _ok(f"plugin removed → trash: {result['trashed']}")
+    except (FileNotFoundError, ValueError) as e:
+        _fail(str(e))
+        sys.exit(1)
 
 
 def cmd_tui(args):

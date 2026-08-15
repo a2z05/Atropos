@@ -18,9 +18,17 @@ import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, detect
+from . import config, detect, settings
 
-MAX_BACKUPS = 5
+MAX_BACKUPS = 5  # legacy constant; retention now reads settings.backup.retention
+
+
+def _retention() -> int:
+    """Backup retention count from settings (default 5, min 1)."""
+    try:
+        return max(1, int(settings.get("backup.retention", MAX_BACKUPS)))
+    except Exception:
+        return MAX_BACKUPS
 
 
 def _ts():
@@ -85,8 +93,8 @@ def create(include_state_db=True) -> dict:
             else:
                 tar.add(src, arcname=arcname)
 
-    # prune to MAX_BACKUPS
-    pruned = prune(MAX_BACKUPS)
+    # prune to retention
+    pruned = prune(_retention())
 
     return {
         "ok": True,

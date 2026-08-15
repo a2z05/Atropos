@@ -49,6 +49,7 @@ def available():
 
 
 def set_active(name: str):
+    """Activate a router and persist it (records a manual failover hold)."""
     if name not in ROUTERS:
         raise ValueError(f"unknown router: {name}. Available: {available()}")
     rinfo = ROUTERS[name]
@@ -60,6 +61,12 @@ def set_active(name: str):
         "model": rinfo["model"],
     }
     config.save(cfg)
+    # a manual choice is authoritative: failover holds off for its grace period
+    try:
+        from .failover import mark_manual
+        mark_manual(name)
+    except Exception:
+        pass
     return cfg["router"]
 
 

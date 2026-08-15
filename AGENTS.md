@@ -36,6 +36,18 @@ bash /data/.hermes/scripts/atropos_patch.sh
 ```
 If either fails, fix it before doing anything else.
 
+## Settings — single source of truth
+
+**`core/settings.py` owns every config key.** Modules must read through
+`settings.get("group.key")`, never raw `config.load()` dicts. Writes go
+through `settings.set()` (typed validation: `dashboard.port abc` is
+rejected; unknown keys raise). Secret keys (`alerts.token`,
+`dashboard.password`) are masked in the API, the export and the audit log.
+Legacy `~/.atropos/config.yaml` remains the file format — `core/config.py`
+DEFAULTS is the back-compat layer; never bypass `settings` for new keys.
+`atropos settings` (table/get/set/export/import) is the CLI surface; the
+dashboard Settings panel is the web surface.
+
 ## Dashboard-native operations (no cron)
 - **Update checks** are dashboard-driven: the Update panel calls `/api/update/check`, stores the result in `~/.atropos/update_state.json`, and shows a one-click Apply banner when behind. `docs/CHANGELOG.md` is surfaced in the panel before applying.
 - **Router latency history** accumulates in `~/.atropos/router_history.json` (capped 200 samples/router) for sparklines on the Routers panel.

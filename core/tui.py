@@ -8,15 +8,18 @@ Runs `atropos tui` → interactive menu-driven terminal UI with:
 
 Pure stdlib (ANSI escape codes). Works on any terminal.
 """
+import json
 import os
 import shutil
 import sys
 import time
 from datetime import datetime
 
-from . import config, detect, doctor, patches, router
+from . import config, detect, doctor, patches, router, settings
 from .backup import create as backup_create, list_backups
 from .watch import run_watch
+
+HISTORY_FILE = "tui_history.json"
 
 # ── ANSI colors ────────────────────────────────────────────────────────────
 C_RESET = "\033[0m"
@@ -223,44 +226,115 @@ def render_watch(w: int) -> None:
     footer(w)
 
 
+def _history_path():
+    return detect.atropos_home() / HISTORY_FILE
+
+
+def _history_load() -> list:
+    """Last visited panels, oldest → newest (max 12)."""
+    try:
+        p = _history_path()
+        if p.exists():
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [str(x) for x in data]
+    except Exception:
+        pass
+    return []
+
+
+def _history_push(panel: str):
+    """Record a visited panel."""
+    try:
+        hist = _history_load()
+        hist = [p for p in hist if p != panel]
+        hist.append(panel)
+        hist = hist[-12:]
+        p = _history_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(hist, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+TUI_PANELS = [
+    ("s", "status", "Status", "live system overview"),
+    ("d", "doctor", "Doctor", "health checks & fixes"),
+    ("p", "patches", "Patches", "apply/verify hacks"),
+    ("r", "routers", "Routers", "switch nain/omni/local"),
+    ("b", "backup", "Backup", "create/list backups"),
+    ("w", "watch", "Watch", "run self-healing checks"),
+    ("c", "config", "Config", "show config"),
+    ("e", "effort", "Effort", "per-harness effort tiers"),
+    ("m", "extensions", "Extensions", "skills & plugins"),
+    ("q", "quit", "Quit", "exit"),
+]
+
+
+def render_extensions(w: int) -> None:
+    """Extensions panel: unified skills + plugins listing."""
+    from . import extensions
+    header("Extensions", "skills (hermes + claude) · plugins")
+    items = extensions.list_extensions()
+    if not items:
+        print("  (no extensions installed)")
+    else:
+        for e in items[:24]:
+            state = f"{C_GREEN}on{C_RESET}" if e["enabled"] else f"{C_DIM}off{C_RESET}"
+            print(f"  [{state}] {e['kind']:<7} {e['source']:<7} {C_BOLD}{e['name']}{C_RESET}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Skills   {C_BOLD}[2]{C_RESET} Plugins   {C_BOLD}[3]{C_RESET} Back")
+    footer(w)
+
+
 def run() -> None:
-    """Interactive TUI main loop."""
+    """Interactive TUI main loop (arrow keys + letters + history)."""
     if not _is_tty():
         print("tui requires a TTY. Try `atropos status` instead.")
         return
+    if os.name == "nt":
+        print("TUI requires a POSIX terminal (termios). Try `atropos status` instead.")
+        return
 
     print(f"{HIDE_CURSOR}", end="")
+    sel = 0
     try:
         w = _cols()
         while True:
             # main menu
-            header("Command Center", "choose a panel")
+            header("Command Center", "choose a panel (↑↓ + Enter)")
             print()
-            items = [
-                ("[s]", "Status", "live system overview"),
-                ("[d]", "Doctor", "health checks & fixes"),
-                ("[p]", "Patches", "apply/verify hacks"),
-                ("[r]", "Routers", "switch nain/omni/local"),
-                ("[b]", "Backup", "create/list backups"),
-                ("[w]", "Watch", "run self-healing checks"),
-                ("[c]", "Config", "show config"),
-                ("[q]", "Quit", "exit"),
-            ]
-            for idx, (key, name, desc) in enumerate(items):
-                color = C_RED if name == "Quit" else C_CYAN
-                print(f"  {C_BOLD}{color}{key}{C_RESET}  {C_BOLD}{name:<10}{C_RESET} {C_DIM}{desc}{C_RESET}")
-            footer(w)
+            for idx, (key, pid, name, desc) in enumerate(TUI_PANELS):
+                color = C_RED if pid == "quit" else C_CYAN
+                mark = f"{C_GREEN}›{C_RESET}" if idx == sel else " "
+                print(f"  {mark} {C_BOLD}{color}{key}{C_RESET}  {C_BOLD}{name:<12}{C_RESET} {C_DIM}{desc}{C_RESET}")
+            footer(w, "↑↓ navigate · Enter select · q/ESC quit · 1-9 quick open")
 
-            # read key
+            # read key with arrow support
             key = _read_key()
-            if key in ("q", "\x1b"):
+            if key == "\x1b[A":      # up
+                sel = (sel - 1) % len(TUI_PANELS)
+                continue
+            elif key == "\x1b[B":    # down
+                sel = (sel + 1) % len(TUI_PANELS)
+                continue
+            elif key in ("q", "\x1b"):
                 print(f"{SHOW_CURSOR}")
                 print(f"{C_GREEN}Bye{C_RESET}")
                 break
-            elif key in ("s", "1"):
+            elif key == "\r" or key == "\n":
+                key = TUI_PANELS[sel][1]
+            elif key in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
+                idx = int(key) - 1
+                if idx < len(TUI_PANELS):
+                    key = TUI_PANELS[idx][1]
+            # dispatch
+            if key in ("s", "status"):
+                _history_push("status")
                 render_status_panel()
                 _wait_key()
-            elif key in ("d", "2"):
+            elif key in ("d", "doctor"):
+                _history_push("doctor")
                 render_doctor(w)
                 k2 = _read_key()
                 if k2 == "2":  # apply fixes
@@ -268,7 +342,8 @@ def run() -> None:
                     doctor.doctor(fix=True)
                     print(f"  {C_GREEN}Done. Press any key.{C_RESET}")
                     _wait_key()
-            elif key in ("p", "3"):
+            elif key in ("p", "patches"):
+                _history_push("patches")
                 render_patches(w)
                 k2 = _read_key()
                 if k2 == "1":  # apply all
@@ -276,7 +351,8 @@ def run() -> None:
                     patches.apply_hacks()
                     print(f"  {C_GREEN}Done. Press any key.{C_RESET}")
                     _wait_key()
-            elif key in ("r", "4"):
+            elif key in ("r", "routers"):
+                _history_push("routers")
                 render_routers(w)
                 k2 = _read_key()
                 if k2 in ("1", "2", "3"):
@@ -284,7 +360,8 @@ def run() -> None:
                     router.set_active(name)
                     print(f"\n  {C_GREEN}Router set to {name}. Press any key.{C_RESET}")
                     _wait_key()
-            elif key in ("b", "5"):
+            elif key in ("b", "backup"):
+                _history_push("backup")
                 render_backup(w)
                 k2 = _read_key()
                 if k2 == "1":
@@ -295,15 +372,34 @@ def run() -> None:
                     else:
                         print(f"  {C_RED}Failed: {result}{C_RESET}")
                     _wait_key()
-            elif key in ("w", "6"):
+            elif key in ("w", "watch"):
+                _history_push("watch")
                 render_watch(w)
                 _wait_key()
-            elif key in ("c", "7"):
+            elif key in ("c", "config"):
+                _history_push("config")
                 header("Config", "current atropos config")
                 cfg = config.load()
                 print(config.dump_yaml(cfg))
                 print()
                 print(f"  {C_BOLD}Press any key to continue{C_RESET}")
+                _wait_key()
+            elif key in ("e", "effort"):
+                _history_push("effort")
+                header("Effort", "per-harness tiers")
+                for h in ("hermes", "claude", "atropos"):
+                    print(f"  {C_CYAN}{h:<10}{C_RESET} {settings.get(f'effort.{h}', 'medium')}")
+                print()
+                print(f"  {C_BOLD}[1]{C_RESET} Set all → tryhard   {C_BOLD}[2]{C_RESET} Back")
+                k2 = _read_key()
+                if k2 == "1":
+                    for h in ("hermes", "claude", "atropos"):
+                        settings.set(f"effort.{h}", "tryhard")
+                    print(f"  {C_GREEN}Effort → tryhard for all harnesses{C_RESET}")
+                    _wait_key()
+            elif key in ("m", "extensions"):
+                _history_push("extensions")
+                render_extensions(w)
                 _wait_key()
     except KeyboardInterrupt:
         pass
