@@ -364,6 +364,396 @@ def _validate_effort(args):
     return "usage: effort [get|set <tier>]"
 
 
+# ── v1.4 handlers ─────────────────────────────────────────────────────────
+def _cmd_routing(args):
+    """routing | routing list | routing show <phrase> | routing set <cat> <h> | routing add <cat> <h>."""
+    from . import routing
+    lines = []
+    if not args or args[0] == "list":
+        for cat in routing.categories():
+            lines.append(f"  {cat:<14} -> {routing.get(cat)}")
+        lines.append(f"  {'default':<14} -> {settings.get('routing.default', 'auto')}")
+        return lines
+    if args[0] == "show" and len(args) == 2:
+        d = routing.dispatch(args[1])
+        return [f"  {args[1]!r} -> {d['harness']} ({d.get('category')}, by={d.get('by')})"]
+    if args[0] == "set" and len(args) == 3:
+        try:
+            routing.set(args[1], args[2])
+        except ValueError as e:
+            return [f"rejected: {e}"]
+        return [f"  {args[1]} -> {routing.get(args[1])}"]
+    if args[0] == "add" and len(args) == 3:
+        try:
+            routing.add(args[1], harness=args[2])
+        except ValueError as e:
+            return [f"rejected: {e}"]
+        return [f"  category added: {args[1]} -> {routing.get(args[1])}"]
+    return ["usage: routing [list|show <phrase>|set <cat> <harness>|add <cat> <harness>]"]
+
+
+def _cmd_mcp(args):
+    """mcp | mcp list | mcp add <name> <type> <cmd|url> | remove|enable|disable <name> | rescan | adopt."""
+    from . import mcp
+    lines = []
+    if not args or args[0] == "list":
+        entries = mcp.list_servers()
+        if not entries:
+            return ["  no MCP servers registered (run `mcp rescan`)"]
+        for e in entries:
+            state = "on" if e["enabled"] else "off"
+            lines.append(f"  [{state}] {e['name']:<20} {e['type']:<6} {e['source']:<7} "
+                         f"{e.get('mode', 'shared')} {'adopted' if e.get('adopted') else 'pending'}")
+        return lines
+    if args[0] == "rescan":
+        res = mcp.rescan()
+        lines.append(f"  rescan: found={len(res.get('found', []))} added={len(res.get('added', []))}")
+        for e in res.get("added", []):
+            lines.append(f"    + {e['name']} (source: {e['source']})")
+        return lines
+    if args[0] == "adopt":
+        if len(args) == 1:
+            res = mcp.adopt("all")
+        else:
+            res = mcp.adopt(args[1])
+        return [f"  adopted: {res}"]
+    if args[0] == "add" and len(args) >= 3:
+        name, type_ = args[1], args[2]
+        if not valid_name(name):
+            return [f"invalid server name: {name!r}"]
+        try:
+            if type_ == "http":
+                mcp.add(name, "http", url=args[3] if len(args) > 3 else "")
+            else:
+                mcp.add(name, "stdio", args[3] if len(args) > 3 else "")
+        except ValueError as e:
+            return [f"rejected: {e}"]
+        return [f"  server added: {name}"]
+    if args[0] in ("remove", "enable", "disable", "test", "mode") and len(args) >= 2:
+        name = args[1]
+        try:
+            if args[0] == "remove":
+                mcp.remove(name)
+            elif args[0] == "enable":
+                mcp.enable(name)
+            elif args[0] == "disable":
+                mcp.disable(name)
+            elif args[0] == "test":
+                return [f"  {name}: {mcp.status(name)}"]
+            else:
+                mcp.mode(name, args[2] if len(args) > 2 else "shared")
+        except (FileNotFoundError, ValueError) as e:
+            return [str(e)]
+        return [f"  {args[0]}d {name}"]
+    return ["usage: mcp [list|add <name> <type> <cmd|url>|remove|enable|disable <name>|rescan|adopt]"
+            if False else "usage: mcp [list|add <name> <type> <cmd|url>|remove <name>|enable <name>"
+                          "|disable <name>|rescan|adopt [name]]"]
+
+
+def _cmd_memory(args):
+    """memory | memory add <text> | memory search <q> | memory list | memory stats."""
+    from . import memory
+    if not args or args[0] == "list":
+        notes = memory.list()
+        if not notes:
+            return ["  no memory notes yet"]
+        return [f"  {n['id'][:8]}  {n['text'][:80]}" for n in notes]
+    if args[0] == "add" and len(args) >= 2:
+        note_id = memory.add(" ".join(args[1:]))
+        return [f"  note {note_id[:8]} added"]
+    if args[0] == "search" and len(args) >= 2:
+        hits = memory.search(" ".join(args[1:]))
+        if not hits:
+            return ["  no matches"]
+        return [f"  {h['id'][:8]}  {h['text'][:80]}" for h in hits]
+    if args[0] == "stats":
+        return [f"  {memory.stats()}"]
+    return ["usage: memory [add <text>|search <q>|list|stats]"]
+
+
+def _cmd_identity(args):
+    """identity | identity list | identity mode <file> <mode> | identity sync <file> | identity restore <file> <n>."""
+    from . import identity
+    if not args or args[0] == "list":
+        files = identity.list_files()
+        if not files:
+            return ["  no identity files yet"]
+        return [f"  {f['name']:<16} {f.get('mode', 'shared'):<12} {f.get('size', 0):>8}B"
+                f"  consumed: {', '.join(f.get('consumed_by', []))}" for f in files]
+    if args[0] == "mode" and len(args) == 3:
+        try:
+            identity.mode(args[1], args[2])
+        except ValueError as e:
+            return [f"rejected: {e}"]
+        return [f"  {args[1]} -> {args[2]}"]
+    if args[0] == "sync" and len(args) == 2:
+        try:
+            res = identity.sync(args[1])
+            return [f"  synced: {args[1]} {res}"]
+        except ValueError as e:
+            return [f"rejected: {e}"]
+    if args[0] == "restore" and len(args) == 3:
+        try:
+            identity.restore(args[1], int(args[2]))
+        except (ValueError, FileNotFoundError) as e:
+            return [str(e)]
+        return [f"  restored {args[1]} from snapshot {args[2]}"]
+    return ["usage: identity [list|mode <file> <mode>|sync <file>|restore <file> <n>]"]
+
+
+def _cmd_configs(args):
+    """configs | configs list | configs show <name> | configs mode <name> <mode> | configs validate <name>."""
+    from . import conflayer
+    if not args or args[0] == "list":
+        configs = conflayer.list_configs()
+        return [f"  {c['name']:<20} {c.get('mode', 'separate'):<10} "
+                f"{'exists' if c.get('exists') else 'missing'}" for c in configs]
+    if args[0] == "show" and len(args) == 2:
+        try:
+            content = conflayer.show(args[1])
+        except FileNotFoundError as e:
+            return [str(e)]
+        return [line for line in content.splitlines()[:40]]
+    if args[0] == "mode" and len(args) == 3:
+        try:
+            conflayer.mode(args[1], args[2])
+        except ValueError as e:
+            return [f"rejected: {e}"]
+        return [f"  {args[1]} -> {args[2]}"]
+    if args[0] == "validate" and len(args) == 2:
+        res = conflayer.validate(args[1])
+        if res.get("ok"):
+            return [f"  {args[1]}: valid"]
+        return [f"  {args[1]}: {e.get('msg', '?')}" for e in res.get("errors", [])]
+    return ["usage: configs [list|show <name>|mode <name> <mode>|validate <name>]"]
+
+
+def _cmd_audit(args):
+    """audit | audit summary."""
+    from . import audit
+    if args and args[0] == "summary":
+        s = audit.summary()
+        return [f"  canonical={s.get('canonical', 0)} monitored={s.get('monitored', 0)} "
+                f"ignored={s.get('ignored', 0)} total={s.get('total', 0)}"]
+    rows = audit.table()[:24]
+    return [f"  {r['resource']:<16} {r.get('atropos_status', ''):<12} {r.get('recommendation', '')}"
+            for r in rows]
+
+
+def _cmd_fleet(args):
+    """fleet | fleet list | fleet ping [name]."""
+    from . import fleet
+    if not args or args[0] == "list":
+        boxes = fleet.list_boxes()
+        if not boxes:
+            return ["  no fleet boxes registered"]
+        return [f"  {b['name']:<16} {b['url']}" for b in boxes]
+    if args[0] == "ping":
+        rows = fleet.ping(args[1] if len(args) > 1 else "all")
+        return [f"  [{('OK' if r.get('ok') else 'FAIL'):<4}] {r['name']:<16} "
+                f"{r.get('latency_ms', '—')}ms — {r.get('error') or r.get('version', '')}" for r in rows]
+    return ["usage: fleet [list|ping [name]]"]
+
+
+def _cmd_budget(args):
+    """budget | budget usage."""
+    from . import budget
+    u = budget.usage()
+    pct = f"{u.get('pct', 0):.0f}%" if u.get("budget") else "unlimited"
+    lines = [f"  total: {u.get('total', 0):,} tokens  budget: {u.get('budget', 0):,} ({pct})"
+             f"  over: {u.get('over', False)}"]
+    for r, toks in u.get("per_router", {}).items():
+        lines.append(f"    {r:<10} {toks:,}")
+    return lines
+
+
+def _cmd_links(args):
+    """links | links list | links create <session> | links revoke <token>."""
+    from . import links
+    if not args or args[0] == "list":
+        items = links.list_links()
+        if not items:
+            return ["  no share links"]
+        return [f"  {l['token'][:8]}...  session={l['session_id']}  expires={l['expires']}  used={l['used']}"
+                for l in items]
+    if args[0] == "create" and len(args) == 2:
+        l = links.create(args[1])
+        return [f"  share link: {l['url']} (expires {l['expires']})"]
+    if args[0] == "revoke" and len(args) == 2:
+        links.revoke(args[1])
+        return [f"  revoked"]
+    return ["usage: links [list|create <session>|revoke <token>]"]
+
+
+def _cmd_snapshots(args):
+    """snapshots | snapshots list | snapshots create [label] | snapshots restore <name>."""
+    from . import snapshots
+    if not args or args[0] == "list":
+        items = snapshots.list_snapshots()
+        if not items:
+            return ["  no snapshots yet"]
+        return [f"  {s['name']:<44} {s.get('size_mb', 0):>6}MB  {s.get('label', '')}" for s in items]
+    if args[0] == "create":
+        res = snapshots.create(args[1] if len(args) > 1 else "manual")
+        return [f"  snapshot: {res.get('path')}"]
+    if args[0] == "restore" and len(args) == 2:
+        res = snapshots.restore(args[1])
+        return [f"  restored: {res}"]
+    return ["usage: snapshots [list|create [label]|restore <name>]"]
+
+
+def _cmd_activity(args):
+    """activity — 24h timeline."""
+    from . import activity
+    feed = activity.feed()
+    lines = [f"  updates={feed.get('updates', 0)} alerts={feed.get('alerts', 0)} "
+             f"backups={feed.get('backups', 0)} jailbreaks={feed.get('jailbreaks', 0)} "
+             f"sessions={feed.get('sessions', 0)} routers={feed.get('routers', 0)}"]
+    for e in feed.get("events", [])[:20]:
+        lines.append(f"  {e['ts']}  {e['event']:<14} {e.get('detail', '')}")
+    return lines
+
+
+def _cmd_announce(args):
+    """announce — tips + changelog + version check."""
+    from . import notify
+    return [f"  [{i['type']}] {i['text']}" for i in notify.feed()]
+
+
+def _cmd_files(args):
+    """files | files list [path] | files read <path> | files search <q>."""
+    from . import files
+    if not args or args[0] == "list":
+        res = files.list_dir(args[1] if len(args) > 1 else None)
+        if not res.get("ok"):
+            return [f"  error: {res.get('error', '?')}"]
+        return [f"  [{'d' if e['type'] == 'dir' else ' '}] {e['name']:<40} {e.get('size', ''):>10}"
+                for e in res["entries"][:40]]
+    if args[0] == "read" and len(args) == 2:
+        res = files.read_file(args[1])
+        if not res.get("ok"):
+            return [f"  error: {res.get('error', '?')}"]
+        return res["content"].splitlines()[:40]
+    if args[0] == "search" and len(args) >= 2:
+        res = files.search(q=" ".join(args[1:]))
+        hits = res if isinstance(res, list) else res.get("results", [])
+        return [f"  {p}" for p in hits[:30]] or ["  no matches"]
+    return ["usage: files [list [path]|read <path>|search <q>]"]
+
+
+def _cmd_chat(args):
+    """chat | chat sessions | chat send <text> | chat export <session>."""
+    from . import chat
+    if not args or args[0] == "sessions":
+        sessions = chat.session_list()
+        if not sessions:
+            return ["  no chat sessions yet"]
+        return [f"  {s['id'][:8]}  {s['title']:<30} {s.get('message_count', 0)} msgs"
+                for s in sessions]
+    if args[0] == "send" and len(args) >= 2:
+        res = chat.send(None, " ".join(args[1:]))
+        if res.get("ok"):
+            return [res["reply"]]
+        return [f"  error: {res.get('error', '?')}"]
+    if args[0] == "export" and len(args) == 2:
+        try:
+            return chat.export(args[1]).splitlines()[:40]
+        except FileNotFoundError as e:
+            return [str(e)]
+    return ["usage: chat [sessions|send <text>|export <session>]"]
+
+
+# ── v1.4 validators ───────────────────────────────────────────────────────
+def _validate_routing(args):
+    if not args or args[0] == "list":
+        return None if len(args) <= 1 else "usage: routing list"
+    if args[0] == "set" and len(args) == 3:
+        h = args[2]
+        if h in ("clotho", "lachesis", "atropos", "auto", "hermes", "claude", "internal"):
+            return None
+        return f"unknown harness: {h}"
+    if args[0] == "add" and len(args) == 3:
+        return None if valid_name(args[1]) else "invalid category name"
+    if args[0] == "show" and len(args) == 2:
+        return None
+    return "usage: routing [list|show <phrase>|set <cat> <harness>|add <cat> <harness>]"
+
+
+def _validate_mcp(args):
+    if not args or args[0] == "list":
+        return None if len(args) <= 1 else "usage: mcp list"
+    if args[0] == "rescan" or (args[0] == "adopt" and len(args) <= 2):
+        return None if args[0] == "adopt" and len(args) == 2 and not valid_name(args[1]) \
+            else None
+    if args[0] == "add" and len(args) >= 3:
+        if not valid_name(args[1]):
+            return "invalid server name"
+        return None if args[2] in ("stdio", "http") else "type must be stdio|http"
+    if args[0] in ("remove", "enable", "disable", "test") and len(args) == 2:
+        return None if valid_name(args[1]) else "invalid server name"
+    if args[0] == "mode" and len(args) == 3:
+        return None if valid_name(args[1]) and args[2] in ("shared", "per-harness", "atropos-only") \
+            else "usage: mcp mode <name> <shared|per-harness|atropos-only>"
+    return "usage: mcp [list|add <name> <type> <cmd|url>|remove <name>|enable <name>" \
+           "|disable <name>|rescan|adopt [name]]"
+
+
+def _validate_memory(args):
+    if not args or args[0] in ("list", "stats"):
+        return None if len(args) <= 1 else "usage: memory list"
+    if args[0] in ("add", "search") and len(args) >= 2:
+        return None
+    return "usage: memory [add <text>|search <q>|list|stats]"
+
+
+def _validate_identity(args):
+    if not args or args[0] == "list":
+        return None if len(args) <= 1 else "usage: identity list"
+    if args[0] == "mode" and len(args) == 3:
+        return None if args[2] in ("shared", "separate", "atropos-only") \
+            else "mode must be shared|separate|atropos-only"
+    if args[0] == "sync" and len(args) == 2:
+        return None
+    if args[0] == "restore" and len(args) == 3:
+        try:
+            int(args[2])
+            return None
+        except ValueError:
+            return "snapshot index must be an integer"
+    return "usage: identity [list|mode <file> <mode>|sync <file>|restore <file> <n>]"
+
+
+def _validate_configs(args):
+    if not args or args[0] == "list":
+        return None if len(args) <= 1 else "usage: configs list"
+    if args[0] in ("show", "validate", "sync") and len(args) == 2:
+        return None
+    if args[0] == "mode" and len(args) == 3:
+        return None if args[2] in ("shared", "separate", "atropos-only") \
+            else "mode must be shared|separate|atropos-only"
+    return "usage: configs [list|show <name>|mode <name> <mode>|validate <name>]"
+
+
+def _validate_files(args):
+    if not args or args[0] == "list":
+        return None if len(args) <= 2 else "usage: files list [path]"
+    if args[0] == "read" and len(args) == 2:
+        return None
+    if args[0] == "search" and len(args) >= 2:
+        return None
+    return "usage: files [list [path]|read <path>|search <q>]"
+
+
+def _validate_chat(args):
+    if not args or args[0] == "sessions":
+        return None if len(args) <= 1 else "usage: chat sessions"
+    if args[0] in ("send",) and len(args) >= 2:
+        return None
+    if args[0] == "export" and len(args) == 2:
+        return None
+    return "usage: chat [sessions|send <text>|export <session>]"
+
+
 # name → {usage, handler, validator (args → error or None)}
 COMMANDS = {
     "help": {"usage": "", "handler": _cmd_help,
@@ -393,6 +783,43 @@ COMMANDS = {
                  "handler": _cmd_settings, "validator": _validate_settings},
     "effort": {"usage": "[get|set <tier>]", "handler": _cmd_effort,
                "validator": _validate_effort},
+    # v1.4 universal resources
+    "routing": {"usage": "[list|show <phrase>|set <cat> <harness>|add <cat> <harness>]",
+                "handler": _cmd_routing, "validator": _validate_routing},
+    "mcp": {"usage": "[list|add <name> <type> <command|url>|remove <name>|enable <name>"
+                     "|disable <name>|rescan|adopt [name]]",
+            "handler": _cmd_mcp, "validator": _validate_mcp},
+    "memory": {"usage": "[add <text>|search <q>|list|stats]",
+               "handler": _cmd_memory, "validator": _validate_memory},
+    "identity": {"usage": "[list|mode <file> <mode>|sync <file>|restore <file> <n>]",
+                 "handler": _cmd_identity, "validator": _validate_identity},
+    "configs": {"usage": "[list|show <name>|mode <name> <mode>|validate <name>]",
+                "handler": _cmd_configs, "validator": _validate_configs},
+    "audit": {"usage": "[summary]", "handler": _cmd_audit,
+              "validator": lambda a: None if not a or a == ["summary"]
+              else "usage: audit [summary]"},
+    "fleet": {"usage": "[list|ping [name]]", "handler": _cmd_fleet,
+              "validator": lambda a: None if not a or (a[0] == "ping" and len(a) <= 2)
+              else "usage: fleet [list|ping [name]]"},
+    "budget": {"usage": "[usage]", "handler": _cmd_budget,
+               "validator": lambda a: None if not a or a == ["usage"]
+               else "usage: budget [usage]"},
+    "links": {"usage": "[list|create <session>|revoke <token>]", "handler": _cmd_links,
+              "validator": lambda a: None if not a or a in (["list"],) or
+              (a[0] in ("create", "revoke") and len(a) == 2)
+              else "usage: links [list|create <session>|revoke <token>]"},
+    "snapshots": {"usage": "[list|create [label]|restore <name>]", "handler": _cmd_snapshots,
+                  "validator": lambda a: None if not a or a == ["list"] or
+                  (a[0] == "create" and len(a) <= 2) or (a[0] == "restore" and len(a) == 2)
+                  else "usage: snapshots [list|create [label]|restore <name>]"},
+    "activity": {"usage": "", "handler": _cmd_activity,
+                 "validator": lambda a: "activity takes no arguments" if a else None},
+    "announce": {"usage": "", "handler": _cmd_announce,
+                 "validator": lambda a: "announce takes no arguments" if a else None},
+    "files": {"usage": "[list [path]|read <path>|search <q>]", "handler": _cmd_files,
+              "validator": _validate_files},
+    "chat": {"usage": "[sessions|send <text>|export <session>]", "handler": _cmd_chat,
+             "validator": _validate_chat},
 }
 
 

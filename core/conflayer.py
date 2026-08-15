@@ -111,7 +111,12 @@ def _target_bytes(spec):
 
 
 def _write_target(spec, content: str):
-    """Write content into the live file (keyed targets merge the key)."""
+    """Write content into the live file (keyed targets merge the key).
+
+    Files are written as bytes so that ``\\n`` never becomes ``\\r\\n`` on
+    Windows — the canonical and live copies stay byte-identical, which
+    the hash guard and diff rely on.
+    """
     p = Path(spec["path"]) if isinstance(spec, dict) else Path(spec)
     p.parent.mkdir(parents=True, exist_ok=True)
     if _target_keyed(spec):
@@ -123,26 +128,100 @@ def _write_target(spec, content: str):
                 cfg = {}
         if not isinstance(cfg, dict):
             cfg = {}
-        cfg[spec["key"]] = config.parse_yaml(content) if content.strip() else {}
-        p.write_text(config.dump_yaml(cfg) + "\n", encoding="utf-8")
+        cfg[spec["key"]] = _canonical_section(spec, content)
+        p.write_bytes((config.dump_yaml(cfg) + "\n").encode("utf-8"))
     else:
-        p.write_text(content, encoding="utf-8")
+        p.write_bytes(content.encode("utf-8"))
 
 
-def _already_matches(spec, content: str) -> bool:
-    """True when the live file already holds exactly this canonical content."""
+def _key_value(spec):
+    """Parsed value of the key inside the live config, or None when absent.
+
+    Used for keyed targets (router.yaml → the router section of the
+    Atropos config.yaml).
+    """
+    p = Path(spec["path"])
+    if not p.exists():
+        return None
+    try:
+        cfg = config.parse_yaml(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(cfg, dict) or spec["key"] not in cfg:
+        return None
+    return cfg[spec["key"]]
+
+
+def _target_value(spec):
+    """The meaningful value of a live target.
+
+    Keyed targets (router section inside config.yaml) return the parsed
+    key value; whole-file targets return the file's text (or None when
+    the file is missing).
+    """
     if _target_keyed(spec):
-        p = Path(spec["path"])
-        if not p.exists():
-            return False
+        return _key_value(spec)
+    cur = _target_bytes(spec)
+    return cur.decode("utf-8", errors="replace") if cur is not None else None
+
+
+def _canonical_section(spec, content: str):
+    """Section value that a keyed write actually stores in the live config.
+
+    The canonical router section carries just the keys the user edited
+    (e.g. ``active``), but ``config.save`` merges it with the router
+    defaults before writing, so the live section always carries the full
+    router mapping. Rebuilding that merged value here keeps the written
+    state — and therefore the hash guard and diff — consistent with what
+    actually lands on disk.
+    """
+    if _target_keyed(spec) and spec.get("key") == "router":
+        merged = config.load().get("router", {})
+        if not isinstance(merged, dict):
+            merged = {}
+        merged.update(config.parse_yaml(content) if content.strip() else {})
+        return merged
+    return config.parse_yaml(content) if content.strip() else {}
+
+
+def _canonical_value(name: str, content: str):
+    """Canonical value of a config's content for comparison purposes.
+
+    Keyed configs (router.yaml) compare the parsed YAML section; JSON
+    configs compare the parsed JSON value; everything else compares raw
+    text.
+    """
+    spec = _live_spec(name)
+    if _target_keyed(spec):
+        return _canonical_section(spec, content)
+    if name.endswith(".json"):
         try:
-            cfg = config.parse_yaml(p.read_text(encoding="utf-8"))
+            return json.loads(content)
+        except Exception:
+            return None
+    return content
+
+
+def _already_matches(name: str, content: str) -> bool:
+    """True when the live target already holds exactly this canonical content.
+
+    Returns False when the target is missing (the projection should
+    create it, not skip it). Keyed targets compare the parsed key value;
+    JSON targets compare the semantic value; everything else compares
+    raw text.
+    """
+    spec = _live_spec(name)
+    cur = _target_value(spec)
+    if cur is None:
+        return False
+    if _target_keyed(spec):
+        return cur == _canonical_section(spec, content)
+    if name.endswith(".json"):
+        try:
+            return json.loads(cur) == json.loads(content)
         except Exception:
             return False
-        parsed = config.parse_yaml(content) if content.strip() else {}
-        return isinstance(cfg, dict) and cfg.get(spec["key"]) == parsed
-    cur = _target_bytes(spec)
-    return cur is not None and cur == content.encode("utf-8")
+    return cur == content
 
 
 # ── per-file modes ────────────────────────────────────────────────────────
@@ -236,14 +315,20 @@ def _written_bytes_for(name: str, content: str) -> bytes:
     """Bytes representing what Atropos just wrote (the guard baseline).
 
     JSON configs record the semantic value (so future writes of the same
-    content never self-conflict regardless of formatting); everything
-    else records the live file's actual bytes.
+    content never self-conflict regardless of formatting); keyed configs
+    (router.yaml) record the canonical section's parsed value — the same
+    representation the guard hashes against — everything else records
+    the live file's actual bytes.
     """
     if name.endswith(".json"):
         try:
             return json.dumps(json.loads(content), sort_keys=True).encode("utf-8")
         except Exception:
             return content.encode("utf-8")
+    if _target_keyed(_live_spec(name)):
+        spec = _live_spec(name)
+        section = _canonical_section(spec, content)
+        return json.dumps(section, sort_keys=True).encode("utf-8")
     return _target_bytes(_live_spec(name))
 
 
@@ -261,15 +346,22 @@ def _project_live(name: str, content: str, force: bool = False) -> dict:
     spec = _live_spec(name)
     p = live_path(name)
     key = f"{name}|{p}"
-    kind = "json" if name.endswith(".json") else "file"
-    cur = _target_bytes(spec)
+    if _target_keyed(spec):
+        kind = "keyed"
+    elif name.endswith(".json"):
+        kind = "json"
+    else:
+        kind = "file"
+    cur = _target_value(spec)
     if cur is not None and not force:
         try:
-            if kind == "json":
+            if kind == "keyed":
+                cur_hash = _sha256(json.dumps(cur, sort_keys=True).encode("utf-8"))
+            elif kind == "json":
                 cur_hash = _sha256(
                     json.dumps(json.loads(cur), sort_keys=True).encode("utf-8"))
             else:
-                cur_hash = _sha256(cur)
+                cur_hash = _sha256(cur.encode("utf-8"))
         except Exception:
             # unparsable live file — it is not what Atropos wrote, so it
             # can never match the baseline: treat as a conflict
@@ -279,12 +371,14 @@ def _project_live(name: str, content: str, force: bool = False) -> dict:
         safe = False
         atropos_hash = None
         for rec in state.values():
-            if (str(rec.get("path", "")) == str(p) and rec.get("owner") == key
-                    and rec.get("kind") == kind and rec.get("hash") == cur_hash):
+            # ``owner`` is '{name}|{live_path}' — the unique key of the
+            # whole-file/whole-key projection this config owns
+            if (rec.get("owner") == key and rec.get("kind") == kind
+                    and rec.get("hash") == cur_hash):
                 safe = True
             if rec.get("owner") == key:
                 atropos_hash = rec.get("hash")
-        if not safe and _already_matches(spec, content):
+        if not safe and _already_matches(name, content):
             safe = True
         if not safe:
             return {"conflict": True, "target": str(p),
@@ -408,7 +502,7 @@ def save(name: str, content: str) -> dict:
     p = canonical_path(name)
     p.parent.mkdir(parents=True, exist_ok=True)
     _snapshot(name)
-    p.write_text(content, encoding="utf-8")
+    p.write_bytes(content.encode("utf-8"))
     m = _mode_for(name)
     written, conflicts = [], []
     if m == "shared":
@@ -453,15 +547,28 @@ def resolve_conflict(name: str, target: str, action: str = "overwrite") -> dict:
     if str(Path(target)) != str(live):
         raise ValueError(f"{target!r} is not the live path of {name!r} ({live})")
     spec = _live_spec(name)
-    kind = "json" if name.endswith(".json") else "file"
+    if _target_keyed(spec):
+        kind = "keyed"
+    elif name.endswith(".json"):
+        kind = "json"
+    else:
+        kind = "file"
     content = canonical_path(name).read_text(encoding="utf-8", errors="replace")
     if action == "diff":
-        cur = _target_bytes(spec)
-        differs = cur is None or cur.decode("utf-8", errors="replace") != content
+        cur = _target_value(spec)
+        canonical = _canonical_value(name, content)
+        differs = cur is None or cur != canonical
         return {"ok": True, "action": "diff", "name": name, "target": str(live),
-                "differs": differs, "preview": _diff_preview(content, cur)}
+                "differs": differs,
+                "preview": _diff_preview(str(canonical), cur) if differs else ""}
     if action == "keep":
-        raw = _written_bytes_for(name, content) if kind == "json" else _target_bytes(spec)
+        if kind == "keyed":
+            raw = _target_value(spec)
+            raw = json.dumps(raw, sort_keys=True).encode("utf-8") if raw is not None else None
+        elif kind == "json":
+            raw = _written_bytes_for(name, content)
+        else:
+            raw = _target_bytes(spec)
         if raw is not None:
             _record_written(f"{name}|{live}", raw, kind=kind)
         return {"ok": True, "action": "keep", "name": name, "target": str(live)}
@@ -498,10 +605,12 @@ def diff(name: str) -> dict:
     if not p.exists():
         raise FileNotFoundError(f"no canonical copy of {name!r} — save it first")
     content = p.read_text(encoding="utf-8", errors="replace")
-    cur = _target_bytes(_live_spec(name))
-    differs = cur is None or cur.decode("utf-8", errors="replace") != content
+    canonical = _canonical_value(name, content)
+    cur = _target_value(_live_spec(name))
+    differs = cur is None or cur != canonical
     return {"ok": True, "name": name, "target": str(live_path(name)),
-            "differs": differs, "preview": _diff_preview(content, cur) if differs else ""}
+            "differs": differs,
+            "preview": _diff_preview(str(canonical), cur) if differs else ""}
 
 
 # ── snapshots ─────────────────────────────────────────────────────────────
@@ -514,14 +623,18 @@ def _snapshots(name: str) -> list:
 
 
 def _snapshot(name: str):
-    """Copy the current canonical content into .history (prune to 8)."""
+    """Snapshot the current canonical content into .history (prune to 8).
+
+    Snapshot happens on EVERY save, including the first one — the
+    pre-first-save state is an empty snapshot, so the count of snapshots
+    always equals the count of saves.
+    """
     p = canonical_path(name)
-    if not p.exists():
-        return None
+    content = p.read_bytes() if p.exists() else b""
     hd = history_dir()
     hd.mkdir(parents=True, exist_ok=True)
     dest = hd / f"{name}-{_ts()}"
-    shutil.copy2(p, dest)
+    dest.write_bytes(content)
     for old in sorted(hd.glob(f"{name}-*"))[:-HISTORY_KEEP]:
         old.unlink(missing_ok=True)
     return dest
