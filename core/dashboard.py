@@ -2403,10 +2403,48 @@ class Handler(BaseHTTPRequestHandler):
         if path != "/api/auth" and not self._auth():
             self._send(401, b'{"error":"unauthorized"}')
             return
+        if path == "/api/chat/stream":
+            self.do_chat_stream()
+            return
         payload = self._read_json()
         data = self._route_post(path, payload)
         body, ctype, status = _body(200, data)
         self._send(status, body, ctype)
+
+    def do_chat_stream(self):
+        """SSE stream for the mobile chat: POST /api/chat/stream.
+
+        Body: {session_id?, text, harness?, effort?}. Frames:
+        data: {"event":"delta","text":...} ... data: {"event":"done","session_id":...}
+        """
+        try:
+            payload = self._read_json()
+        except Exception:
+            payload = {}
+        text = (payload or {}).get("text", "")
+        if not text:
+            self._send(400, b'{"error":"text required"}')
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        try:
+            from . import chat
+            gen = chat.chat_stream((payload or {}).get("session_id"), text,
+                                   harness=(payload or {}).get("harness"))
+            for frame in gen:
+                self._send_sse(frame)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        except Exception as e:
+            try:
+                self._send_sse({"event": "error", "error": str(e)})
+            except Exception:
+                pass
 
     def do_OPTIONS(self):
         self.send_response(204)

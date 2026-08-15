@@ -52,9 +52,9 @@ def _safe_resolve(path_str: str, root: Path) -> tuple:
 def list_dir(path: str | None = None, root: Path | None = None) -> dict:
     """List a directory inside root (default: repo root).
 
-    Returns {ok: True, path, entries: [{name, type, size, mtime}]} with
-    at most 200 entries (directories first, alphabetical). Missing or
-    non-directory targets and escape attempts return {ok: False, error}.
+    Returns {ok: True, path, root, entries: [{name, type, size, mtime}]}
+    with at most 200 entries (directories first, alphabetical). Missing
+    or non-directory targets and escape attempts return {ok: False, error}.
     """
     root = Path(root) if root else repo_root()
     target, err = _safe_resolve(path or "", root)
@@ -85,7 +85,7 @@ def list_dir(path: str | None = None, root: Path | None = None) -> dict:
         except OSError:
             continue
     entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
-    return {"ok": True, "path": str(target), "entries": entries}
+    return {"ok": True, "path": str(target), "root": str(target), "entries": entries}
 
 
 def read_file(path: str, max_bytes: int = MAX_READ_BYTES, root: Path | None = None) -> dict:
