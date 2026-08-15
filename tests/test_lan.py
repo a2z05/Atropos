@@ -56,9 +56,10 @@ class LanIpTests(LanBase):
             self.assertEqual(lan.lan_ip(), "127.0.0.1")
 
     def test_share_url_uses_dashboard_port(self):
-        with mock.patch("core.lan.lan_ip", return_value="192.168.1.50"):
+        with mock.patch("core.lan.lan_ip", return_value="192.168.1.50"), \
+             mock.patch("core.config.get", return_value=8787) as cfg_get:
             self.assertEqual(lan.share_url(), "http://192.168.1.50:8787/")
-            config.set_path("dashboard.port", 9001)
+            cfg_get.return_value = 9001
             self.assertEqual(lan.share_url(), "http://192.168.1.50:9001/")
 
     def test_qr_ascii_is_decorative_but_structured(self):

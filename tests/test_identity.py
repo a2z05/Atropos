@@ -20,6 +20,14 @@ from core import detect, identity  # noqa: E402
 
 
 class IdentityBase(unittest.TestCase):
+    """Isolate every home: ATROPOS_HOME, HERMES_HOME and the OS home dir.
+
+    The Claude-home projection (~/.claude) is redirected into the temp
+    dir by temporarily replacing ``detect._home`` (a private module
+    helper — the only seam available), so no test ever touches the real
+    ~/.claude.
+    """
+
     def setUp(self):
         self._a = os.environ.get("ATROPOS_HOME")
         self._h = os.environ.get("HERMES_HOME")
@@ -27,9 +35,12 @@ class IdentityBase(unittest.TestCase):
         os.environ["ATROPOS_HOME"] = self.tmp
         self.hermes = Path(self.tmp) / ".hermes"
         os.environ["HERMES_HOME"] = str(self.hermes)
-        self.claude = detect._home() / ".claude"
+        self._orig_home_fn = detect._home
+        detect._home = staticmethod(lambda: Path(self.tmp))
+        self.claude = Path(self.tmp) / ".claude"
 
     def tearDown(self):
+        detect._home = self._orig_home_fn
         shutil.rmtree(self.tmp, ignore_errors=True)
         for k, orig in (("ATROPOS_HOME", self._a), ("HERMES_HOME", self._h)):
             if orig is not None:
