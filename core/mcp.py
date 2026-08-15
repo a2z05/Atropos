@@ -33,7 +33,6 @@ Canonical entry shape::
 Pure stdlib. Never imports core.dashboard (circular).
 """
 import json
-import os
 import re
 import subprocess
 import time

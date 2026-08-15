@@ -12,8 +12,6 @@ import json
 import os
 import shutil
 import sys
-import time
-from datetime import datetime
 
 from . import config, detect, doctor, patches, router, settings
 from . import fleet

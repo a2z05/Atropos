@@ -30,7 +30,6 @@ Default seed mirrors router.ROUTERS (nain/deepmo, omni/gpt-4o,
 local/llama3). Pure stdlib; never imports core.dashboard (circular).
 """
 import json
-import os
 import re
 from copy import deepcopy
 from pathlib import Path

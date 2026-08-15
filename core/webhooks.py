@@ -21,7 +21,6 @@ never raises or blocks the others; failures are collected and returned.
 Pure stdlib (urllib), never imports core.dashboard (circular).
 """
 import json
-import os
 import re
 import time
 import urllib.error
