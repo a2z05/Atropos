@@ -112,3 +112,27 @@ Claude Code function as one organism across redeploy cycles.
 | P9 | guest notify on unauthorized | _handle_text_message auth | Logs rejected messages to ATRA log channel |
 | — | persona self-heal | Post-patch | Recreates guest_persona.md if missing |
 | — | timezone self-heal | Post-patch | Sets /etc/localtime to Asia/Tehran |
+
+---
+
+## v1.4.0 — universal resources, routing & mobile chat (2026-08-15)
+
+The v1.2 settings hub became the seed of a universal-resource layer:
+
+- **Three deployment modes (the Core Law)** — `shared` / `per-harness` /
+  `atropos-only` with hash-guard conflict resolution (overwrite/keep/diff)
+  applied to identity files (`core/identity.py`), config mirrors
+  (`core/conflayer.py`), MCP (`core/mcp.py`), models (`core/models.py`),
+  webhooks (`core/webhooks.py`), commands (`core/commands.py`).
+- **Routing hub (`core/routing.py`)** — category → clotho/lachesis/atropos/
+  auto with stdlib keyword heuristics; settings `routing.map`.
+- **Chat engine (`core/chat.py`)** — own sqlite store `~/.atropos/chat.db`
+  (hermes state.db untouched), LLM transport via the active router,
+  slash commands through the Console whitelist, SSE stream
+  (`POST /api/chat/stream`), one-shot share links (`core/links.py`).
+- **Ops modules** — fleet, budget gate, snapshots, activity timeline,
+  files (read-only), audit matrix, announce feed, LAN sharing + device
+  pairing (`core/lan.py`).
+- **Surfaces** — dashboard grew to 37 panels (13 new, +i18n en/fa),
+  `dashboard/chat.html` mobile page, TUI +8 panels, CLI 45 commands,
+  417 tests green.

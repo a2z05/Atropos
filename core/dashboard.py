@@ -2153,7 +2153,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, b"dashboard/index.html missing")
             return True
         # dashboard static assets (sw.js for PWA offline)
-        if path in ("/sw.js", "/manifest.webmanifest"):
+        if path in ("/sw.js", "/manifest.webmanifest", "/chat.html"):
             f = DASHBOARD_DIR / path.lstrip("/")
             if f.exists():
                 ctype = ("application/javascript; charset=utf-8" if path.endswith(".js")
@@ -2405,7 +2405,7 @@ class Handler(BaseHTTPRequestHandler):
             self._route_get(path, q)
             return
         # dashboard static assets (sw.js for PWA offline)
-        if path in ("/sw.js", "/manifest.webmanifest"):
+        if path in ("/sw.js", "/manifest.webmanifest", "/chat.html"):
             self._route_get(path, q)
             return
         if path == "/api/logs/stream":
