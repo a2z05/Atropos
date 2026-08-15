@@ -16,7 +16,7 @@ _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from core import detect, identity  # noqa: E402
+from core import config, detect, identity  # noqa: E402
 
 
 class IdentityBase(unittest.TestCase):
@@ -31,13 +31,13 @@ class IdentityBase(unittest.TestCase):
     def setUp(self):
         self._a = os.environ.get("ATROPOS_HOME")
         self._h = os.environ.get("HERMES_HOME")
-        self.tmp = tempfile.mkdtemp(prefix="atropos_identity_")
-        os.environ["ATROPOS_HOME"] = self.tmp
-        self.hermes = Path(self.tmp) / ".hermes"
+        self.tmp = Path(tempfile.mkdtemp(prefix="atropos_identity_"))
+        os.environ["ATROPOS_HOME"] = str(self.tmp)
+        self.hermes = self.tmp / ".hermes"
         os.environ["HERMES_HOME"] = str(self.hermes)
         self._orig_home_fn = detect._home
-        detect._home = staticmethod(lambda: Path(self.tmp))
-        self.claude = Path(self.tmp) / ".claude"
+        detect._home = staticmethod(lambda: self.tmp)
+        self.claude = self.tmp / ".claude"
 
     def tearDown(self):
         detect._home = self._orig_home_fn
@@ -100,8 +100,10 @@ class RoundtripTests(IdentityBase):
         identity.mode("SOUL.md", "atropos-only")
         entry = identity._map_entry("SOUL.md")
         self.assertEqual(entry["mode"], "atropos-only")
-        self.assertIn("identity.map", Path(detect.atropos_home(),
-                                           "config.yaml").read_text(encoding="utf-8"))
+        # a user mode change makes identity.map a persisted setting
+        cfg = config.parse_yaml(
+            (detect.atropos_home() / "config.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(cfg["identity"]["map"]["SOUL.md"]["mode"], "atropos-only")
 
     def test_prompt_mode_cannot_be_shared_without_targets(self):
         # prompts have no default targets — shared mode projects nothing
@@ -124,39 +126,58 @@ class ProjectionTests(IdentityBase):
         r = identity.save("SOUL.md", "# My Soul\n")
         self.assertTrue(r["ok"])
         self.assertEqual(r["mode"], "shared")
-        self.assertEqual(len(r["projected"]), 2)
-        self.assertEqual(r["conflicts"], [])
+        # the pre-existing harness copies were never written by Atropos
+        # and differ from canonical → both are conflicts, not silent
+        # overwrites
+        self.assertEqual(len(r["conflicts"]), 2)
+        self.assertEqual(r["projected"], [])
+        self.assertEqual((self.hermes / "SOUL.md").read_text(encoding="utf-8"),
+                         "hermes baseline")
+        self.assertEqual((self.claude / "CLAUDE.md").read_text(encoding="utf-8"),
+                         "claude baseline")
+        # acknowledge both targets (keep) and save again → projected
+        for t in (self.hermes / "SOUL.md", self.claude / "CLAUDE.md"):
+            identity.resolve_conflict("SOUL.md", str(t), "keep")
+        r2 = identity.save("SOUL.md", "# My Soul\n")
+        self.assertEqual(r2["conflicts"], [])
+        self.assertEqual(len(r2["projected"]), 2)
         self.assertEqual((self.hermes / "SOUL.md").read_text(encoding="utf-8"), "# My Soul\n")
         self.assertEqual((self.claude / "CLAUDE.md").read_text(encoding="utf-8"), "# My Soul\n")
 
     def test_drift_conflict_returns_and_target_unchanged(self):
         self._setup_soul()
-        identity.save("SOUL.md", "# My Soul\n")  # establishes the baseline
+        # acknowledge the pre-existing copies (keep) so the first save
+        # projects cleanly and establishes the Atropos baseline
+        for t in (self.hermes / "SOUL.md", self.claude / "CLAUDE.md"):
+            identity.resolve_conflict("SOUL.md", str(t), "keep")
+        identity.save("SOUL.md", "# My Soul\n")
         # the harness edits its copy on its own
         (self.hermes / "SOUL.md").write_text("hermes local edit", encoding="utf-8")
         r = identity.save("SOUL.md", "# Updated Soul\n")
-        self.assertEqual(r["conflicts"], [])
-        # ...conflict must come from the *second* save (first re-baselines)
-        self.assertEqual(len(r["projected"]), 2)
-        r2 = identity.save("SOUL.md", "# Updated Again\n")
-        self.assertEqual(r2["projected"], [])
-        self.assertEqual(len(r2["conflicts"]), 1)
-        c = r2["conflicts"][0]
+        self.assertEqual(len(r["projected"]), 1)
+        self.assertEqual(len(r["conflicts"]), 1)
+        c = r["conflicts"][0]
         self.assertTrue(c["conflict"])
         self.assertEqual(Path(c["target"]), self.hermes / "SOUL.md")
         self.assertEqual(c["harness"], "hermes")
         self.assertNotIn("ok", c)
-        # the drifted target is untouched
+        # the drifted target is untouched; the other target still got
+        # the latest canonical content
         self.assertEqual((self.hermes / "SOUL.md").read_text(encoding="utf-8"),
                          "hermes local edit")
+        self.assertEqual((self.claude / "CLAUDE.md").read_text(encoding="utf-8"),
+                         "# Updated Soul\n")
 
     def test_no_duplicate_conflict_within_one_save(self):
         self._setup_soul()
+        for t in (self.hermes / "SOUL.md", self.claude / "CLAUDE.md"):
+            identity.resolve_conflict("SOUL.md", str(t), "keep")
         identity.save("SOUL.md", "# My Soul\n")
         (self.hermes / "SOUL.md").write_text("drift", encoding="utf-8")
         (self.claude / "CLAUDE.md").write_text("drift", encoding="utf-8")
         r = identity.save("SOUL.md", "# New\n")
         self.assertEqual(len(r["conflicts"]), 2)
+        self.assertEqual(r["projected"], [])
 
     def test_separate_mode_never_projects(self):
         self._setup_soul()
@@ -177,10 +198,14 @@ class ProjectionTests(IdentityBase):
 
     def test_sync_projects_with_hash_guard(self):
         self._setup_soul()
-        identity.save("SOUL.md", "# My Soul\n")
+        identity.save("SOUL.md", "# My Soul\n")  # two conflicts (pre-existing)
+        for t in (self.hermes / "SOUL.md", self.claude / "CLAUDE.md"):
+            identity.resolve_conflict("SOUL.md", str(t), "keep")
+        identity.sync("SOUL.md")  # establishes the baseline
         (self.hermes / "SOUL.md").write_text("drift", encoding="utf-8")
         r = identity.sync("SOUL.md")
         self.assertEqual(len(r["conflicts"]), 1)
+        self.assertEqual(len(r["projected"]), 1)
         # resolve with keep → next sync is clean
         identity.resolve_conflict("SOUL.md", str(self.hermes / "SOUL.md"), "keep")
         r2 = identity.sync("SOUL.md")
@@ -202,6 +227,9 @@ class ResolveTests(IdentityBase):
         super().setUp()
         self.hermes.mkdir(parents=True, exist_ok=True)
         (self.hermes / "SOUL.md").write_text("baseline", encoding="utf-8")
+        # acknowledge the pre-existing copy so the first save establishes
+        # a clean Atropos baseline (no conflict noise)
+        identity.resolve_conflict("SOUL.md", str(self.hermes / "SOUL.md"), "keep")
 
     def test_resolve_overwrite_writes_canonical(self):
         identity.save("SOUL.md", "# Canonical\n")
@@ -260,24 +288,41 @@ class HistoryTests(IdentityBase):
         identity.save("SOUL.md", "v3")
         snaps = identity._snapshots("SOUL.md")
         self.assertEqual(len(snaps), 3)
+        # the newest snapshot holds the pre-third-save state (v2); the
+        # oldest holds the pre-first-save state (empty store)
+        self.assertEqual(snaps[0].read_text(encoding="utf-8"), "v2")
+        self.assertEqual(snaps[2].read_text(encoding="utf-8"), "")
 
     def test_prune_keeps_last_8(self):
         for i in range(12):
             identity.save("SOUL.md", f"v{i}")
         snaps = identity._snapshots("SOUL.md")
         self.assertEqual(len(snaps), 8)
-        # the newest snapshot holds v11 (the latest state before save #12)
-        self.assertIn("v11", snaps[0].read_text(encoding="utf-8"))
+        # newest snapshot = the state just before save #12 → v10;
+        # oldest kept snapshot = the state just before save #5 → v3
+        self.assertEqual(snaps[0].read_text(encoding="utf-8"), "v10")
+        self.assertEqual(snaps[-1].read_text(encoding="utf-8"), "v3")
 
     def test_restore(self):
         identity.save("SOUL.md", "v1")
         identity.save("SOUL.md", "v2")
-        r = identity.restore("SOUL.md", 2)  # second-newest = v1
+        # n=1 restores the newest snapshot (state before the last save)
+        r = identity.restore("SOUL.md", 1)
         self.assertTrue(r["ok"])
         self.assertEqual(identity.read("SOUL.md"), "v1")
-        # restore is itself snapshotted: v2 survives in history
+        # restore is itself snapshotted: the pre-restore state (v2) is
+        # now the newest snapshot
         snaps = identity._snapshots("SOUL.md")
         self.assertEqual(len(snaps), 3)
+        self.assertEqual(snaps[0].read_text(encoding="utf-8"), "v2")
+        # n=2 restores the next-older snapshot: after the first restore the
+        # history is [v2 (pre-restore), v1, empty] → n=2 = v1
+        r2 = identity.restore("SOUL.md", 2)
+        self.assertTrue(r2["ok"])
+        self.assertEqual(identity.read("SOUL.md"), "v1")
+        # the second restore snapshot the pre-restore state (v1) on top
+        self.assertEqual(identity._snapshots("SOUL.md")[0].read_text(encoding="utf-8"),
+                         "v1")
 
     def test_restore_out_of_range(self):
         identity.save("SOUL.md", "v1")
@@ -302,9 +347,15 @@ class ImportTests(IdentityBase):
         self.assertEqual(entries[str(self.claude / "CLAUDE.md")]["source"], "claude")
 
     def test_detect_new_excludes_registered(self):
+        # is the repo-root AGENTS.md present? (this project maintains one)
+        repo_agents = _REPO / "AGENTS.md"
+        if not repo_agents.exists():
+            repo_agents.write_text("# Test AGENTS\n", encoding="utf-8")
+            self.addCleanup(repo_agents.unlink, missing_ok=True)
         self.hermes.mkdir(parents=True, exist_ok=True)
         (self.hermes / "SOUL.md").write_text("hermes soul", encoding="utf-8")
         identity.import_file("SOUL.md", self.hermes / "SOUL.md")
+        identity.import_file("AGENTS.md", repo_agents)
         found = identity.detect_new()
         self.assertEqual(found, [])
 
@@ -330,6 +381,8 @@ class ImportTests(IdentityBase):
     def test_import_missing_source_raises(self):
         with self.assertRaises(FileNotFoundError):
             identity.import_file("AGENTS.md", self.tmp / "nope.md")
+        with self.assertRaises(FileNotFoundError):
+            identity.import_file("AGENTS.md", str(self.tmp / "nope.md"))
 
     def test_import_bad_mode_rejected(self):
         self.hermes.mkdir(parents=True, exist_ok=True)
@@ -391,7 +444,8 @@ class DiffAndStatsTests(IdentityBase):
         cfg.write_text("system_prompt: someone else\n", encoding="utf-8")
         r4 = identity.save("SYSTEM.md", "be concise")
         self.assertEqual(len(r4["conflicts"]), 1)
-        self.assertIn("system_prompt", r4["conflicts"][0]["target"])
+        self.assertEqual(Path(r4["conflicts"][0]["target"]), cfg)
+        self.assertNotIn("ok", r4["conflicts"][0])
         self.assertEqual(cfg.read_text(encoding="utf-8"),
                          "system_prompt: someone else\n")
 

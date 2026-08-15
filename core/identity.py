@@ -261,7 +261,12 @@ def _target_value(spec):
 
 
 def _write_target(spec, content: str):
-    """Write canonical content into a target (keyed targets merge the key)."""
+    """Write canonical content into a target (keyed targets merge the key).
+
+    Files are written as bytes so that ``\\n`` never becomes ``\\r\\n`` on
+    Windows — the canonical and target copies stay byte-identical, which
+    the hash guard and diff rely on.
+    """
     p = _target_path(spec)
     p.parent.mkdir(parents=True, exist_ok=True)
     if _target_keyed(spec):
@@ -274,9 +279,9 @@ def _write_target(spec, content: str):
         if not isinstance(cfg, dict):
             cfg = {}
         cfg[spec["key"]] = content
-        p.write_text(config.dump_yaml(cfg) + "\n", encoding="utf-8")
+        p.write_bytes((config.dump_yaml(cfg) + "\n").encode("utf-8"))
     else:
-        p.write_text(content, encoding="utf-8")
+        p.write_bytes(content.encode("utf-8"))
 
 
 def _already_matches(spec, content: str) -> bool:
@@ -428,7 +433,7 @@ def save(name: str, content: str) -> dict:
     p = canonical_path(name)
     p.parent.mkdir(parents=True, exist_ok=True)
     _snapshot(name)
-    p.write_text(content, encoding="utf-8")
+    p.write_bytes(content.encode("utf-8"))
     m = _mode_for(name)
     projected, conflicts = [], []
     if m == "shared":
@@ -499,7 +504,14 @@ def resolve_conflict(name: str, target: str, action: str = "overwrite") -> dict:
         raise ValueError(f"{target!r} is not a mapped target of {name!r}")
     p = _target_path(spec)
     kind = "keyed" if _target_keyed(spec) else "file"
-    content = read(name)
+    try:
+        content = read(name)
+    except FileNotFoundError:
+        # no canonical copy yet: overwrite/diff are impossible, but keep
+        # can still adopt the harness state as the acknowledged baseline
+        if action != "keep":
+            raise
+        content = ""
     if action == "diff":
         val = _target_value(spec)
         differs = val != content
@@ -508,7 +520,11 @@ def resolve_conflict(name: str, target: str, action: str = "overwrite") -> dict:
                 "preview": _diff_preview(content, val)}
     if action == "keep":
         # adopt the target's current state as the acknowledged baseline
-        raw = content.encode("utf-8") if kind == "keyed" else _target_bytes(spec)
+        if kind == "keyed":
+            raw = _target_value(spec)
+            raw = raw.encode("utf-8") if isinstance(raw, str) else None
+        else:
+            raw = _target_bytes(spec)
         if raw is not None:
             _record_written(f"{name}|{p}", raw, kind=kind)
         return {"ok": True, "action": "keep", "name": name,
@@ -549,6 +565,8 @@ def mode(name: str, mode: str) -> dict:
     """
     if not valid_name(name):
         raise ValueError(f"invalid artifact name: {name!r}")
+    if name.startswith("prompts/"):
+        name = name[len("prompts/"):]
     if name not in IDENTITY_FILES and name not in PROMPT_FILES:
         raise ValueError(f"unknown identity artifact: {name!r}")
     if mode not in MODES:
@@ -597,24 +615,45 @@ def diff(name: str) -> dict:
 
 
 # ── history ───────────────────────────────────────────────────────────────
+def _snap_base(name: str) -> str:
+    """Filesystem-safe snapshot stem of an artifact name.
+
+    Prompt artifacts carry a ``prompts/`` prefix in their name; snapshot
+    filenames use the bare stem so the prefix can never introduce a path
+    separator.
+    """
+    return name[len("prompts/"):] if name.startswith("prompts/") else name
+
+
 def _snapshots(name: str) -> list:
     """Snapshot files for an artifact, newest first."""
     hd = history_dir()
     if not hd.exists():
         return []
-    return sorted(hd.glob(f"{name}-*"), reverse=True)
+    return sorted(hd.glob(f"{_snap_base(name)}-*"), reverse=True)
 
 
 def _snapshot(name: str):
-    """Copy the current canonical content into .history (prune to 8)."""
+    """Snapshot the current canonical content into .history (prune to 8).
+
+    Snapshot happens on EVERY save, including the first one — the
+    pre-first-save state is an empty snapshot, so the count of snapshots
+    always equals the count of saves.
+    """
     p = canonical_path(name)
-    if not p.exists():
-        return None
+    content = p.read_bytes() if p.exists() else b""
     hd = history_dir()
     hd.mkdir(parents=True, exist_ok=True)
-    dest = hd / f"{name}-{_ts()}"
-    shutil.copy2(p, dest)
-    for old in sorted(hd.glob(f"{name}-*"))[:-HISTORY_KEEP]:
+    base = hd / f"{_snap_base(name)}-{_ts()}"
+    dest = base
+    n = 1
+    while dest.exists():
+        # a sub-second collision (rapid saves) must never overwrite an
+        # earlier snapshot — append a counter
+        dest = hd / f"{base.name}-{n}"
+        n += 1
+    dest.write_bytes(content)
+    for old in sorted(hd.glob(f"{_snap_base(name)}-*"))[:-HISTORY_KEEP]:
         old.unlink(missing_ok=True)
     return dest
 
@@ -628,16 +667,22 @@ def restore(name: str, n: int) -> dict:
     """
     if not valid_name(name):
         raise ValueError(f"invalid artifact name: {name!r}")
+    if name.startswith("prompts/"):
+        name = name[len("prompts/"):]
     snaps = _snapshots(name)
     if not snaps:
         raise FileNotFoundError(f"no snapshots for {name!r}")
     n = int(n)
     if n < 1 or n > len(snaps):
         raise ValueError(f"snapshot index out of range (1..{len(snaps)})")
+    target = snaps[n - 1]
+    # snapshot the pre-restore state so the rollback is always reversible;
+    # index against the pre-restore history — the fresh snapshot of the
+    # current state is not part of the history the caller asked about
     _snapshot(name)
     p = canonical_path(name)
-    shutil.copy2(snaps[n - 1], p)
-    return {"ok": True, "name": name, "restored": snaps[n - 1].name, "from_index": n}
+    shutil.copy2(target, p)
+    return {"ok": True, "name": name, "restored": target.name, "from_index": n}
 
 
 # ── import / detect ───────────────────────────────────────────────────────
