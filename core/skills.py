@@ -12,7 +12,7 @@ import os
 import shutil
 from pathlib import Path
 
-from . import config, detect
+from . import config, detect, settings
 
 SKILL_CATEGORIES = [
     "coding",         # code generation, refactoring, debugging
@@ -92,8 +92,7 @@ def _read_skill_meta(skill_dir: Path) -> dict:
 
 def get_routing(category: str = "general") -> str:
     """Which harness handles this category? Returns 'hermes' or 'claude'."""
-    cfg = config.load()
-    routing = cfg.get("skills", {}).get("routing", DEFAULT_ROUTING)
+    routing = settings.get("skills.routing", DEFAULT_ROUTING) or DEFAULT_ROUTING
     return routing.get(category, "hermes")
 
 
@@ -101,11 +100,9 @@ def set_routing(category: str, harness: str):
     """Set which harness handles a category."""
     if harness not in ("hermes", "claude"):
         raise ValueError("harness must be 'hermes' or 'claude'")
-    cfg = config.load()
-    skills_cfg = cfg.setdefault("skills", {})
-    routing = skills_cfg.setdefault("routing", DEFAULT_ROUTING.copy())
+    routing = dict(settings.get("skills.routing", DEFAULT_ROUTING) or DEFAULT_ROUTING)
     routing[category] = harness
-    config.save(cfg)
+    settings.set("skills.routing", routing)
 
 
 def sync_to_hermes():

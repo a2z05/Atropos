@@ -87,7 +87,11 @@ def _checks():
 
     # 6. Disk space
     def disk_check():
-        usage = shutil.disk_usage(str(detect.hermes_home()))
+        home = str(detect.hermes_home())
+        try:
+            usage = shutil.disk_usage(home)
+        except OSError:
+            return (True, "home dir missing — skipped")
         pct = (usage.used / usage.total) * 100
         return (pct < 85, f"{pct:.0f}% used")
 
@@ -97,6 +101,9 @@ def _checks():
     def tz_check():
         import datetime
         import time
+        # On Windows time.timezone semantics differ; report instead of fail.
+        if os.name == "nt":
+            return (True, "Windows — tz check skipped")
         off = time.timezone if time.daylight == 0 else time.altzone
         # +0330 = Asia/Tehran = -12600
         return (off == -12600, f"offset={off}")

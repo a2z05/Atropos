@@ -8,7 +8,7 @@ config and re-applying (or skipping) the relevant hacks (04 + 12).
 import json
 from pathlib import Path
 
-from . import config, detect, patches
+from . import config, detect, patches, settings
 
 
 GUEST_CONFIG_KEY = "guest.enabled"
@@ -23,7 +23,7 @@ GUEST_HACK_IDS = [
 
 
 def _persona_path() -> Path:
-    raw = config.get(GUEST_PERSONA_KEY, "") or ""
+    raw = settings.get(GUEST_PERSONA_KEY, "") or ""
     if raw:
         # empty string "" → Path("") is '.', guard against it
         p = Path(raw)
@@ -34,7 +34,7 @@ def _persona_path() -> Path:
 
 def is_enabled() -> bool:
     """Return True if guest mode is enabled in config."""
-    return bool(config.get(GUEST_CONFIG_KEY, False))
+    return bool(settings.get(GUEST_CONFIG_KEY, False))
 
 
 def persona_loaded() -> bool:
@@ -54,7 +54,7 @@ def status() -> dict:
 
 def set_enabled(val: bool) -> dict:
     """Set guest mode on/off. Returns new status."""
-    config.set_path(GUEST_CONFIG_KEY, val)
+    settings.set(GUEST_CONFIG_KEY, bool(val))
     return status()
 
 

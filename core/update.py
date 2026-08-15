@@ -112,6 +112,14 @@ def apply_update(repo: str, dry_run=False):
         "doctor": checks,
         "backup": str(bk),
     }
+    if ok:
+        # changelog auto-bump (the changelog lives in the updated repo)
+        try:
+            changelog = bump_changelog(Path(repo) / "docs" / "CHANGELOG.md",
+                                       source=result["head"])
+            result["changelog"] = changelog
+        except Exception as e:
+            result["changelog"] = {"ok": False, "error": str(e)}
     if not ok:
         # rollback: restore pre-update head, then re-apply hacks again
         _git(repo, "reset", "--hard", prev_head)
@@ -134,3 +142,40 @@ def update_check(repo: str):
         **up,
         "diff": diff_summary(repo),
     }
+
+
+def bump_changelog(changelog_path: Path, version: str = "", source: str = "") -> dict:
+    """Prepend a ``## [version]`` entry to docs/CHANGELOG.md (gated by
+    ``update.changelog_bump``). Returns what changed.
+
+    ``version`` wins when given; otherwise a HEAD-derived marker is used.
+    ``source`` describes what was updated (e.g. the new head short sha).
+    """
+    try:
+        from . import settings
+        if not settings.get("update.changelog_bump", True):
+            return {"ok": True, "skipped": True, "reason": "update.changelog_bump off"}
+    except Exception:
+        pass
+    if not changelog_path.exists():
+        return {"ok": False, "error": f"changelog not found: {changelog_path}"}
+    text = changelog_path.read_text(encoding="utf-8")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    version = version or (f"HEAD-{source[:8]}" if source else "HEAD")
+    # avoid duplicate entries for the same version+day
+    marker = f"## [{version}]"
+    if marker in text:
+        return {"ok": True, "skipped": True, "reason": f"{marker} already present"}
+    entry = (
+        f"## [{version}] — {today} (auto)\n\n"
+        f"### Applied\n"
+        f"- Upstream update applied{(' — source ' + source) if source else ''}.\n"
+        f"- Auto-bumped by the Atropos update pipeline.\n\n"
+    )
+    head = text.split("# Changelog", 1)
+    if len(head) == 2:
+        text = "# Changelog\n" + entry + head[1].lstrip("\n")
+    else:
+        text = "# Changelog\n\n" + entry + text
+    changelog_path.write_text(text, encoding="utf-8")
+    return {"ok": True, "added": marker, "path": str(changelog_path)}

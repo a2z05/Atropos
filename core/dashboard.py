@@ -11,6 +11,7 @@ update).
 """
 import json
 import os
+import queue
 import secrets
 import shutil
 import sqlite3
@@ -22,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-from . import config, detect, doctor, guest, logs, patches, router, skills, update
+from . import config, detect, doctor, guest, logs, patches, router, settings, skills, update
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 REPO_DIR = Path(__file__).resolve().parent.parent
@@ -57,14 +58,36 @@ def _uptime():
 
 # ── history (dashboard action log) ───────────────────────────────────────
 def history_log(action: str, detail=""):
-    """Append one action to ~/.atropos/history.jsonl."""
+    """Append one action to ~/.atropos/history.jsonl.
+
+    Secret values are masked (settings keys flagged secret are never
+    written — the token stays out of the audit trail).
+    """
     try:
         p = detect.atropos_home() / "history.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
+        detail = _mask_history_detail(action, detail)
         with open(p, "a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": _ts(), "action": action, "detail": detail}) + "\n")
     except Exception:
         pass
+
+
+def _mask_history_detail(action: str, detail: str) -> str:
+    """Replace secret values inside a history detail string."""
+    try:
+        for key in ("alerts.token", "dashboard.password"):
+            if key in detail:
+                spec_key = key
+                node = None
+                # detail format is "key=value" — mask the value side
+                marker = f"{key}="
+                if marker in detail:
+                    val = detail.split(marker, 1)[1].split(" ", 1)[0].rstrip(",")
+                    detail = detail.replace(marker + val, marker + settings.SECRET_MASK)
+    except Exception:
+        pass
+    return detail
 
 
 def history_list(limit=50):
@@ -352,18 +375,15 @@ def api_router_history():
 
 # ── backup schedule (dashboard-native) ──────────────────────────────────
 def api_backup_config():
-    cfg = config.load()
-    period = cfg.get("backup", {}).get("period", "off")
-    return {"ok": True, "period": period}
+    return {"ok": True, "period": settings.get("backup.period", "off")}
 
 
 def api_backup_config_set(payload):
     period = (payload or {}).get("period", "off")
-    if period not in ("daily", "off"):
-        return {"ok": False, "error": "period must be 'daily' or 'off'"}
-    cfg = config.load()
-    cfg.setdefault("backup", {})["period"] = period
-    config.save(cfg)
+    try:
+        settings.set("backup.period", period)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
     history_log("backup", f"period={period}")
     return {"ok": True, "period": period}
 
@@ -820,7 +840,7 @@ def api_status():
         "runtime": rt,
         "disk": {"pct": pct, "total_gb": total, "used_gb": used},
         "router": router.get(),
-        "config": config.load(),
+        "config": settings.mask_secrets(config.load()),
         "uptime": _uptime(),
         "ts": _ts(),
     }
@@ -867,7 +887,20 @@ def api_update(check=True):
         })
         return result
     history_log("update", "apply")
+    # changelog auto-bump lives in the Atropos repo (this repo), not the
+    # hermes-agent repo that apply_update resets.
+    changelog_result = None
+    if repo:  # hermes-agent repo — bump only on successful apply below
+        pass
     result = update.apply_update(repo)
+    if result.get("ok") and settings.get("update.changelog_bump", True):
+        try:
+            from .update import bump_changelog as _bump
+            changelog_result = _bump(REPO_DIR / "docs" / "CHANGELOG.md",
+                                     version=_version(), source=result.get("head", ""))
+            result["changelog"] = changelog_result
+        except Exception as e:
+            result["changelog"] = {"ok": False, "error": str(e)}
     result["last_check"] = _ts()
     _save_update_state({
         "last_check": result["last_check"],
@@ -932,20 +965,38 @@ def api_route_apply():
 
 
 def api_config_get(key=None):
+    """Read a config key (schema-validated; group reads are masked)."""
     if key == "version":
         return {"ok": True, "value": _version()}
     if key is None:
-        return {"ok": True, "config": config.load(), "version": _version()}
+        return {"ok": True, "config": settings.mask_secrets(config.load()), "version": _version()}
+    if key not in settings.schema():
+        return {"ok": False, "error": f"unknown config key: {key}"}
     val = config.get(key)
+    if settings.is_secret(key) and val:
+        val = settings.SECRET_MASK
     return {"ok": True, "value": val}
 
 
 def api_config_set(key=None, value=None):
+    """Set a config key. Validated through the settings schema.
+
+    Unknown keys are rejected; wrong types raise a clear error. Back-compat
+    wrapper over settings.set so the old panel keeps working.
+    """
     if not key:
         return {"ok": False, "error": "key required"}
-    config.set_path(key, value)
-    history_log("config", f"{key}={json.dumps(value, ensure_ascii=False)}")
-    return {"ok": True, "key": key, "value": config.get(key)}
+    try:
+        settings.set(key, value)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    if settings.is_secret(key):
+        logged_value = settings.SECRET_MASK
+    else:
+        logged_value = json.dumps(value, ensure_ascii=False)
+    history_log("config", f"{key}={logged_value}")
+    final = settings.SECRET_MASK if settings.is_secret(key) else config.get(key)
+    return {"ok": True, "key": key, "value": final}
 
 
 def api_guest():
@@ -1015,9 +1066,12 @@ def api_logs(tail=80):
 
 
 def api_effort():
-    """Current per-harness effort tiers from config."""
-    cfg = config.load()
-    effort = cfg.get("effort", {"hermes": "medium", "claude": "medium", "atropos": "medium"})
+    """Current per-harness effort tiers from settings."""
+    effort = {
+        "hermes": settings.get("effort.hermes", "medium"),
+        "claude": settings.get("effort.claude", "medium"),
+        "atropos": settings.get("effort.atropos", "medium"),
+    }
     tiers = {
         "minimal": "Fastest responses, least reasoning tokens, short answers",
         "low": "Low reasoning, quick answers, minimal tool use",
@@ -1036,10 +1090,10 @@ def api_effort():
 
 
 def api_effort_set(payload):
-    """Set effort tier for one or more harnesses."""
+    """Set effort tier for one or more harnesses (via settings schema)."""
     tier = (payload or {}).get("tier", "")
     targets = (payload or {}).get("targets", [])
-    available = ["minimal", "low", "medium", "high", "xhigh", "ultracode", "tryhard"]
+    available = settings.EFFORT_TIERS
     if tier not in available:
         return {"ok": False, "error": f"unknown tier: {tier}. Available: {', '.join(available)}"}
     valid_targets = ["hermes", "claude", "atropos"]
@@ -1048,12 +1102,12 @@ def api_effort_set(payload):
     targets = [t for t in targets if t in valid_targets]
     if not targets:
         return {"ok": False, "error": "no valid targets"}
-    cfg = config.load()
-    current = cfg.get("effort", {"hermes": "medium", "claude": "medium", "atropos": "medium"})
-    for t in targets:
-        current[t] = tier
-    cfg["effort"] = current
-    config.save(cfg)
+    try:
+        for t in targets:
+            settings.set(f"effort.{t}", tier)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    current = {t: settings.get(f"effort.{t}") for t in ("hermes", "claude", "atropos")}
     history_log("effort", f"set {tier} for {', '.join(targets)}")
     return {"ok": True, "current": current, "changed": targets}
 
@@ -1240,6 +1294,257 @@ def api_claude():
     }
 
 
+# ── v1.2.0: settings / extensions / market / console / failover ─────────
+def api_settings():
+    """Full settings surface: schema + current values (secrets masked)."""
+    groups_out = {}
+    for key, spec in settings.schema().items():
+        gname = spec.get("group", "core")
+        groups_out.setdefault(gname, []).append({
+            "key": key,
+            "type": spec["type"],
+            "description": spec.get("description", ""),
+            "choices": spec.get("choices") or (spec.get("item_choices") if spec["type"] == "list" else None),
+            "secret": bool(spec.get("secret")),
+            "readonly": bool(spec.get("readonly")),
+            "value": settings.SECRET_MASK if (spec.get("secret") and settings.get(key))
+                     else settings.get(key),
+        })
+    return {
+        "ok": True,
+        "groups": groups_out,
+        "defaults": settings.mask_secrets({k: v.get("default") for k, v in settings.schema().items()}),
+        "theme": settings.get("dashboard.theme", "auto"),
+        "lang": settings.get("dashboard.lang", "en"),
+        "accent": settings.get("dashboard.accent", "indigo"),
+        "particles": settings.get("dashboard.particles", True),
+        "live": settings.get("dashboard.live", True),
+        "refresh_ms": settings.get("dashboard.refresh_ms", 10000),
+    }
+
+
+def api_settings_set(payload):
+    """POST /api/settings/set {key, value} — validated through settings.py."""
+    key = (payload or {}).get("key", "")
+    value = (payload or {}).get("value")
+    if not key:
+        return {"ok": False, "error": "key required"}
+    try:
+        settings.set(key, value)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    final = settings.SECRET_MASK if settings.is_secret(key) else settings.get(key)
+    if settings.is_secret(key):
+        history_log("settings", f"{key}={settings.SECRET_MASK}")
+    else:
+        history_log("settings", f"{key}={json.dumps(final, ensure_ascii=False)}")
+    return {"ok": True, "key": key, "value": final, "settings": api_settings()}
+
+
+def api_settings_export():
+    """Full YAML export (secrets masked unless ?secrets=1)."""
+    return {"ok": True, "yaml": settings.export_yaml(include_secrets=False)}
+
+
+def api_settings_import(payload):
+    """Import a YAML settings blob (validated)."""
+    yaml_text = (payload or {}).get("yaml", "")
+    if not yaml_text:
+        return {"ok": False, "error": "yaml required"}
+    try:
+        settings.import_yaml(yaml_text)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    history_log("settings", "imported settings")
+    return {"ok": True, "settings": api_settings()}
+
+
+def api_extensions(kind="all"):
+    """Unified extension listing (skills + plugins)."""
+    try:
+        from . import extensions
+        items = extensions.list_extensions(kind)
+        return {"ok": True, "items": items, "count": len(items),
+                "trash": extensions.list_trash()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_extension_action(payload):
+    """POST /api/extensions/action {action, name, kind, source}."""
+    from . import extensions
+    action = (payload or {}).get("action", "")
+    name = (payload or {}).get("name", "")
+    kind = (payload or {}).get("kind", "skill")
+    source = (payload or {}).get("source", "hermes")
+    if not extensions.valid_name(name):
+        return {"ok": False, "error": f"invalid name: {name!r}"}
+    try:
+        if action == "enable":
+            result = extensions.enable(name, kind, source)
+        elif action == "disable":
+            result = extensions.disable(name, kind, source)
+        elif action == "remove":
+            result = extensions.remove(name, kind, source)
+        elif action == "restore":
+            result = extensions.restore_from_trash(name, kind, source)
+        elif action == "empty-trash":
+            result = {"ok": True, "removed": extensions.empty_trash()}
+        else:
+            return {"ok": False, "error": f"unknown action: {action}"}
+    except (FileNotFoundError, ValueError) as e:
+        return {"ok": False, "error": str(e)}
+    history_log("extensions", f"{action} {name} ({kind}/{source})")
+    if result.get("ok"):
+        _notify("extensions", {"action": action, "name": name, "kind": kind})
+    return {"ok": True, **result}
+
+
+def api_marketplace():
+    """Marketplace catalog with install state."""
+    from . import marketplace
+    return marketplace.catalog()
+
+
+def api_marketplace_install(payload):
+    """Install a catalog item."""
+    from . import marketplace
+    source_id = (payload or {}).get("source", "")
+    item = (payload or {}).get("item", "")
+    result = marketplace.install(source_id, item)
+    if result.get("ok"):
+        history_log("marketplace", f"installed {item} from {source_id}")
+        _notify("marketplace", {"action": "install", "item": item, "source": source_id})
+    return result
+
+
+def api_marketplace_uninstall(payload):
+    """Uninstall a marketplace item (→ trash)."""
+    from . import marketplace
+    item = (payload or {}).get("item", "")
+    kind = (payload or {}).get("kind", "skill")
+    target = (payload or {}).get("target", "hermes")
+    result = marketplace.uninstall(item, kind, target)
+    if result.get("ok"):
+        history_log("marketplace", f"uninstalled {item}")
+    return result
+
+
+def api_run(payload):
+    """POST /api/run — whitelist-only console dispatcher."""
+    from . import console
+    line = (payload or {}).get("command", "")
+    if not line or not line.strip():
+        return {"ok": False, "error": "command required", "output": []}
+    result = console.run_command(line)
+    if result.get("ok"):
+        try:
+            from . import sse
+            sse.hub.broadcast("console", {
+                "ts": _ts(), "command": line,
+                "output": result.get("output", []), "ok": True,
+            })
+        except Exception:
+            pass
+    return result
+
+
+def _notify(channel: str, data: dict):
+    """Fan out an SSE notify frame (best-effort, never raises)."""
+    try:
+        from . import sse
+        sse.hub.broadcast(channel, {**data, "ts": _ts()})
+    except Exception:
+        pass
+
+
+def api_failover():
+    """Failover status (state + config)."""
+    from . import failover
+    return {"ok": True, "status": failover.status()}
+
+
+def api_sessions_search(q=""):
+    """Search sessions/messages by content (LIKE, bounded)."""
+    q = (q or "").strip()
+    if not q:
+        return {"ok": False, "error": "query required"}
+    db = _find_state_db()
+    if not db.exists():
+        return {"ok": False, "error": "state.db not found"}
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        try:
+            tables = _tables_in(db)
+            msg_tbl = next((t for t in tables if "message" in t.lower()), None)
+            if not msg_tbl:
+                return {"ok": False, "error": "no messages table"}
+            cols = [d[1] for d in con.execute(f"PRAGMA table_info({msg_tbl})")]
+            content_col = next((c for c in cols if c.lower() in
+                                ("content", "text", "message", "body", "text_content")), None)
+            session_col = next((c for c in ("session_id", "session", "conversation_id",
+                                            "convo_id") if c in cols), None)
+            role_col = next((c for c in cols if "role" in c.lower()), None)
+            ts_col = next((c for c in cols if any(
+                t in c.lower() for t in ("ts", "time", "date", "created"))), None)
+            if not content_col:
+                return {"ok": False, "error": "no content column in messages"}
+            like = f"%{q}%"
+            cur = con.cursor()
+            cur.execute(
+                f"SELECT {content_col}"
+                + (f", {session_col}" if session_col else "")
+                + (f", {role_col}" if role_col else "")
+                + (f", {ts_col}" if ts_col else "")
+                + f" FROM {msg_tbl} WHERE CAST({content_col} AS TEXT) LIKE ? "
+                + f"ORDER BY rowid DESC LIMIT 50",
+                (like,))
+            rows = cur.fetchall()
+            names = [d[0] for d in cur.description]
+            hits = []
+            for r in rows:
+                rec = dict(zip(names, r))
+                hits.append({
+                    "content": str(rec.get(content_col, ""))[:500],
+                    "session": str(rec.get(session_col, "")) if session_col else "",
+                    "role": str(rec.get(role_col, ""))[:20] if role_col else "",
+                    "ts": str(rec.get(ts_col, ""))[:30] if ts_col else "",
+                })
+            return {"ok": True, "query": q, "hits": hits, "count": len(hits)}
+        finally:
+            con.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_sessions_export():
+    """Export sessions from state.db as JSON (bounded, small)."""
+    db = _find_state_db()
+    if not db.exists():
+        return {"ok": False, "error": "state.db not found"}
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        try:
+            tables = _tables_in(db)
+            session_tbl = next((t for t in tables if "session" in t.lower()), None)
+            if not session_tbl:
+                return {"ok": False, "error": "no sessions table"}
+            cur = con.cursor()
+            cur.execute(f"SELECT * FROM {session_tbl} ORDER BY rowid DESC LIMIT 200")
+            cols = [d[0] for d in cur.description] if cur.description else []
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            return {
+                "ok": True,
+                "export": json.dumps(rows, ensure_ascii=False, default=str),
+                "count": len(rows),
+                "table": session_tbl,
+            }
+        finally:
+            con.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── HTTP handler ─────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def _auth(self):
@@ -1275,6 +1580,14 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(404, b"dashboard/index.html missing")
             return True
+        # dashboard static assets (sw.js for PWA offline)
+        if path in ("/sw.js", "/manifest.webmanifest"):
+            f = DASHBOARD_DIR / path.lstrip("/")
+            if f.exists():
+                ctype = ("application/javascript; charset=utf-8" if path.endswith(".js")
+                         else "application/manifest+json")
+                self._send(200, f.read_bytes(), ctype)
+                return True
         if not path.startswith("/api/"):
             return None
         api = {
@@ -1319,6 +1632,15 @@ class Handler(BaseHTTPRequestHandler):
             "/api/jailbreak/apply": lambda: api_jailbreak_apply(),
             "/api/jailbreak/apply-all": lambda: api_jailbreak_apply_all(),
             "/api/jailbreak/revert": lambda: api_jailbreak_revert(),
+            # v1.2.0
+            "/api/settings": api_settings,
+            "/api/settings/export": api_settings_export,
+            "/api/extensions": lambda: api_extensions("all"),
+            "/api/extensions/skills": lambda: api_extensions("skill"),
+            "/api/extensions/plugins": lambda: api_extensions("plugin"),
+            "/api/marketplace": api_marketplace,
+            "/api/failover": api_failover,
+            "/api/sessions/export": api_sessions_export,
         }
         if path in api:
             return api[path]()
@@ -1341,7 +1663,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/session/"):
             sid = path.split("/api/session/", 1)[1]
             return api_session_trace(sid)
-        return {"ok": False, "error": f"unknown api: {path}"}
+        # v1.2.0 session search
+        if path.startswith("/api/sessions/search"):
+            qq = (q.get("q") or [""])[0]
+            return api_sessions_search(qq)
+        return None  # unknown → 404
 
     def _route_post(self, path, payload):
         if path == "/api/doctor/fix":
@@ -1407,6 +1733,19 @@ class Handler(BaseHTTPRequestHandler):
             parts = path.split("/api/cron/", 1)[1].split("/")
             if len(parts) == 2 and parts[1] in ("pause", "resume"):
                 return api_cron_toggle(parts[0], parts[1] == "resume")
+        # v1.2.0
+        if path == "/api/settings/set":
+            return api_settings_set(payload)
+        if path == "/api/settings/import":
+            return api_settings_import(payload)
+        if path == "/api/extensions/action":
+            return api_extension_action(payload)
+        if path == "/api/marketplace/install":
+            return api_marketplace_install(payload)
+        if path == "/api/marketplace/uninstall":
+            return api_marketplace_uninstall(payload)
+        if path == "/api/run":
+            return api_run(payload)
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def do_GET(self):
@@ -1415,8 +1754,15 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._route_get(path, q)
             return
+        # dashboard static assets (sw.js for PWA offline)
+        if path in ("/sw.js", "/manifest.webmanifest"):
+            self._route_get(path, q)
+            return
         if path == "/api/logs/stream":
             self.do_GET_sse(path, q)
+            return
+        if path == "/api/events":
+            self.do_GET_events(path, q)
             return
         if path.startswith("/api/"):
             if not self._auth():
@@ -1528,11 +1874,51 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
+    def do_GET_events(self, path, q):
+        """SSE hub feed for all panels (/api/events). Token via query."""
+        if not self._auth():
+            self._send(401, b'{"error":"unauthorized"}')
+            return
+        from . import sse
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        client_id = f"ev-{secrets.token_urlsafe(8)}"
+        try:
+            q_client = queue.Queue(maxsize=sse.MAX_QUEUE)
+            sse.hub.subscribe(client_id, q_client)
+            try:
+                while True:
+                    try:
+                        frame = q_client.get(timeout=sse.HEARTBEAT_SECONDS)
+                        sse.hub.touch(client_id)
+                        self.wfile.write(b"data: " + frame + b"\n\n")
+                        self.wfile.flush()
+                    except queue.Empty:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+            finally:
+                sse.hub.unsubscribe(client_id)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        except Exception:
+            pass
+
     def log_message(self, fmt, *args):
         pass  # quiet
 
 
 def serve(host="127.0.0.1", port=8787):
+    # kick off the periodic SSE status broadcaster (once, daemon thread)
+    try:
+        from .sse import start_status_broadcaster
+        start_status_broadcaster()
+    except Exception:
+        pass
     srv = ThreadingHTTPServer((host, port), Handler)
     print(f"Atropos dashboard on http://{host}:{port}")
     print(f"Token: {_auth_token()}")

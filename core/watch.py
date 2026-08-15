@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, detect, doctor, patches
+from . import config, detect, doctor, patches, settings
 
 
 def _ts():
@@ -70,13 +70,14 @@ def _telegram_notify(text):
 
 def check_disk():
     """Check disk usage, auto-clean temp files if high."""
+    threshold = settings.get("watch.threshold_disk", 80)
     usage = shutil.disk_usage(str(detect.hermes_home()))
     pct = (usage.used / usage.total) * 100
     free_mb = usage.free / (1024 * 1024)
-    alert = pct > 80
+    alert = pct > threshold
     cleaned = 0
 
-    if pct > 80:
+    if pct > threshold:
         # auto-clean: __pycache__, *.pyc, tmp files
         for d in [detect.hermes_home() / "__pycache__", detect.atropos_home() / "__pycache__"]:
             if d.exists():
@@ -146,7 +147,7 @@ def check_state_db():
         con.close()
     except Exception:
         msg_count = session_count = 0
-    alert = size_mb > 100  # 100MB threshold
+    alert = size_mb > settings.get("watch.state_db_mb", 100)
     return {
         "ok": not alert,
         "size_mb": round(size_mb, 1),
@@ -157,13 +158,14 @@ def check_state_db():
 
 def check_log_rotation():
     """Trim excessively large log files."""
+    max_mb = settings.get("watch.log_max_mb", 50)
     cleaned = []
     logs_dir = detect.hermes_home() / "logs"
     if not logs_dir.exists():
         return {"ok": True, "cleaned": []}
     for f in logs_dir.glob("*.log"):
         size = f.stat().st_size
-        if size > 50 * 1024 * 1024:  # 50MB
+        if size > max_mb * 1024 * 1024:
             try:
                 content = f.read_bytes()
                 f.write_bytes(content[-2 * 1024 * 1024:])  # keep last 2MB
@@ -174,11 +176,15 @@ def check_log_rotation():
 
 
 def check_backup_schedule():
-    """If backup.period=daily, run a backup when the newest is older than 24h."""
-    cfg = config.load()
-    period = (cfg.get("backup", {}) or {}).get("period", "off")
+    """If backup.period=daily, run a backup when the newest is older than 24h.
+
+    Gated by ``watch.auto_backup`` (default True preserves old behavior).
+    """
+    period = settings.get("backup.period", "off")
     if period != "daily":
         return {"ok": True, "skipped": True, "reason": "period != daily"}
+    if not settings.get("watch.auto_backup", True):
+        return {"ok": True, "skipped": True, "reason": "watch.auto_backup off"}
     from .backup import list_backups, create
     backups = list_backups()
     age_h = None
@@ -241,6 +247,18 @@ def run_watch():
     except Exception as e:
         results["backup"] = {"ok": False, "error": str(e)}
 
+    # router failover check (gated by failover.enabled)
+    try:
+        from .failover import check_now as failover_check
+        fo = failover_check()
+        results["failover"] = fo
+        if fo.get("switched"):
+            alerts.append(f"🔄 Failover: {fo['switched']['from']} → {fo['switched']['to']}")
+        elif fo.get("all_down"):
+            alerts.append("🔴 Failover: all routers down")
+    except Exception as e:
+        results["failover"] = {"ok": False, "error": str(e)}
+
     results["alerts"] = alerts
     results["ok"] = len(alerts) == 0
     results["ts"] = _ts()
@@ -257,8 +275,13 @@ def run_watch():
     return results
 
 
-def daemon_loop(interval=1800):
-    """Run checks in a loop."""
+def daemon_loop(interval=None):
+    """Run checks in a loop.
+
+    Interval defaults to ``watch.interval`` from settings (1800s) when not
+    passed explicitly.
+    """
+    interval = interval or settings.get("watch.interval", 1800)
     _log(f"🔴 Atropos Watch daemon started (interval={interval}s)")
     while True:
         try:
