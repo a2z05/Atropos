@@ -592,6 +592,108 @@
   }
   .sw input:checked + span { background: var(--accent); }
   .sw input:checked + span:before { transform: translateX(16px); }
+
+  /* ── v1.4: moirai trio / share modal / new panels ── */
+  .moirai-grip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .moirai-col {
+    background: rgba(15,23,42,.5); border: 1px solid rgba(148,163,184,.14);
+    border-radius: 13px; padding: 15px 16px; text-align: center; position: relative;
+  }
+  .moirai-col .mname { font-weight: 800; font-size: 13.5px; letter-spacing: 1px; }
+  .moirai-col .msub {
+    font-size: 11px; color: var(--muted); margin: 3px 0 8px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;
+  }
+  .moirai-col .mdesc { font-size: 10.5px; color: var(--muted); line-height: 1.6; min-height: 30px; }
+  .moirai-col .mstat {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 9px;
+    font-size: 10.5px; font-weight: 700; color: var(--muted); padding: 4px 10px;
+    border-radius: 99px; border: 1px solid rgba(148,163,184,.2); background: rgba(2,6,23,.4);
+  }
+  .moirai-col .mstat .mdot { width: 7px; height: 7px; border-radius: 50%; }
+  .moirai-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 9px var(--green); flex: 0 0 auto; }
+  .moirai-dot.warn { background: var(--yellow); box-shadow: 0 0 9px var(--yellow); }
+  .moirai-dot.bad  { background: var(--red); box-shadow: 0 0 9px var(--red); }
+  .act-mini { display: flex; gap: 8px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid rgba(148,163,184,.07); font-size: 12px; }
+  .act-mini:last-child { border-bottom: none; }
+  .act-mini .at { font-size: 10px; color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; flex: 0 0 auto; }
+  .act-mini .ae { color: var(--muted); font-size: 11px; font-family: ui-monospace, Menlo, Consolas, monospace; flex: 0 0 auto; }
+  .act-mini .ad { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .act-mini.unseen { color: var(--text); }
+  .act-mini.unseen .ae { color: var(--indigo-l); }
+  .mono-tile { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; }
+
+  /* share card + modal */
+  .share-card {
+    display: flex; align-items: center; gap: 9px; cursor: pointer;
+    background: linear-gradient(135deg, rgba(99,102,241,.2), rgba(139,92,246,.14));
+    border: 1px solid rgba(99,102,241,.4); border-radius: 12px; padding: 10px 13px;
+    font-size: 12.5px; font-weight: 700; color: var(--text); transition: all .2s ease; user-select: none;
+  }
+  .share-card:hover { box-shadow: 0 0 20px rgba(99,102,241,.4); transform: translateY(-1px); }
+  .share-card .surl { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 400; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .share-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 92;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+  }
+  .share-backdrop.open { display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .share-modal {
+    width: 380px; max-width: 94vw; background: var(--bg1); border: var(--card-border);
+    border-radius: 16px; padding: 24px; box-shadow: 0 24px 80px rgba(0,0,0,.6);
+    animation: fadeUp .18s ease both; text-align: center;
+  }
+  .share-modal h3 { font-size: 15px; font-weight: 800; letter-spacing: .5px; margin-bottom: 14px; }
+  .share-modal .qr-frame {
+    background: #fff; border-radius: 12px; padding: 12px; display: inline-block; margin: 0 auto 14px;
+  }
+  .share-modal .qr-frame pre {
+    font-size: 7.5px; line-height: 8.5px; letter-spacing: 0; color: #000;
+  }
+  .share-url { display: flex; align-items: center; gap: 9px; background: rgba(2,6,23,.6); border: 1px solid rgba(148,163,184,.16); border-radius: 10px; padding: 9px 12px; margin: 0 0 12px; }
+  .share-url input {
+    flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--cyan);
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px;
+  }
+  .share-note { font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .share-note code { color: var(--indigo-l); }
+
+  /* new v1.4 panel styles */
+  .checklist { display: flex; flex-direction: column; gap: 6px; }
+  .checklist label {
+    display: flex; align-items: center; gap: 9px; font-size: 12.5px; cursor: pointer; padding: 8px 11px;
+    background: rgba(15,23,42,.5); border: 1px solid rgba(148,163,184,.13); border-radius: 10px; transition: border-color .15s;
+  }
+  .checklist label:hover { border-color: rgba(99,102,241,.4); }
+  .checklist input { accent-color: var(--indigo); flex: 0 0 auto; }
+  .checklist .ck-name { font-weight: 600; }
+  .checklist .ck-sub { color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mcp-nm { font-weight: 700; }
+  .mcp-src { color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; }
+  .mcp-2l { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .mcp-mode { text-align: center; min-width: 26px; }
+  .idf-row { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border: 1px solid rgba(148,163,184,.12); border-radius: 10px; margin-bottom: 6px; cursor: pointer; font-size: 12.5px; transition: border-color .15s, background .15s; }
+  .idf-row:hover { border-color: rgba(99,102,241,.45); background: rgba(99,102,241,.06); }
+  .idf-row.sel { border-color: var(--indigo); background: rgba(99,102,241,.1); }
+  .idf-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .idf-chips .tag { font-size: 8.5px; padding: 1px 6px; }
+  .breadcrumb { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; margin-bottom: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .breadcrumb .crumb { cursor: pointer; color: var(--indigo-l); font-weight: 600; }
+  .breadcrumb .crumb:hover { text-decoration: underline; }
+  .breadcrumb .cur { color: var(--muted); }
+  .file-cell { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(148,163,184,.13); background: rgba(15,23,42,.5); font-size: 12px; cursor: pointer; transition: border-color .15s; }
+  .file-cell:hover { border-color: rgba(99,102,241,.45); }
+  .file-cell .fd { font-weight: 700; color: var(--cyan); }
+  .file-cell .ff { font-weight: 600; }
+  .file-cell .fsub { margin-left: auto; color: var(--muted); font-size: 9.5px; font-family: ui-monospace, Menlo, Consolas, monospace; text-align: right; }
+  .fmt-num { font-family: ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  /* focus mode */
+  body.focus .sidebar, body.focus #status-strip, body.focus #particles, body.focus .hamburger { display: none !important; }
+  body.focus .main { padding: 14px 20px 40px; }
+  body.focus .topbar { margin-bottom: 12px; box-shadow: none; }
+  body.focus .panel { display: none !important; }
+  body.focus .panel.active { display: block !important; }
+  @media (max-width: 640px) { .moirai-grip { grid-template-columns: 1fr; } .router-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -629,7 +731,28 @@
     <div class="nav-item" data-panel="market"><span class="ico">🛒</span>Market</div>
     <div class="nav-item" data-panel="console"><span class="ico">❯_</span>Console</div>
     <div class="nav-item" data-panel="settings"><span class="ico">⚙</span>Settings</div>
+    <div class="nav-sep"></div>
+    <div class="nav-item" data-panel="mcp"><span class="ico">🔌</span>MCP</div>
+    <div class="nav-item" data-panel="identity"><span class="ico">🧬</span>Identity</div>
+    <div class="nav-item" data-panel="configs"><span class="ico">🗂</span>Configs</div>
+    <div class="nav-item" data-panel="routing"><span class="ico">↯</span>Routing</div>
+    <div class="nav-item" data-panel="files"><span class="ico">📁</span>Files</div>
+    <div class="nav-item" data-panel="models"><span class="ico">◈</span>Models</div>
+    <div class="nav-item" data-panel="webhooks"><span class="ico">🪝</span>Webhooks</div>
+    <div class="nav-item" data-panel="pairing"><span class="ico">📱</span>Pairing</div>
+    <div class="nav-item" data-panel="fleet"><span class="ico">🗺</span>Fleet</div>
+    <div class="nav-item" data-panel="memory"><span class="ico">🧠</span>Memory</div>
+    <div class="nav-item" data-panel="budget"><span class="ico">💳</span>Budget</div>
+    <div class="nav-item" data-panel="activity"><span class="ico">⏱</span>Activity</div>
+    <div class="nav-item" data-panel="announce"><span class="ico">📣</span>Announce</div>
     <div class="side-foot">
+      <div class="share-card" id="sb-share" title="Share on LAN">
+        <span style="font-size:15px;">⇪</span>
+        <span style="display:flex;flex-direction:column;min-width:0;line-height:1.3;">
+          <span style="font-size:11px;letter-spacing:.5px;">Share on LAN</span>
+          <span class="surl" id="sb-share-url">…</span>
+        </span>
+      </div>
       <b>Atropos</b> · Hermes + Claude fusion<br>
       <span id="side-ver">v—</span>
     </div>
@@ -641,6 +764,8 @@
       <button class="hamburger" id="hamburger" title="Menu">☰</button>
       <div class="title" id="top-title">Overview <span>control plane</span></div>
       <div class="spacer"></div>
+      <button class="btn" id="btn-share-top" style="padding:4px 11px;" title="Share on LAN">⇪ Share</button>
+      <button class="btn" id="btn-focus" style="padding:4px 11px;" title="Focus mode — only the active panel">⛶ Focus</button>
       <button class="btn" id="btn-lang" style="padding:4px 10px;" title="Language">فارسی</button>
       <span id="version" class="version-chip">v—</span>
       <input id="token" class="token-input" type="password" placeholder="Dashboard token…" autocomplete="off">
@@ -679,6 +804,16 @@
         <section class="card span-12">
           <h3><span class="dot"></span>Quick stats</h3>
           <div class="stat-row" id="ov-stats"></div>
+        </section>
+        <section class="card span-12">
+          <h3><span class="dot"></span>The Three Moirai <span class="right">the fusion harness — one prompt, three fates</span></h3>
+          <div class="moirai-grip" id="ov-moirai">
+            <div class="moirai-col"><span class="mname">Clotho</span><div class="msub">Hermes</div><div class="mdesc">weaver</div><span class="mstat"><span class="mdot"></span><span>—</span></span></div>
+            <div class="moirai-col"><span class="mname">Lachesis</span><div class="msub">Claude</div><div class="mdesc">measurer</div><span class="mstat"><span class="mdot"></span><span>—</span></span></div>
+            <div class="moirai-col"><span class="mname">Atropos</span><div class="msub">self</div><div class="mdesc">cutter</div><span class="mstat"><span class="mdot"></span><span>—</span></span></div>
+          </div>
+          <div class="edit-label">activity · last 8</div>
+          <div id="ov-activity-mini"><div class="log-empty">—</div></div>
         </section>
       </div>
     </section>
@@ -1141,6 +1276,256 @@
       </div>
     </section>
 
+    <!-- ════════ MCP ════════ -->
+    <section class="panel" id="panel-mcp">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>MCP servers <span class="right" id="mcp-stats"></span></h3>
+          <div id="mcp-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Add server</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <input id="mcp-name" class="token-input" style="width:100%;" placeholder="name (letters, digits, ._-)">
+            <input id="mcp-cmd" class="token-input" style="width:100%;" placeholder="command e.g. npx @modelcontextprotocol/server-filesystem">
+            <input id="mcp-url" class="token-input" style="width:100%;" placeholder="url (http servers) — optional for stdio">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">type</label>
+            <div style="display:flex;gap:6px;" id="mcp-type-select"></div>
+          </div>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-mcp-add">Add server</button>
+            <button class="btn" id="btn-mcp-rescan">Rescan</button>
+          </div>
+          <div class="edit-label">adopt pending <span class="right" id="mcp-pending-count" style="margin-left:8px;"></span></div>
+          <div id="mcp-pending" class="checklist"><div class="log-empty">Loading…</div></div>
+          <div class="btn-row just-end">
+            <button class="btn green" id="btn-mcp-adopt">Adopt selected</button>
+            <button class="btn warn" id="btn-mcp-adopt-all">Adopt all</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ IDENTITY ════════ -->
+    <section class="panel" id="panel-identity">
+      <div class="grid">
+        <section class="card span-6">
+          <h3><span class="dot"></span>Identity files <span class="right" id="idf-stats"></span></h3>
+          <div id="idf-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-6">
+          <h3><span class="dot"></span>Editor <span class="right" id="idf-current">—</span></h3>
+          <div class="edit-label">content · mode · sync</div>
+          <textarea id="idf-editor" class="editor" style="min-height:210px;" spellcheck="false" placeholder="Select an identity file to edit…"></textarea>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap;">
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">mode</label>
+            <select id="idf-mode" class="token-input" style="max-width:150px;"></select>
+            <span style="flex:1;"></span>
+            <button class="btn" id="btn-idf-save">Save</button>
+            <button class="btn" id="btn-idf-sync">Sync</button>
+            <button class="btn" id="btn-idf-diff">Diff</button>
+          </div>
+          <div class="edit-label">restore from snapshot</div>
+          <div id="idf-snapshots"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ CONFIGS ════════ -->
+    <section class="panel" id="panel-configs">
+      <div class="grid">
+        <section class="card span-5">
+          <h3><span class="dot"></span>Configs</h3>
+          <div id="configs-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-7">
+          <h3><span class="dot"></span>Editor <span class="right" id="configs-current">—</span></h3>
+          <textarea id="configs-editor" class="editor" style="min-height:280px;" spellcheck="false" placeholder="Select a config to edit…"></textarea>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap;">
+            <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;">mode</label>
+            <select id="configs-mode" class="token-input" style="max-width:150px;"></select>
+            <span style="flex:1;"></span>
+            <button class="btn" id="btn-configs-validate">Validate</button>
+            <button class="btn green" id="btn-configs-save">Save</button>
+            <button class="btn warn" id="btn-configs-rollback">Rollback</button>
+          </div>
+          <div id="configs-out" style="margin-top:10px;"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ ROUTING ════════ -->
+    <section class="panel" id="panel-routing">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Category → harness map <span class="right" id="routing-state"></span></h3>
+          <div id="routing-table"><div class="log-empty">Loading…</div></div>
+          <div class="edit-label">add category</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <input id="routing-cat" class="token-input" style="max-width:220px;" placeholder="category e.g. chat">
+            <input id="routing-harness" class="token-input" style="max-width:160px;" placeholder="harness e.g. claude">
+            <button class="btn" id="btn-routing-add">Add</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ FILES ════════ -->
+    <section class="panel" id="panel-files">
+      <div class="grid">
+        <section class="card span-5">
+          <h3><span class="dot"></span>Files <span class="right">repo root</span></h3>
+          <div class="breadcrumb" id="files-bc"></div>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input id="files-q" class="token-input" style="flex:1;min-width:0;" placeholder="Search filenames…">
+            <button class="btn" id="btn-files-search">Search</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;" id="files-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-7">
+          <h3><span class="dot"></span>Preview <span class="right" id="files-path">—</span></h3>
+          <div id="files-preview" class="log-box" style="height:440px;"><div class="log-empty">Click a file to preview (text files only, bounded).</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ MODELS ════════ -->
+    <section class="panel" id="panel-models">
+      <div class="grid">
+        <section class="card span-8">
+          <h3><span class="dot"></span>Models <span class="right" id="models-count"></span></h3>
+          <div id="models-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-4">
+          <h3><span class="dot"></span>Add model</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <input id="models-name" class="token-input" style="width:100%;" placeholder="name">
+            <input id="models-model" class="token-input" style="width:100%;" placeholder="model id (optional)">
+            <input id="models-base" class="token-input" style="width:100%;" placeholder="base url (optional)">
+          </div>
+          <div class="btn-row just-end"><button class="btn green" id="btn-models-add">Add</button></div>
+          <div class="edit-label">assign per harness</div>
+          <div id="models-assign" class="checklist"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ WEBHOOKS ════════ -->
+    <section class="panel" id="panel-webhooks">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Webhooks</h3>
+          <div id="hooks-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Add webhook</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <input id="hook-name" class="token-input" style="width:100%;" placeholder="name">
+            <input id="hook-url" class="token-input" style="width:100%;" placeholder="https://…">
+            <input id="hook-events" class="token-input" style="width:100%;" placeholder="events, comma separated (default: all)">
+          </div>
+          <div class="btn-row just-end"><button class="btn green" id="btn-hook-add">Add webhook</button></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ PAIRING ════════ -->
+    <section class="panel" id="panel-pairing">
+      <div class="grid">
+        <section class="card span-6">
+          <h3><span class="dot"></span>LAN share</h3>
+          <div id="pair-share"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-6">
+          <h3><span class="dot"></span>Devices <span class="right" id="pair-device-state"></span></h3>
+          <div id="pair-devices"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ FLEET ════════ -->
+    <section class="panel" id="panel-fleet">
+      <div class="grid">
+        <section class="card span-8">
+          <h3><span class="dot"></span>Boxes</h3>
+          <div id="fleet-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-4">
+          <h3><span class="dot"></span>Add box</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <input id="fleet-name" class="token-input" style="width:100%;" placeholder="name">
+            <input id="fleet-url" class="token-input" style="width:100%;" placeholder="http://host:8787">
+            <input id="fleet-token" class="token-input" style="width:100%;" type="password" placeholder="token (optional)">
+          </div>
+          <div class="btn-row just-end">
+            <button class="btn green" id="btn-fleet-add">Add box</button>
+            <button class="btn" id="btn-fleet-ping">Ping all</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ MEMORY ════════ -->
+    <section class="panel" id="panel-memory">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Notes <span class="right" id="memory-stats"></span></h3>
+          <div id="memory-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Add note</h3>
+          <textarea id="memory-text" class="editor" style="min-height:110px;" spellcheck="false" placeholder="note text…"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <input id="memory-tags" class="token-input" style="flex:1;min-width:0;" placeholder="tags, comma separated (optional)">
+          </div>
+          <div class="btn-row just-end"><button class="btn green" id="btn-memory-add">Add note</button></div>
+          <div class="edit-label">search</div>
+          <div style="display:flex;gap:8px;">
+            <input id="memory-q" class="token-input" style="flex:1;min-width:0;" placeholder="Search notes…">
+            <button class="btn" id="btn-memory-search">Search</button>
+          </div>
+          <div id="memory-results" style="margin-top:10px;"><div class="log-empty">—</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ BUDGET ════════ -->
+    <section class="panel" id="panel-budget">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Usage <span class="right" id="budget-state"></span></h3>
+          <div id="budget-stats"><div class="log-empty">Loading…</div></div>
+          <div id="budget-per-router" style="margin-top:12px;"></div>
+          <div class="btn-row just-end"><button class="btn" id="btn-budget-check">Check now</button></div>
+          <div id="budget-out" style="margin-top:12px;"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ ACTIVITY ════════ -->
+    <section class="panel" id="panel-activity">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>24h activity</h3>
+          <div class="stat-row" id="act-stats"></div>
+          <div class="edit-label">event timeline</div>
+          <div id="act-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ ANNOUNCE ════════ -->
+    <section class="panel" id="panel-announce">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Announcements</h3>
+          <div id="announce-list"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
     <p class="sec-note">Atropos control plane — token stored locally in your browser only · v1.2</p>
   </main>
 </div>
@@ -1178,6 +1563,23 @@
   </div>
 </div>
 
+<!-- ── Share on LAN modal ── -->
+<div id="share-backdrop" class="share-backdrop">
+  <div class="share-modal">
+    <h3>⇪ Share on LAN</h3>
+    <div class="qr-frame"><pre id="share-qr">…</pre></div>
+    <div class="share-url">
+      <input id="share-url" readonly onclick="this.select()">
+      <button class="btn" id="btn-share-copy">Copy</button>
+    </div>
+    <p class="share-note">QR is decorative — open the URL on a phone on the same network. Pairing: approve the device in <b>Pairing</b> when it first connects.</p>
+    <div class="btn-row just-end" style="margin-top:14px;">
+      <button class="btn" id="btn-share-chat">Open chat</button>
+      <button class="btn" id="btn-share-close">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Mobile sidebar overlay ── -->
 <div id="mobile-overlay" class="mobile-overlay"></div>
 
@@ -1205,6 +1607,9 @@ const I18N = {
     nav_backup: 'Backup', nav_effort: 'Effort', nav_selfheal: 'Self-Heal',
     nav_alerts: 'Alerts', nav_jailbreak: 'Jailbreak',
     nav_extensions: 'Extensions', nav_market: 'Market', nav_console: 'Console', nav_settings: 'Settings',
+    nav_mcp: 'MCP', nav_identity: 'Identity', nav_configs: 'Configs', nav_routing: 'Routing',
+    nav_files: 'Files', nav_models: 'Models', nav_webhooks: 'Webhooks', nav_pairing: 'Pairing',
+    nav_fleet: 'Fleet', nav_memory: 'Memory', nav_budget: 'Budget', nav_activity: 'Activity', nav_announce: 'Announce',
     t_overview: 'Overview', t_doctor: 'Doctor', t_patches: 'Patches',
     t_routers: 'Routers', t_sessions: 'Sessions', t_cron: 'Cron',
     t_skills: 'Skills', t_plugins: 'Plugins', t_update: 'Update',
@@ -1213,6 +1618,9 @@ const I18N = {
     t_backup: 'Backup', t_effort: 'Effort', t_selfheal: 'Self-Heal',
     t_alerts: 'Alerts', t_jailbreak: 'Jailbreak',
     t_extensions: 'Extensions', t_market: 'Market', t_console: 'Console', t_settings: 'Settings',
+    t_mcp: 'MCP', t_identity: 'Identity', t_configs: 'Configs', t_routing: 'Routing',
+    t_files: 'Files', t_models: 'Models', t_webhooks: 'Webhooks', t_pairing: 'Pairing',
+    t_fleet: 'Fleet', t_memory: 'Memory', t_budget: 'Budget', t_activity: 'Activity', t_announce: 'Announce',
     control_plane: 'control plane',
     reload: 'Reload', dismiss: 'Dismiss', token_ph: 'Dashboard token…',
     password_ph: 'Enter dashboard password…', enter: 'Enter',
@@ -1254,6 +1662,9 @@ const I18N = {
     nav_backup: 'پشتیبان‌گیری', nav_effort: 'تلاش', nav_selfheal: 'خودترمیمی',
     nav_alerts: 'هشدارها', nav_jailbreak: 'رهایی',
     nav_extensions: 'افزونه‌ها', nav_market: 'بازار', nav_console: 'کنسول', nav_settings: 'تنظیمات',
+    nav_mcp: 'ام‌سی‌پی', nav_identity: 'هویت', nav_configs: 'پیکربندی‌ها', nav_routing: 'مسیریابی',
+    nav_files: 'فایل‌ها', nav_models: 'مدل‌ها', nav_webhooks: 'وبهوک‌ها', nav_pairing: 'جفت‌سازی',
+    nav_fleet: 'ناوگان', nav_memory: 'حافظه', nav_budget: 'بودجه', nav_activity: 'فعالیت', nav_announce: 'اعلان‌ها',
     t_overview: 'نمای کلی', t_doctor: 'پزشک', t_patches: 'اصلاح‌ها',
     t_routers: 'مسیریاب‌ها', t_sessions: 'گفتگوها', t_cron: 'زمان‌بند',
     t_skills: 'مهارت‌ها', t_plugins: 'افزونه‌ها', t_update: 'به‌روزرسانی',
@@ -1262,6 +1673,9 @@ const I18N = {
     t_backup: 'پشتیبان‌گیری', t_effort: 'تلاش', t_selfheal: 'خودترمیمی',
     t_alerts: 'هشدارها', t_jailbreak: 'رهایی',
     t_extensions: 'افزونه‌ها', t_market: 'بازار', t_console: 'کنسول', t_settings: 'تنظیمات',
+    t_mcp: 'ام‌سی‌پی', t_identity: 'هویت', t_configs: 'پیکربندی‌ها', t_routing: 'مسیریابی',
+    t_files: 'فایل‌ها', t_models: 'مدل‌ها', t_webhooks: 'وبهوک‌ها', t_pairing: 'جفت‌سازی',
+    t_fleet: 'ناوگان', t_memory: 'حافظه', t_budget: 'بودجه', t_activity: 'فعالیت', t_announce: 'اعلان‌ها',
     control_plane: 'هستهٔ کنترل',
     reload: 'بارگذاری مجدد', dismiss: 'بستن', token_ph: 'توکن داشبورد…',
     password_ph: 'رمز عبور داشبورد را وارد کنید…', enter: 'ورود',
@@ -1397,7 +1811,9 @@ function toast(msg, type) {
 /* ── hash routing ─────────────────────────────────────────────────────── */
 const PANELS = ['overview','doctor','patches','routers','sessions','cron','skills','plugins',
                 'update','guest','logs','config','claude','analytics','history','backup','effort',
-                'selfheal','alerts','jailbreak','extensions','market','console','settings'];
+                'selfheal','alerts','jailbreak','extensions','market','console','settings',
+                'mcp','identity','configs','routing','files','models','webhooks','pairing',
+                'fleet','memory','budget','activity','announce'];
 const TITLES = {
   overview: 'Overview', doctor: 'Doctor', patches: 'Patches', routers: 'Routers',
   sessions: 'Sessions', cron: 'Cron', skills: 'Skills', plugins: 'Plugins',
@@ -1405,7 +1821,10 @@ const TITLES = {
   claude: 'Claude', analytics: 'Analytics', history: 'History',
   backup: 'Backup', effort: 'Effort',
   selfheal: 'Self-Heal', alerts: 'Alerts', jailbreak: 'Jailbreak',
-  extensions: 'Extensions', market: 'Market', console: 'Console', settings: 'Settings'
+  extensions: 'Extensions', market: 'Market', console: 'Console', settings: 'Settings',
+  mcp: 'MCP', identity: 'Identity', configs: 'Configs', routing: 'Routing',
+  files: 'Files', models: 'Models', webhooks: 'Webhooks', pairing: 'Pairing',
+  fleet: 'Fleet', memory: 'Memory', budget: 'Budget', activity: 'Activity', announce: 'Announce'
 };
 function currentPanel() {
   const h = location.hash.replace('#', '');
@@ -1418,7 +1837,7 @@ function showPanel(name) {
   if (el) el.classList.add('active');
   renderCurrentPanelTitle();
   const loaders = {
-    overview: [loadStatus, loadRouter, loadOverviewStats],
+    overview: [loadStatus, loadRouter, loadOverviewStats, loadOverviewMoirai],
     doctor: [loadDoctor],
     patches: [loadPatches],
     routers: [loadRouter, loadRouteTest, loadRouterModels, loadRouterSparklines],
@@ -1440,6 +1859,19 @@ function showPanel(name) {
     market: [loadMarket],
     console: [loadConsoleHistory],
     settings: [loadSettings],
+    mcp: [loadMcp],
+    identity: [loadIdentity],
+    configs: [loadConfigs],
+    routing: [loadRouting],
+    files: [loadFiles],
+    models: [loadModels],
+    webhooks: [loadWebhooks],
+    pairing: [loadPairing],
+    fleet: [loadFleet],
+    memory: [loadMemory],
+    budget: [loadBudget],
+    activity: [loadActivity],
+    announce: [loadAnnounce],
   };
   (loaders[name] || []).forEach(fn => { try { fn(); } catch (_) {} });
 }
@@ -2421,6 +2853,28 @@ const CMD_ITEMS = [
   { ico: '✦', name: 'Self-Heal', panel: 'selfheal', action: 'Run self-heal', fn: () => { location.hash='selfheal'; runSelfHeal(); }},
   { ico: '⚠', name: 'Alerts', panel: 'alerts', action: 'Test alert', fn: () => { toast('Sending test alert…', 'ok'); api('/api/alert/test').then(d => toast(d.ok ? 'Test alert sent ✓' : d.msg, d.ok ? 'ok' : 'err')).catch(e => toast(e.message, 'err')); }},
   { ico: '⚔', name: 'Jailbreak', panel: 'jailbreak', action: 'Apply all jailbreaks', fn: () => { toast('Applying bypasses…', 'ok'); api('/api/jailbreak/apply-all', { method:'POST', body:'{}' }).then(() => { toast('Apply-all done', 'ok'); loadJailbreak(); }).catch(e => toast(e.message, 'err')); }},
+  /* v1.4 */
+  { ico: '🔌', name: 'MCP', panel: 'mcp' },
+  { ico: '🔌', name: 'MCP — Rescan', action: 'Rescan hermes config', fn: () => { toast('Rescanning hermes config…', 'ok'); api('/api/mcp/rescan', { method:'POST', body:'{}' }).then(d => { toast(`Scan done · ${(d.found || []).length} found, ${(d.added || []).length} new`, 'ok'); location.hash='mcp'; loadMcp(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '🔌', name: 'MCP — Adopt All', action: 'Adopt all pending', fn: () => { toast('Adopting pending…', 'ok'); api('/api/mcp/adopt', { method:'POST', body:'{}' }).then(d => { toast('Adopted pending', 'ok'); location.hash='mcp'; loadMcp(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '🧬', name: 'Identity', panel: 'identity' },
+  { ico: '🧬', name: 'Identity — Sync All', action: 'Sync identity files', fn: () => { toast('Syncing identity…', 'ok'); const files = Array.from(document.querySelectorAll('#idf-list .idf-row')).map(r => r.dataset.idf); (files.length ? Promise.all(files.map(f => api('/api/identity/sync', { method:'POST', body: JSON.stringify({ name: f }) }).catch(() => ({})))) : Promise.resolve([])).then(() => { toast('Identity sync done', 'ok'); location.hash='identity'; loadIdentity(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '🗂', name: 'Configs', panel: 'configs' },
+  { ico: '↯', name: 'Routing', panel: 'routing' },
+  { ico: '↯', name: 'Routing — Repair', action: 'Set everything to auto', fn: () => { api('/api/routing').then(d => { const cats = (d.categories || []).map(c => api('/api/routing/set', { method:'POST', body: JSON.stringify({ category: c.name, harness: 'auto' }) }).catch(() => ({}))); return Promise.all(cats); }).then(() => { toast('Routing → auto ✓', 'ok'); location.hash='routing'; loadRouting(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '📁', name: 'Files', panel: 'files' },
+  { ico: '◈', name: 'Models', panel: 'models' },
+  { ico: '🪝', name: 'Webhooks', panel: 'webhooks' },
+  { ico: '📱', name: 'Pairing', panel: 'pairing' },
+  { ico: '🗺', name: 'Fleet', panel: 'fleet', action: 'Ping all boxes', fn: () => { location.hash='fleet'; toast('Pinging fleet…', 'ok'); api('/api/fleet/ping', { method:'POST', body:'{}' }).then(d => { const rows = d.results || []; const up = rows.filter(r => r && r.ok).length; toast(`Fleet: ${up}/${rows.length} up`, up === rows.length ? 'ok' : 'err'); loadFleet(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '🧠', name: 'Memory', panel: 'memory' },
+  { ico: '💳', name: 'Budget', panel: 'budget', action: 'Check now', fn: () => { location.hash='budget'; document.getElementById('btn-budget-check').click(); }},
+  { ico: '⏱', name: 'Activity', panel: 'activity' },
+  { ico: '📣', name: 'Announce', panel: 'announce' },
+  { ico: '⇪', name: 'Share on LAN', action: 'Open share modal', fn: () => openShareModal() },
+  { ico: '🎞', name: 'Snapshot — Create', action: 'Create snapshot', fn: () => { toast('Creating snapshot…', 'ok'); api('/api/snapshots/create', { method:'POST', body: JSON.stringify({ label: 'manual' }) }).then(d => toast(d.ok ? 'Snapshot created ✓' : (d.error || 'failed'), d.ok ? 'ok' : 'err')).catch(e => toast(e.message, 'err')); }},
+  { ico: '💬', name: 'Chat', action: 'Open mobile chat', fn: () => window.open('./chat.html', '_blank') },
+  { ico: '⛶', name: 'Focus mode', action: 'Toggle focus', fn: () => toggleFocus() },
 ];
 let _cmdSel = 0;
 function openCmdPalette() {
@@ -2863,6 +3317,883 @@ document.getElementById('btn-settings-import').addEventListener('click', async (
   }
 });
 
+/* ── v1.4: MCP panel ────────────────────────────────────────────────── */
+async function loadMcp() {
+  const box = document.getElementById('mcp-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/mcp');
+    const s = d.stats || {};
+    document.getElementById('mcp-stats').textContent = `${s.total || 0} total · ${s.enabled || 0} enabled`;
+    const servers = d.servers || [];
+    if (!servers.length) { box.innerHTML = '<div class="log-empty">No MCP servers registered.</div>'; }
+    else {
+      box.innerHTML = '';
+      for (const sv of servers) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const st = sv.status || {};
+        const ok = !!st.ok;
+        const lat = st.latency_ms != null ? st.latency_ms + 'ms' : '';
+        const err = sv.enabled === false ? 'disabled' : (st.error || '');
+        const modeLabel = esc(sv.mode || 'shared');
+        const modeCls = sv.mode === 'per-harness' ? 'on' : (sv.mode === 'atropos-only' ? 'bad' : 'off');
+        const title = sv.mode === 'per-harness' ? 'per-harness — projects per harness'
+          : (sv.mode === 'atropos-only' ? 'atropos-only — internal use' : 'shared — merged view');
+        const toggle = `<label class="sw" style="flex:0 0 auto;" title="Enable / disable ${esc(sv.name)}"><input type="checkbox" data-mcp-toggle="${esc(sv.name)}" ${sv.enabled === false ? '' : 'checked'}><span></span></label>`;
+        const test = `<button class="btn" style="padding:3px 8px;font-size:10.5px;" data-mcp-test="${esc(sv.name)}">Test</button>`;
+        const del = `<button class="btn danger" style="padding:3px 8px;font-size:10.5px;" data-mcp-rm="${esc(sv.name)}">Remove</button>`;
+        row.innerHTML =
+          `<span class="pulse ${ok ? 'ok' : 'bad'}"></span>` +
+          `<span class="mcp-2l"><span class="mcp-nm">${esc(sv.name)}</span>` +
+          `<span class="mcp-src">${esc(sv.source || 'manual')} · ${esc(sv.type || '')} · ${esc(urlish(sv))}</span></span>` +
+          `<span class="mcp-mode" title="${title}" style="cursor:help;"><span class="tag ${modeCls}">${modeLabel[0].toUpperCase()}</span></span>` +
+          `<span class="tag ${ok ? 'on' : 'bad'}">${ok ? 'up' : 'down'}</span>` +
+          `<span class="sub" style="display:none;"></span>` +
+          `<span class="desc">${esc(err || lat || '')}</span>` +
+          toggle + test + del;
+        box.appendChild(row);
+      }
+      bindMcpRowActions(box);
+    }
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+  loadMcpPending().catch(() => {});
+}
+function urlish(sv) { return sv.url || (sv.command ? sv.command.split(/\s+/)[0] : ''); }
+function bindMcpRowActions(root) {
+  root.querySelectorAll('[data-mcp-toggle]').forEach(b => b.addEventListener('change', async () => {
+    b.disabled = true;
+    const action = b.checked ? 'enable' : 'disable';
+    const d = await api('/api/mcp/' + action, { method: 'POST', body: JSON.stringify({ name: b.dataset.mcpToggle }) }).catch(e => ({ ok: false, error: e.message }));
+    toast(d.ok ? `${b.dataset.mcpToggle} → ${action}d` : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+    b.disabled = false;
+    if (d.ok) loadMcp();
+  }));
+  root.querySelectorAll('[data-mcp-test]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = '…';
+    const d = await api('/api/mcp/test', { method: 'POST', body: JSON.stringify({ name: b.dataset.mcpTest }) }).catch(e => ({ ok: false, error: e.message }));
+    const r = d.result || {};
+    toast(r && r.ok ? `${b.dataset.mcpTest} up · ${r.latency_ms != null ? r.latency_ms + 'ms' : ''}` : (r && r.error) || 'test failed', r && r.ok ? 'ok' : 'err');
+    b.disabled = false; b.textContent = 'Test';
+    loadMcp().catch(() => {});
+  }));
+  root.querySelectorAll('[data-mcp-rm]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Remove MCP server ' + b.dataset.mcpRm + '?')) return;
+    const d = await api('/api/mcp/remove', { method: 'POST', body: JSON.stringify({ name: b.dataset.mcpRm }) }).catch(e => ({ ok: false, error: e.message }));
+    toast(d.ok ? 'Removed ' + b.dataset.mcpRm : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+    if (d.ok) loadMcp();
+  }));
+}
+async function loadMcpPending() {
+  const box = document.getElementById('mcp-pending');
+  if (!box) return;
+  try {
+    const d = await api('/api/mcp/adopted');
+    const pending = d.pending || [];
+    document.getElementById('mcp-pending-count').textContent = pending.length ? pending.length + ' pending' : '';
+    if (!pending.length) { box.innerHTML = '<div class="log-empty">Nothing pending — registry in sync.</div>'; return; }
+    box.innerHTML = '';
+    for (const p of pending) {
+      const label = document.createElement('label');
+      label.innerHTML = `<input type="checkbox" value="${esc(p.name)}"><span class="ck-name">${esc(p.name)}</span><span class="ck-sub">${esc(urlish(p))}</span>`;
+      box.appendChild(label);
+    }
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+async function mcpAdopt(names) {
+  const d = await api('/api/mcp/adopt', { method: 'POST', body: JSON.stringify({ names }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Adopted ' + (names === 'all' ? 'all' : names.length + ' server(s)') : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) { loadMcp().catch(() => {}); }
+}
+document.getElementById('btn-mcp-add').addEventListener('click', async () => {
+  const name = document.getElementById('mcp-name').value.trim();
+  const command = document.getElementById('mcp-cmd').value.trim();
+  const url = document.getElementById('mcp-url').value.trim();
+  const type = (document.querySelector('#mcp-type-select .tag.on') || { dataset: {} }).dataset.type || 'stdio';
+  if (!name) { toast('Enter a server name', 'err'); return; }
+  const d = await api('/api/mcp/add', { method: 'POST', body: JSON.stringify({ name, type: type || 'stdio', command, url }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Added ' + name : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) {
+    document.getElementById('mcp-name').value = '';
+    document.getElementById('mcp-cmd').value = '';
+    document.getElementById('mcp-url').value = '';
+    loadMcp().catch(() => {});
+  }
+});
+document.getElementById('btn-mcp-rescan').addEventListener('click', async () => {
+  toast('Rescanning hermes config…', 'ok');
+  const d = await api('/api/mcp/rescan', { method: 'POST', body: '{}' }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? `Scan done · ${(d.found || []).length} found, ${(d.added || []).length} new` : (d.error || 'rescan failed'), d.ok ? 'ok' : 'err');
+  if (d.ok) loadMcp().catch(() => {});
+});
+document.getElementById('btn-mcp-adopt').addEventListener('click', () => {
+  const names = Array.from(document.querySelectorAll('#mcp-pending input:checked')).map(c => c.value);
+  if (!names.length) { toast('Select at least one server', 'err'); return; }
+  mcpAdopt(names);
+});
+document.getElementById('btn-mcp-adopt-all').addEventListener('click', () => mcpAdopt('all'));
+{
+  const sel = document.getElementById('mcp-type-select');
+  sel.innerHTML = ['stdio', 'http'].map(tp => `<span class="tag ${tp === 'stdio' ? 'on' : 'off'}" data-type="${tp}" style="cursor:pointer;">${tp}</span>`).join('');
+  sel.querySelectorAll('.tag').forEach(tg => tg.addEventListener('click', () => {
+    sel.querySelectorAll('.tag').forEach(x => x.className = 'tag off');
+    tg.className = 'tag on';
+  }));
+}
+
+/* ── v1.4: Identity panel ────────────────────────────────────────────── */
+let _idfSel = null;
+async function loadIdentity() {
+  const box = document.getElementById('idf-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/identity');
+    const st = d.stats || {};
+    document.getElementById('idf-stats').textContent = `${st.files || 0} files · ${fmtBytes(st.total_bytes || 0)}`;
+    const files = d.files || [];
+    if (!files.length) { box.innerHTML = '<div class="log-empty">No identity files yet.</div>'; return; }
+    box.innerHTML = '';
+    for (const f of files) {
+      const row = document.createElement('div');
+      row.className = 'idf-row' + (_idfSel === f.name ? ' sel' : '');
+      row.dataset.idf = f.name;
+      const modeLabel = esc(f.mode || 'shared');
+      const modeCls = f.mode === 'per-harness' ? 'on' : (f.mode === 'atropos-only' ? 'bad' : 'off');
+      const chips = (f.consumed_by || []).map(h => `<span class="tag off">${esc(h)}</span>`).join('');
+      row.innerHTML =
+        `<span class="mcp-nm">${esc(f.name)}</span>` +
+        `<span class="tag ${modeCls}" style="margin-left:auto;">${modeLabel[0].toUpperCase()}</span>` +
+        `<span class="fsub" style="font-size:9.5px;color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;">${fmtBytes(f.size || 0)}</span>` +
+        `<div style="flex:1 1 100%;display:flex;gap:5px;flex-wrap:wrap;">${chips}</div>`;
+      row.addEventListener('click', () => selectIdentityFile(f.name));
+      box.appendChild(row);
+    }
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+  loadIdentitySnapshots().catch(() => {});
+}
+async function selectIdentityFile(name) {
+  _idfSel = name;
+  document.querySelectorAll('#idf-list .idf-row').forEach(r => r.classList.toggle('sel', r.dataset.idf === name));
+  document.getElementById('idf-current').textContent = name;
+  document.getElementById('idf-editor').value = 'Loading…';
+  try {
+    const d = await api('/api/identity/diff?name=' + encodeURIComponent(name));
+    const diffs = d.diffs || {};
+    document.getElementById('idf-editor').value = diffs.canonical != null ? diffs.canonical : (diffs.content || '');
+    const md = document.getElementById('idf-mode');
+    md.innerHTML = ['shared', 'separate', 'atropos-only'].map(m => `<option value="${m}" ${m === diffs.mode ? 'selected' : ''}>${m}</option>`).join('');
+  } catch (e) { toast(e.message, 'err'); }
+}
+document.getElementById('btn-idf-save').addEventListener('click', async () => {
+  if (!_idfSel) { toast('Select an identity file first', 'err'); return; }
+  const d = await api('/api/identity/save', { method: 'POST', body: JSON.stringify({ name: _idfSel, content: document.getElementById('idf-editor').value }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? t('toast_saved') : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) loadIdentity().catch(() => {});
+});
+document.getElementById('btn-idf-sync').addEventListener('click', async () => {
+  if (!_idfSel) { toast('Select an identity file first', 'err'); return; }
+  const d = await api('/api/identity/sync', { method: 'POST', body: JSON.stringify({ name: _idfSel }) }).catch(e => ({ ok: false, error: e.message }));
+  const r = d.result || {};
+  toast(d.ok ? (r.synced ? 'Synced ✓' : (r.msg || 'Sync done')) : (d.error || 'sync failed'), d.ok ? 'ok' : 'err');
+  if (d.ok) loadIdentity().catch(() => {});
+});
+document.getElementById('btn-idf-diff').addEventListener('click', () => {
+  if (!_idfSel) { toast('Select an identity file first', 'err'); return; }
+  api('/api/identity/diff?name=' + encodeURIComponent(_idfSel)).then(d => {
+    const diffs = d.diffs || {};
+    const keys = ['canonical', 'hermes', 'claude', 'live', 'mode', 'status', 'conflict'];
+    const html = keys.filter(k => diffs[k] != null).map(k => `<div class="kv"><span class="k">${esc(k)}</span><span class="v" style="font-size:10.5px;max-width:260px;">${esc(String(diffs[k]).slice(0, 120))}</span></div>`).join('');
+    document.getElementById('idf-editor').value = '— diff ' + _idfSel + ' —\n\n' + Object.entries(diffs).map(([k, v]) => k + ': ' + String(v).slice(0, 500)).join('\n\n');
+    toast(html ? 'Diff loaded into editor' : 'No diff data', 'ok');
+  }).catch(e => toast(e.message, 'err'));
+});
+document.getElementById('idf-mode').addEventListener('change', async e => {
+  if (!_idfSel) return;
+  const d = await api('/api/identity/mode', { method: 'POST', body: JSON.stringify({ name: _idfSel, mode: e.target.value }) }).catch(x => ({ ok: false, error: x.message }));
+  toast(d.ok ? 'Mode → ' + e.target.value : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) loadIdentity().catch(() => {});
+});
+async function loadIdentitySnapshots() {
+  const box = document.getElementById('idf-snapshots');
+  try {
+    const d = await api('/api/snapshots');
+    const snaps = d.snapshots || [];
+    if (!snaps.length) { box.innerHTML = '<div class="log-empty">No snapshots yet — create one in the palette.</div>'; return; }
+    box.innerHTML = '';
+    snaps.slice(0, 8).forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = `<span class="tag off">snap</span><span class="nm">${esc(s.label || s.name)}</span><span class="sub">${esc(s.ts || '')}</span>` +
+        `<button class="btn warn" style="padding:2px 8px;font-size:10px;margin-left:auto;" data-idf-rest="${esc(s.name)}">Restore</button>`;
+      box.appendChild(row);
+    });
+    box.querySelectorAll('[data-idf-rest]').forEach(b => b.addEventListener('click', async () => {
+      if (!_idfSel) { toast('Select an identity file first', 'err'); return; }
+      if (!confirm('Restore ' + _idfSel + ' from snapshot ' + b.dataset.idfRest + '?')) return;
+      const d2 = await api('/api/snapshots/restore', { method: 'POST', body: JSON.stringify({ name: b.dataset.idfRest }) }).catch(x => ({ ok: false, error: x.message }));
+      toast(d2.ok ? 'Snapshot restored — identity' : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      if (d2.ok) { selectIdentityFile(_idfSel).catch(() => {}); }
+    }));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+
+/* ── v1.4: Configs panel ─────────────────────────────────────────────── */
+let _cfgSel = null;
+async function loadConfigs() {
+  const box = document.getElementById('configs-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/configs');
+    const configs = d.configs || [];
+    if (!configs.length) { box.innerHTML = '<div class="log-empty">No configs.</div>'; return; }
+    box.innerHTML = '';
+    for (const c of configs) {
+      const row = document.createElement('div');
+      row.className = 'idf-row' + (_cfgSel === c.name ? ' sel' : '');
+      row.dataset.cfg = c.name;
+      const modeCls = c.mode === 'per-harness' ? 'on' : (c.mode === 'atropos-only' ? 'bad' : 'off');
+      row.innerHTML =
+        `<span class="mcp-nm">${esc(c.name)}</span>` +
+        `<span class="tag ${modeCls}" style="margin-left:auto;">${esc((c.mode || 'separate')[0].toUpperCase())}</span>` +
+        `<span class="fsub" style="font-size:9.5px;color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;">${fmtBytes(c.size || 0)}</span>` +
+        `<span class="sub" style="flex:1 1 100%;">${esc(c.path || '')}</span>`;
+      row.addEventListener('click', () => selectConfigFile(c.name));
+      box.appendChild(row);
+    }
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+async function selectConfigFile(name) {
+  _cfgSel = name;
+  document.querySelectorAll('#configs-list .idf-row').forEach(r => r.classList.toggle('sel', r.dataset.cfg === name));
+  document.getElementById('configs-current').textContent = name;
+  document.getElementById('configs-editor').value = 'Loading…';
+  try {
+    const d = await api('/api/configs/show?name=' + encodeURIComponent(name));
+    document.getElementById('configs-editor').value = d.content || '';
+    const md = document.getElementById('configs-mode');
+    md.innerHTML = ['separate', 'merged', 'per-harness', 'atropos-only'].map(m => `<option value="${m}" ${m === d.mode ? 'selected' : ''}>${m}</option>`).join('');
+  } catch (e) { toast(e.message, 'err'); }
+}
+document.getElementById('btn-configs-save').addEventListener('click', async () => {
+  if (!_cfgSel) { toast('Select a config first', 'err'); return; }
+  const d = await api('/api/configs/save', { method: 'POST', body: JSON.stringify({ name: _cfgSel, content: document.getElementById('configs-editor').value }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? t('toast_saved') : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) loadConfigs().catch(() => {});
+});
+document.getElementById('configs-mode').addEventListener('change', async e => {
+  if (!_cfgSel) return;
+  const d = await api('/api/configs/mode', { method: 'POST', body: JSON.stringify({ name: _cfgSel, mode: e.target.value }) }).catch(x => ({ ok: false, error: x.message }));
+  toast(d.ok ? 'Mode → ' + e.target.value : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) loadConfigs().catch(() => {});
+});
+document.getElementById('btn-configs-rollback').addEventListener('click', async () => {
+  if (!_cfgSel) { toast('Select a config first', 'err'); return; }
+  const d = await api('/api/configs/rollback', { method: 'POST', body: JSON.stringify({ name: _cfgSel, n: 1 }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Rolled back ' + _cfgSel : (d.error || 'rollback failed'), d.ok ? 'ok' : 'err');
+  if (d.ok) selectConfigFile(_cfgSel).catch(() => {});
+});
+document.getElementById('btn-configs-validate').addEventListener('click', () => {
+  if (!_cfgSel) { toast('Select a config first', 'err'); return; }
+  const box = document.getElementById('configs-out');
+  const raw = document.getElementById('configs-editor').value;
+  try { JSON.parse(raw); box.innerHTML = '<div class="sh-banner ok">Valid JSON ✓</div>'; }
+  catch (e) {
+    box.innerHTML = `<div class="sh-banner bad">Not valid JSON — ${esc(e.message)}</div>`;
+    toast('YAML validation happens on save via the backend', 'err');
+  }
+});
+
+/* ── v1.4: Routing panel ─────────────────────────────────────────────── */
+const ROUTE_HARNESSES = ['clotho', 'lachesis', 'atropos', 'auto'];
+async function loadRouting() {
+  const box = document.getElementById('routing-table');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/routing');
+    document.getElementById('routing-state').textContent = `${d.enabled ? 'enabled' : 'disabled'} · default: ${esc(d.default || 'auto')}`;
+    const cats = d.categories || [];
+    if (!cats.length) { box.innerHTML = '<div class="log-empty">No categories.</div>'; return; }
+    box.innerHTML = '';
+    for (const c of cats) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = `<span class="nm" style="min-width:130px;">${esc(c.name)}</span>` +
+        `<select class="token-input" data-route-set="${esc(c.name)}" style="max-width:170px;">` +
+        ROUTE_HARNESSES.map(h => `<option value="${h}" ${h === c.harness ? 'selected' : ''}>${h}</option>`).join('') +
+        `</select>` +
+        `<span class="desc">current: <b style="color:var(--indigo-l);">${esc(c.harness || 'auto')}</b></span>`;
+      box.appendChild(row);
+    }
+    box.querySelectorAll('[data-route-set]').forEach(sel => sel.addEventListener('change', async () => {
+      sel.disabled = true;
+      const d2 = await api('/api/routing/set', { method: 'POST', body: JSON.stringify({ category: sel.dataset.routeSet, harness: sel.value }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(d2.ok ? `${sel.dataset.routeSet} → ${sel.value}` : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      sel.disabled = false;
+      if (d2.ok) loadRouting().catch(() => {});
+    }));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-routing-add').addEventListener('click', async () => {
+  const category = document.getElementById('routing-cat').value.trim();
+  const harness = document.getElementById('routing-harness').value.trim() || 'auto';
+  if (!category) { toast('Enter a category name', 'err'); return; }
+  const d = await api('/api/routing/add', { method: 'POST', body: JSON.stringify({ category, harness }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? `Added ${category} → ${harness}` : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) { document.getElementById('routing-cat').value = ''; loadRouting().catch(() => {}); }
+});
+
+/* ── v1.4: Files panel ───────────────────────────────────────────────── */
+let _filesPath = '';
+async function loadFiles() {
+  const box = document.getElementById('files-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/files/list?path=' + encodeURIComponent(_filesPath));
+    if (!d.ok) { box.innerHTML = `<span style="color:var(--red)">${esc(d.error || 'failed')}</span>`; return; }
+    renderFilesCrumb(d.root || '', d.path || '');
+    const entries = d.entries || [];
+    if (!entries.length) { box.innerHTML = '<div class="log-empty">Empty directory.</div>'; return; }
+    box.innerHTML = '';
+    for (const e of entries) {
+      const cell = document.createElement('div');
+      cell.className = 'file-cell';
+      const isDir = e.type === 'dir';
+      cell.innerHTML = `<span>${isDir ? '📁' : (iconForFile(e.name))}</span><span class="${isDir ? 'fd' : 'ff'}">${esc(e.name)}</span><span class="fsub">${isDir ? '' : fmtBytes(e.size)}</span>`;
+      cell.addEventListener('click', () => { if (isDir) { _filesPath = joinPath(_filesPath, e.name); loadFiles().catch(() => {}); } else previewFile(joinPath(_filesPath, e.name)); });
+      box.appendChild(cell);
+    }
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+function joinPath(base, name) { return (base ? base.replace(/\/+$/, '') + '/' : '') + name; }
+function renderFilesCrumb(root, path) {
+  const bc = document.getElementById('files-bc');
+  bc.innerHTML = '';
+  const rootEl = document.createElement('span');
+  rootEl.className = 'crumb';
+  rootEl.textContent = root;
+  rootEl.addEventListener('click', () => { _filesPath = ''; loadFiles().catch(() => {}); });
+  bc.appendChild(rootEl);
+  const rel = root ? path.replace(root, '').replace(/^\/+/, '') : path;
+  const parts = rel ? rel.split('/') : [];
+  let cur = '';
+  parts.forEach((p, i) => {
+    const sep = document.createElement('span'); sep.className = 'cur'; sep.textContent = '/'; bc.appendChild(sep);
+    const c = document.createElement('span');
+    c.className = i === parts.length - 1 ? 'cur' : 'crumb';
+    c.textContent = p;
+    if (i < parts.length - 1) {
+      cur = joinPath(cur, p);
+      const idx = cur;
+      c.addEventListener('click', () => { _filesPath = idx; loadFiles().catch(() => {}); });
+    }
+    bc.appendChild(c);
+  });
+}
+async function previewFile(path) {
+  const box = document.getElementById('files-preview');
+  document.getElementById('files-path').textContent = path;
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/files/read?path=' + encodeURIComponent(path));
+    if (!d.ok) { box.innerHTML = `<span style="color:var(--red)">${esc(d.error || 'not readable')}</span>`; return; }
+    const content = d.content || '';
+    const truncated = d.truncated ? '\n\n… [truncated]' : '';
+    box.textContent = content + truncated;
+    box.scrollTop = 0;
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-files-search').addEventListener('click', async () => {
+  const q = document.getElementById('files-q').value.trim();
+  const box = document.getElementById('files-preview');
+  document.getElementById('files-path').textContent = 'search: ' + q;
+  if (!q) { toast('Enter a search query', 'err'); return; }
+  try {
+    const d = await api('/api/files/search?q=' + encodeURIComponent(q));
+    const hits = d.hits || [];
+    box.innerHTML = hits.length
+      ? hits.map(h => `<div class="act-mini" style="cursor:pointer;" data-hit="${esc(h)}"><span class="ae">▸</span><span class="ad">${esc(h)}</span></div>`).join('')
+      : '<div class="log-empty">No matches.</div>';
+    box.querySelectorAll('[data-hit]').forEach(el => el.addEventListener('click', () => previewFile(el.dataset.hit)));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+});
+document.getElementById('files-q').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btn-files-search').click(); });
+
+/* ── v1.4: Models panel ──────────────────────────────────────────────── */
+async function loadModels() {
+  const box = document.getElementById('models-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/models');
+    const models = d.models || [];
+    document.getElementById('models-count').textContent = models.length + ' models';
+    const assign = d.assignments || {};
+    if (!models.length) { box.innerHTML = '<div class="log-empty">No models registered.</div>'; }
+    else {
+      box.innerHTML = '';
+      for (const m of models) {
+        const card = document.createElement('div');
+        card.className = 'bk-file';
+        card.innerHTML =
+          `<span class="nm">${esc(m.name)}</span>` +
+          `<span class="sz">${esc(m.model || m.name)} · ${esc(m.provider || 'any')}</span>` +
+          `<span class="dt">state: <b style="color:${m.enabled === false ? 'var(--red)' : 'var(--green)'};">${m.enabled === false ? 'disabled' : 'enabled'}</b>` +
+          (assign && Object.values(assign).includes(m.name) ? ' · assigned' : '') + '</span>' +
+          `<button class="btn danger" style="padding:3px 8px;font-size:10.5px;margin-top:8px;align-self:flex-start;" data-model-rm="${esc(m.name)}">Remove</button>`;
+        box.appendChild(card);
+      }
+    }
+    renderModelAssign(d.assignments || {}, d.models || []);
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+function renderModelAssign(assign, models) {
+  const box = document.getElementById('models-assign');
+  const names = models.map(m => m.name);
+  const opts = h => `<option value="">− none −</option>` + names.map(n => `<option value="${esc(n)}" ${assign[h] === n ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  box.innerHTML = ['hermes', 'claude', 'atropos'].map(h =>
+    `<label style="display:flex;align-items:center;gap:9px;font-size:12.5px;padding:8px 11px;background:rgba(15,23,42,.5);border:1px solid rgba(148,163,184,.13);border-radius:10px;">
+      <span style="min-width:70px;font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:1px;color:var(--muted);">${esc(h)}</span>
+      <select class="token-input" data-m-assign="${esc(h)}" style="flex:1;min-width:0;">${opts(h)}</select>
+    </label>`).join('');
+  box.querySelectorAll('[data-m-assign]').forEach(sel => sel.addEventListener('change', async () => {
+    sel.disabled = true;
+    const d = await api('/api/models/assign', { method: 'POST', body: JSON.stringify({ harness: sel.dataset.mAssign, name: sel.value }) }).catch(e => ({ ok: false, error: e.message }));
+    toast(d.ok ? `${sel.dataset.mAssign} → ${sel.value || 'unassigned'}` : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+    sel.disabled = false;
+    if (d.ok) loadModels().catch(() => {});
+  }));
+}
+document.getElementById('btn-models-add').addEventListener('click', async () => {
+  const name = document.getElementById('models-name').value.trim();
+  const model = document.getElementById('models-model').value.trim();
+  const base_url = document.getElementById('models-base').value.trim();
+  if (!name) { toast('Enter a model name', 'err'); return; }
+  const d = await api('/api/models/add', { method: 'POST', body: JSON.stringify({ name, model, base_url }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Added ' + name : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) {
+    document.getElementById('models-name').value = '';
+    document.getElementById('models-model').value = '';
+    document.getElementById('models-base').value = '';
+    loadModels().catch(() => {});
+  }
+});
+document.getElementById('models-list').addEventListener('click', async e => {
+  const b = e.target.closest('[data-model-rm]');
+  if (!b) return;
+  if (!confirm('Remove model ' + b.dataset.modelRm + '?')) return;
+  const d = await api('/api/models/remove', { method: 'POST', body: JSON.stringify({ name: b.dataset.modelRm }) }).catch(x => ({ ok: false, error: x.message }));
+  toast(d.ok ? 'Removed ' + b.dataset.modelRm : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) loadModels().catch(() => {});
+});
+
+/* ── v1.4: Webhooks panel ────────────────────────────────────────────── */
+async function loadWebhooks() {
+  const box = document.getElementById('hooks-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/webhooks');
+    const hooks = d.webhooks || [];
+    if (!hooks.length) { box.innerHTML = '<div class="log-empty">No webhooks registered.</div>'; return; }
+    box.innerHTML = '';
+    for (const h of hooks) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const on = h.enabled !== false;
+      row.innerHTML =
+        `<span class="tag ${on ? 'on' : 'off'}">${on ? 'on' : 'off'}</span>` +
+        `<span class="nm">${esc(h.name)}</span>` +
+        `<span class="desc">${esc(h.url || '')}</span>` +
+        `<span class="sub">${esc((h.events || []).join(', '))}</span>` +
+        `<button class="btn ${on ? 'warn' : ''}" style="padding:3px 8px;font-size:10.5px;" data-hook-toggle="${esc(h.name)}">${on ? 'Disable' : 'Enable'}</button>` +
+        `<button class="btn" style="padding:3px 8px;font-size:10.5px;" data-hook-test="${esc(h.name)}">Test</button>` +
+        `<button class="btn danger" style="padding:3px 8px;font-size:10.5px;" data-hook-rm="${esc(h.name)}">Remove</button>`;
+      box.appendChild(row);
+    }
+    box.querySelectorAll('[data-hook-toggle]').forEach(b => b.addEventListener('click', async () => {
+      const action = b.textContent.toLowerCase() === 'enable' ? 'enable' : 'disable';
+      const d2 = await api('/api/webhooks/' + action, { method: 'POST', body: JSON.stringify({ name: b.dataset.hookToggle }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(d2.ok ? b.dataset.hookToggle + ' → ' + action + 'd' : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      if (d2.ok) loadWebhooks().catch(() => {});
+    }));
+    box.querySelectorAll('[data-hook-test]').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = '…';
+      const d2 = await api('/api/webhooks/test', { method: 'POST', body: JSON.stringify({ name: b.dataset.hookTest }) }).catch(e => ({ ok: false, error: e.message }));
+      const r = d2.result || {};
+      toast(r && r.ok !== false ? `Ping ok · ${r.latency_ms != null ? r.latency_ms + 'ms' : ''}` : ((r && r.error) || d2.error || 'ping failed'), r && r.ok !== false ? 'ok' : 'err');
+      b.disabled = false; b.textContent = 'Test';
+    }));
+    box.querySelectorAll('[data-hook-rm]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Remove webhook ' + b.dataset.hookRm + '?')) return;
+      const d2 = await api('/api/webhooks/remove', { method: 'POST', body: JSON.stringify({ name: b.dataset.hookRm }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(d2.ok ? 'Removed ' + b.dataset.hookRm : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      if (d2.ok) loadWebhooks().catch(() => {});
+    }));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-hook-add').addEventListener('click', async () => {
+  const name = document.getElementById('hook-name').value.trim();
+  const url = document.getElementById('hook-url').value.trim();
+  const events = document.getElementById('hook-events').value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!name || !url) { toast('Enter name and URL', 'err'); return; }
+  const d = await api('/api/webhooks/add', { method: 'POST', body: JSON.stringify({ name, url, events }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Added ' + name : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) {
+    document.getElementById('hook-name').value = '';
+    document.getElementById('hook-url').value = '';
+    document.getElementById('hook-events').value = '';
+    loadWebhooks().catch(() => {});
+  }
+});
+
+/* ── v1.4: Pairing panel ─────────────────────────────────────────────── */
+async function loadPairing() {
+  const share = document.getElementById('pair-share');
+  share.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/lan/share');
+    share.innerHTML =
+      `<div class="kv"><span class="k">URL</span><span class="v" style="color:var(--cyan);">${esc(d.url || '—')}</span></div>` +
+      `<div class="kv"><span class="k">IP</span><span class="v">${esc(d.ip || '—')}</span></div>` +
+      `<div class="kv"><span class="k">Port</span><span class="v">${esc(String(d.port))}</span></div>` +
+      `<div class="btn-row just-end"><button class="btn" id="btn-pair-copy">Copy URL</button></div>` +
+      `<div class="edit-label">decorative QR</div>` +
+      `<div class="qr-frame" style="display:block;margin:0;background:#fff;border-radius:10px;padding:10px;overflow-x:auto;"><pre style="font-size:7px;line-height:8px;letter-spacing:0;color:#000;">${esc((d.qr || []).join('\n'))}</pre></div>`;
+    const cb = document.getElementById('btn-pair-copy');
+    if (cb) cb.addEventListener('click', () => copyText(d.url || ''));
+    if (document.getElementById('sb-share-url')) document.getElementById('sb-share-url').textContent = d.url || '';
+  } catch (e) { share.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+  loadDevices().catch(() => {});
+}
+async function loadDevices() {
+  const box = document.getElementById('pair-devices');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/devices');
+    const devices = d.devices || [];
+    const pending = devices.filter(x => !x.approved);
+    const approved = devices.filter(x => x.approved);
+    document.getElementById('pair-device-state').textContent = `${pending.length} pending · ${approved.length} approved`;
+    if (!devices.length) { box.innerHTML = '<div class="log-empty">No devices yet — open the share URL on a phone.</div>'; return; }
+    const pendHtml = pending.length
+      ? pending.map(x =>
+        `<div class="row"><span class="tag bad">pending</span><span class="nm">${esc(x.name || 'unknown')}</span><span class="sub">${esc(x.id || '')}</span>` +
+        `<span class="desc">${esc(x.last_seen || '')}</span>` +
+        `<button class="btn green" style="padding:3px 8px;font-size:10.5px;" data-dev-app="${esc(x.id)}">Approve</button>` +
+        `<button class="btn danger" style="padding:3px 8px;font-size:10.5px;" data-dev-den="${esc(x.id)}">Deny</button></div>`).join('')
+      : '<div class="log-empty">No pending devices.</div>';
+    const apprHtml = approved.length
+      ? approved.map(x =>
+        `<div class="row"><span class="tag on">approved</span><span class="nm">${esc(x.name || 'unknown')}</span><span class="sub">${esc(x.fingerprint || x.id || '')}</span>` +
+        `<span class="desc">last seen: ${esc(x.last_seen || '—')}</span></div>`).join('')
+      : '';
+    box.innerHTML = (pending.length ? '<div class="edit-label">pending</div>' : '') + pendHtml +
+      (approved.length ? '<div class="edit-label">approved</div>' : '') + apprHtml;
+    box.querySelectorAll('[data-dev-app]').forEach(b => b.addEventListener('click', async () => {
+      const d2 = await api('/api/devices/approve', { method: 'POST', body: JSON.stringify({ id: b.dataset.devApp }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(d2.ok ? 'Device approved' : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      if (d2.ok) loadDevices().catch(() => {});
+    }));
+    box.querySelectorAll('[data-dev-den]').forEach(b => b.addEventListener('click', async () => {
+      const d2 = await api('/api/devices/deny', { method: 'POST', body: JSON.stringify({ id: b.dataset.devDen }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(d2.ok ? 'Device denied' : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      if (d2.ok) loadDevices().catch(() => {});
+    }));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+
+/* ── v1.4: Fleet panel ───────────────────────────────────────────────── */
+async function loadFleet() {
+  const box = document.getElementById('fleet-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/fleet');
+    const boxes = d.boxes || [];
+    if (!boxes.length) { box.innerHTML = '<div class="log-empty">No boxes yet — add one to start pinging.</div>'; return; }
+    box.innerHTML = '';
+    for (const b of boxes) {
+      const st = (b.status || 'unknown').toLowerCase();
+      const dotCls = st === 'ok' ? 'ok' : (st === 'down' ? 'bad' : '');
+      const card = document.createElement('div');
+      card.className = 'bk-file';
+      const last = b.last_status || b.status || 'unknown';
+      card.innerHTML =
+        `<span class="nm">${esc(b.name)}</span>` +
+        `<span class="sz">${esc(b.url || '')}</span>` +
+        `<span class="dt"><span class="pulse ${dotCls}"></span> <b style="color:${st === 'ok' ? 'var(--green)' : st === 'down' ? 'var(--red)' : 'var(--muted)'};">${esc(last)}</b>` +
+        (b.last_seen ? ` · ${esc(String(b.last_seen).slice(0, 19))}` : '') + '</span>' +
+        `<button class="btn danger" style="padding:3px 8px;font-size:10.5px;margin-top:8px;align-self:flex-start;" data-box-rm="${esc(b.id)}">Remove</button>`;
+      box.appendChild(card);
+    }
+    box.querySelectorAll('[data-box-rm]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Remove box from fleet?')) return;
+      const d2 = await api('/api/fleet/remove', { method: 'POST', body: JSON.stringify({ id: b.dataset.boxRm }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(d2.ok ? 'Box removed' : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      if (d2.ok) loadFleet().catch(() => {});
+    }));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-fleet-add').addEventListener('click', async () => {
+  const name = document.getElementById('fleet-name').value.trim();
+  const url = document.getElementById('fleet-url').value.trim();
+  const token = document.getElementById('fleet-token').value.trim();
+  if (!name || !url) { toast('Enter name and URL', 'err'); return; }
+  const d = await api('/api/fleet/add', { method: 'POST', body: JSON.stringify({ name, url, token }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Box added' : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) {
+    document.getElementById('fleet-name').value = '';
+    document.getElementById('fleet-url').value = '';
+    document.getElementById('fleet-token').value = '';
+    loadFleet().catch(() => {});
+  }
+});
+document.getElementById('btn-fleet-ping').addEventListener('click', async () => {
+  toast('Pinging fleet…', 'ok');
+  const d = await api('/api/fleet/ping', { method: 'POST', body: JSON.stringify({ id: '' }) }).catch(e => ({ ok: false, error: e.message }));
+  if (!d.ok) { toast(d.error || 'ping failed', 'err'); return; }
+  const rows = d.results || [];
+  const up = rows.filter(r => r && r.ok).length;
+  const details = rows.map(r => r && r.ok ? `${r.name} ✓ ${r.latency_ms != null ? r.latency_ms + 'ms' : ''}` : `${(r && r.name) || '?'} ✗ ${(r && r.error) || ''}`).join(' · ');
+  toast(`Fleet: ${up}/${rows.length} up`, up === rows.length ? 'ok' : 'err');
+  document.getElementById('fleet-list').innerHTML = `<div class="sh-banner ${up === rows.length ? 'ok' : 'bad'}">${esc(details || 'no boxes')}</div>` + document.getElementById('fleet-list').innerHTML;
+  loadFleet().catch(() => {});
+});
+
+/* ── v1.4: Memory panel ──────────────────────────────────────────────── */
+async function loadMemory() {
+  const box = document.getElementById('memory-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/memory/notes');
+    const st = d.stats || {};
+    document.getElementById('memory-stats').textContent = `${st.count || 0} notes`;
+    const notes = d.notes || [];
+    if (!notes.length) { box.innerHTML = '<div class="log-empty">No notes yet — add one.</div>'; return; }
+    box.innerHTML = '';
+    notes.slice(0, 40).forEach(n => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const tags = (n.tags || []).map(tg => `<span class="tag off">${esc(tg)}</span>`).join(' ');
+      row.innerHTML = `<span class="nm">${esc(String(n.text || '').slice(0, 60))}</span>` +
+        `<span class="desc">${esc(String(n.ts || '').slice(0, 19))}</span>` + tags +
+        `<button class="btn danger" style="padding:2px 8px;font-size:10px;" data-note-rm="${esc(n.id)}">✕</button>`;
+      box.appendChild(row);
+    });
+    box.querySelectorAll('[data-note-rm]').forEach(b => b.addEventListener('click', async () => {
+      const d2 = await api('/api/memory/delete', { method: 'POST', body: JSON.stringify({ id: b.dataset.noteRm }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(d2.ok ? 'Note deleted' : (d2.error || t('toast_err')), d2.ok ? 'ok' : 'err');
+      if (d2.ok) loadMemory().catch(() => {});
+    }));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-memory-add').addEventListener('click', async () => {
+  const text = document.getElementById('memory-text').value.trim();
+  const tags = document.getElementById('memory-tags').value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!text) { toast('Enter note text', 'err'); return; }
+  const d = await api('/api/memory/add', { method: 'POST', body: JSON.stringify({ text, tags }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Note added ✓' : (d.error || t('toast_err')), d.ok ? 'ok' : 'err');
+  if (d.ok) {
+    document.getElementById('memory-text').value = '';
+    document.getElementById('memory-tags').value = '';
+    loadMemory().catch(() => {});
+  }
+});
+document.getElementById('btn-memory-search').addEventListener('click', async () => {
+  const q = document.getElementById('memory-q').value.trim();
+  const box = document.getElementById('memory-results');
+  if (!q) { toast('Enter a query', 'err'); return; }
+  try {
+    const d = await api('/api/memory/search?q=' + encodeURIComponent(q));
+    const results = d.results || [];
+    box.innerHTML = results.length
+      ? results.map(r => `<div class="act-mini"><span class="ae">${esc(r.score != null ? r.score.toFixed(2) : '')}</span><span class="ad" title="${esc(r.text || '')}">${esc(String(r.text || '').slice(0, 90))}</span></div>`).join('')
+      : '<div class="log-empty">No matches.</div>';
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+});
+document.getElementById('memory-q').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btn-memory-search').click(); });
+
+/* ── v1.4: Budget panel ──────────────────────────────────────────────── */
+async function loadBudget() {
+  const stats = document.getElementById('budget-stats');
+  stats.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/budget');
+    const u = d.usage || {};
+    document.getElementById('budget-state').textContent = u.over ? 'OVER BUDGET' : (u.budget ? 'within budget' : 'no budget set');
+    document.getElementById('budget-state').style.color = u.over ? 'var(--red)' : (u.budget ? 'var(--green)' : 'var(--muted)');
+    const total = u.total || 0;
+    const budget = u.budget || 0;
+    const pct = u.pct != null ? u.pct : (budget > 0 ? Math.round(total / budget * 1000) / 10 : 0);
+    stats.innerHTML =
+      `<div class="stat-row">` +
+      `<div class="stat-tile ${u.over ? 'bad' : 'indigo'}"><div class="n mono-tile">${total.toLocaleString()}</div><div class="l">tokens used</div></div>` +
+      `<div class="stat-tile ${u.over ? 'bad' : 'cyan'}"><div class="n mono-tile">${budget ? budget.toLocaleString() : '—'}</div><div class="l">monthly budget</div></div>` +
+      `<div class="stat-tile ${u.over ? 'bad' : (pct >= 80 ? 'yellow' : 'green')}"><div class="n">${pct}%</div><div class="l">of budget</div></div>` +
+      `</div>`;
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.innerHTML = `<div style="width:${Math.min(100, pct)}%" class="${pct >= 100 ? 'danger' : pct >= 80 ? 'warn' : ''}"></div>`;
+    const barLabel = document.createElement('div');
+    barLabel.className = 'bar-label';
+    barLabel.innerHTML = `<span>budget usage</span><span>${pct}%${u.over ? ' — OVER' : ''}</span>`;
+    stats.appendChild(bar);
+    stats.appendChild(barLabel);
+    const per = u.per_router || {};
+    const routerBox = document.getElementById('budget-per-router');
+    routerBox.innerHTML = Object.keys(per).length
+      ? '<div class="edit-label">per router / channel</div>' + Object.entries(per).map(([name, r]) =>
+        `<div class="kv"><span class="k">${esc(name)}</span><span class="v">${(Number(r && r.total) || 0).toLocaleString()} tokens · est ${(Number(r && r.estimated) || 0).toLocaleString()} + live ${(Number(r && r.live) || 0).toLocaleString()}</span></div>`).join('')
+      : '';
+  } catch (e) { stats.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+document.getElementById('btn-budget-check').addEventListener('click', async () => {
+  toast('Running budget gate…', 'ok');
+  try {
+    const d = await api('/api/budget/check', { method: 'POST', body: '{}' });
+    const out = document.getElementById('budget-out');
+    const r = d.result || {};
+    out.innerHTML = `<div class="sh-banner ${r.over ? 'bad' : 'ok'}">${esc(String(r.msg || r.message || JSON.stringify(r)).slice(0, 220))}</div>`;
+    toast(r.over ? 'Over budget — gate fired' : 'Budget check passed', r.over ? 'err' : 'ok');
+    loadBudget().catch(() => {});
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ── v1.4: Activity panel ────────────────────────────────────────────── */
+async function loadActivity() {
+  const stats = document.getElementById('act-stats');
+  const list = document.getElementById('act-list');
+  stats.innerHTML = '<div class="log-empty">Loading…</div>';
+  list.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/activity');
+    const f = d.feed || {};
+    const cats = [
+      { k: 'updates', l: 'updates', c: 'indigo' },
+      { k: 'alerts', l: 'alerts', c: 'bad' },
+      { k: 'backups', l: 'backups', c: 'green' },
+      { k: 'jailbreaks', l: 'jailbreaks', c: 'violet' },
+      { k: 'sessions', l: 'sessions', c: 'cyan' },
+      { k: 'routers', l: 'routers', c: 'yellow' },
+    ];
+    stats.innerHTML = cats.map(c =>
+      `<div class="stat-tile ${c.c}"><div class="n">${Number(f[c.k]) || 0}</div><div class="l">${c.l}</div></div>`).join('');
+    const events = f.events || [];
+    if (!events.length) { list.innerHTML = '<div class="log-empty">No events in the last 24h yet.</div>'; return; }
+    list.innerHTML = events.map(e =>
+      `<div class="act-mini"><span class="at">${esc(String(e.ts || '').slice(11, 19))}</span><span class="ae">${esc(e.event || '')}</span><span class="ad" title="${esc(e.detail || '')}">${esc(e.detail || '')}</span></div>`).join('');
+  } catch (e) {
+    stats.innerHTML = '';
+    list.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  }
+}
+
+/* ── v1.4: Announce panel + overview extras ──────────────────────────── */
+async function loadAnnounce() {
+  const box = document.getElementById('announce-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/announce');
+    const feed = d.feed || [];
+    if (!feed.length) { box.innerHTML = '<div class="log-empty">Nothing to announce.</div>'; return; }
+    box.innerHTML = '';
+    for (const it of feed) {
+      const row = document.createElement('div');
+      row.className = 'sh-banner ' + (it.type === 'version' ? 'bad' : 'ok');
+      const ico = it.type === 'tip' ? '💡' : (it.type === 'changelog' ? '📦' : '🔄');
+      row.innerHTML = `<span>${ico}</span><span style="flex:1;">${esc(it.type)}: ${esc(it.text || '')}</span>${it.dismissible ? `<button class="btn" style="padding:3px 8px;font-size:10.5px;" data-ann-dismiss="${esc(it.id)}">Dismiss</button>` : ''}`;
+      box.appendChild(row);
+    }
+    box.querySelectorAll('[data-ann-dismiss]').forEach(b => b.addEventListener('click', async () => {
+      const d2 = await api('/api/announce/dismiss', { method: 'POST', body: JSON.stringify({ id: b.dataset.annDismiss }) }).catch(e => ({ ok: false, error: e.message }));
+      if (d2.ok) loadAnnounce().catch(() => {});
+    }));
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+async function _loadActivityEvents(limit) {
+  const d = await api('/api/activity');
+  return ((d.feed || {}).events || []).slice(0, limit);
+}
+async function loadOverviewMoirai() {
+  const box = document.getElementById('ov-moirai');
+  if (!box) return;
+  try {
+    const [st, act] = await Promise.all([api('/api/status'), _loadActivityEvents(8)]);
+    const rt = st.runtime || {};
+    const trio = [
+      { m: 'Clotho', sub: 'Hermes', st: rt.hermes_agent, meta: rt.hermes_agent ? 'running' : 'not found' },
+      { m: 'Lachesis', sub: 'Claude', st: rt.claude, meta: rt.version || (rt.claude ? 'present' : 'not found') },
+      { m: 'Atropos', sub: 'self', st: true, meta: 'v' + (st.version || '') },
+    ];
+    box.innerHTML = trio.map(x => {
+      const dot = x.st ? '' : ' bad';
+      const stl = x.st ? '' : 'style="color:var(--red);"';
+      return `<div class="moirai-col"><div class="mname">${x.m}</div><div class="msub">${x.sub}</div><div class="mdesc" style="min-height:auto;">${x.meta || '—'}</div><span class="mstat"><span class="moirai-dot${dot}"></span><span ${stl}>${x.st ? 'up' : 'down'}</span></span></div>`;
+    }).join('');
+    const mini = document.getElementById('ov-activity-mini');
+    if (!act.length) { mini.innerHTML = '<div class="log-empty">No activity in the last 24h.</div>'; return; }
+    mini.innerHTML = act.map(e =>
+      `<div class="act-mini"><span class="at">${esc(String(e.ts || '').slice(11, 19))}</span><span class="ae">${esc(e.event || '')}</span><span class="ad" title="${esc(e.detail || '')}">${esc(e.detail || '')}</span></div>`).join('');
+  } catch (_) {}
+}
+
+/* ── v1.4: share + focus mode ────────────────────────────────────────── */
+function copyText(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => toast('Copied ✓', 'ok')).catch(() => fallbackCopy(text));
+  } else fallbackCopy(text);
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); toast('Copied ✓', 'ok'); } catch (_) { toast('Copy failed', 'err'); }
+  ta.remove();
+}
+async function openShareModal() {
+  const bd = document.getElementById('share-backdrop');
+  bd.classList.add('open');
+  try {
+    const d = await api('/api/lan/share');
+    document.getElementById('share-url').value = d.url || '';
+    const qrBox = document.getElementById('share-qr');
+    qrBox.textContent = '';
+    if (d.qr && d.qr.length) {
+      const max = Math.max(...d.qr.map(l => l.length));
+      qrBox.textContent = d.qr.map(l => l + ' '.repeat(Math.max(0, max - l.length))).join('\n');
+    } else qrBox.textContent = '…';
+    if (document.getElementById('sb-share-url')) document.getElementById('sb-share-url').textContent = d.url || '';
+  } catch (e) { toast(e.message, 'err'); }
+}
+function closeShareModal() { document.getElementById('share-backdrop').classList.remove('open'); }
+function toggleFocus() {
+  document.body.classList.toggle('focus');
+  const btn = document.getElementById('btn-focus');
+  const on = document.body.classList.contains('focus');
+  btn.textContent = on ? '⛶ Exit focus' : '⛶ Focus';
+  btn.style.borderColor = on ? 'rgba(52,211,153,.5)' : '';
+  toast(on ? 'Focus mode on — everything but the active panel is hidden' : 'Focus mode off', 'ok');
+}
+document.getElementById('btn-share-top').addEventListener('click', openShareModal);
+document.getElementById('sb-share').addEventListener('click', openShareModal);
+document.getElementById('btn-share-close').addEventListener('click', closeShareModal);
+document.getElementById('share-backdrop').addEventListener('click', e => { if (e.target.id === 'share-backdrop') closeShareModal(); });
+document.getElementById('btn-share-copy').addEventListener('click', () => copyText(document.getElementById('share-url').value));
+document.getElementById('btn-share-chat').addEventListener('click', () => { closeShareModal(); window.open('./chat.html', '_blank'); });
+document.getElementById('btn-focus').addEventListener('click', toggleFocus);
+
+/* ── shared helpers (v1.4) ───────────────────────────────────────────── */
+function fmtBytes(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+function iconForFile(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const map = { py: '🐍', js: '🟨', ts: '🟦', json: '🧾', yaml: '⚙', yml: '⚙', md: '📝', txt: '📄', html: '🌐', css: '🎨', sh: '⌨', sql: '🗄', log: '📜', ttf: '🔤', png: '🖼', svg: '🖼' };
+  return map[ext] || '📄';
+}
+
 /* ── SSE live hub (all panels) ──────────────────────────────────────── */
 let _eventSource = null;
 function startLiveHub() {
@@ -2925,13 +4256,27 @@ function startLiveHub() {
     loadStatus().catch(() => {});
     loadStripAnalytics().catch(() => {});
     const p = currentPanel();
-    if (p === 'overview') { loadRouter().catch(() => {}); loadOverviewStats().catch(() => {}); }
+    if (p === 'overview') { loadRouter().catch(() => {}); loadOverviewStats().catch(() => {}); loadOverviewMoirai().catch(() => {}); }
     if (p === 'logs' && !_logStreamActive) loadLogs().catch(() => {});
     if (p === 'routers') loadRouterModels().catch(() => {});
     if (p === 'effort') loadEffort().catch(() => {});
     if (p === 'market') loadMarket().catch(() => {});
     if (p === 'extensions') loadExtensions().catch(() => {});
+    if (p === 'mcp') loadMcp().catch(() => {});
+    if (p === 'identity') loadIdentity().catch(() => {});
+    if (p === 'configs') loadConfigs().catch(() => {});
+    if (p === 'routing') loadRouting().catch(() => {});
+    if (p === 'files') loadFiles().catch(() => {});
+    if (p === 'models') loadModels().catch(() => {});
+    if (p === 'webhooks') loadWebhooks().catch(() => {});
+    if (p === 'pairing') loadPairing().catch(() => {});
+    if (p === 'memory') loadMemory().catch(() => {});
+    if (p === 'budget') loadBudget().catch(() => {});
+    if (p === 'activity') loadActivity().catch(() => {});
+    if (p === 'announce') loadAnnounce().catch(() => {});
   }, refreshMs);
+  // fleet refresh: 30s regardless of which panel is open
+  setInterval(() => { if (getToken() && currentPanel() === 'fleet') loadFleet().catch(() => {}); }, 30000);
   // PWA: register the service worker (true offline)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

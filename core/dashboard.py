@@ -1989,6 +1989,29 @@ def api_chat_sessions():
     return {"ok": True, "sessions": chat.session_list(), "stats": chat.stats()}
 
 
+def api_chat_session(session_id=""):
+    """GET /api/chat/session/<id> — messages of one session."""
+    from . import chat
+    if not session_id:
+        return {"ok": False, "error": "session_id required"}
+    try:
+        return {"ok": True, "session_id": session_id,
+                "messages": chat.session_messages(session_id)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_chat_verify_share(token=""):
+    """GET /api/chat/verify-share?token= — one-shot share link consumer."""
+    from . import links
+    if not token:
+        return {"ok": False, "error": "token required"}
+    res = links.verify(token)
+    if not res.get("ok"):
+        return {"ok": False, "error": "invalid or used share link"}
+    return {"ok": True, "session_id": res.get("session_id")}
+
+
 def api_chat_send(payload):
     """POST /api/chat/send {session_id?, text, harness?, effort?}."""
     from . import chat
@@ -2224,6 +2247,11 @@ class Handler(BaseHTTPRequestHandler):
             return api_configs_show((q.get("name") or [""])[0])
         if path == "/api/chat/stats":
             return api_chat_sessions()
+        if path.startswith("/api/chat/session/"):
+            sid = path.split("/api/chat/session/", 1)[1]
+            return api_chat_session(sid)
+        if path == "/api/chat/verify-share":
+            return api_chat_verify_share((q.get("token") or [""])[0])
         if path in api:
             return api[path]()
         if path == "/api/logs":

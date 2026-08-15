@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 
 from . import config, detect, doctor, patches, router, settings
+from . import fleet
 from .backup import create as backup_create, list_backups
 from .watch import run_watch
 
@@ -267,6 +268,14 @@ TUI_PANELS = [
     ("c", "config", "Config", "show config"),
     ("e", "effort", "Effort", "per-harness effort tiers"),
     ("m", "extensions", "Extensions", "skills & plugins"),
+    ("F", "fleet", "Fleet", "multi-box health"),
+    ("I", "identity", "Identity", "SOUL/AGENTS/SYSTEM modes"),
+    ("C", "configs", "Configs", "universal config manager"),
+    ("M", "memory", "Memory", "RAG notes + search"),
+    ("A", "audit", "Audit", "resource matrix"),
+    ("B", "budget", "Budget", "usage & quota"),
+    ("S", "snapshots", "Snapshots", "gallery + restore"),
+    ("T", "activity", "Activity", "24h timeline"),
     ("q", "quit", "Quit", "exit"),
 ]
 
@@ -284,6 +293,133 @@ def render_extensions(w: int) -> None:
             print(f"  [{state}] {e['kind']:<7} {e['source']:<7} {C_BOLD}{e['name']}{C_RESET}")
     print()
     print(f"  {C_BOLD}[1]{C_RESET} Skills   {C_BOLD}[2]{C_RESET} Plugins   {C_BOLD}[3]{C_RESET} Back")
+    footer(w)
+
+
+def render_fleet(w: int) -> None:
+    """Fleet panel: multi-box health."""
+    from . import fleet
+    header("Fleet", "multi-box health grid")
+    boxes = fleet.list_boxes()
+    if not boxes:
+        print("  (no fleet boxes registered)")
+    else:
+        for b in boxes[:12]:
+            st = b.get("last_status", {})
+            lat = st.get("latency_ms")
+            ok = st.get("ok")
+            icon = C_GREEN + "OK" + C_RESET if ok else (C_RED + "FAIL" + C_RESET if ok is False else C_DIM + "—" + C_RESET)
+            print(f"  {icon} {C_BOLD}{b['name']:<16}{C_RESET} {b['url']:<40} {lat if lat is not None else '—'}ms")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Ping all   {C_BOLD}[2]{C_RESET} Back")
+    footer(w)
+
+
+def render_identity(w: int) -> None:
+    """Identity panel: universal identity files + modes."""
+    from . import identity
+    header("Identity", "SOUL / AGENTS / SYSTEM / GUEST / CODE_STYLE")
+    files = identity.list_files()
+    if not files:
+        print("  (no identity files yet)")
+    else:
+        for f in files[:20]:
+            mode = f.get("mode", "shared")
+            mode_icon = {"shared": "S", "separate": "H", "atropos-only": "A+🔒"}.get(mode, mode)
+            print(f"  [{mode_icon}] {C_BOLD}{f['name']:<16}{C_RESET} {f.get('size', 0):>8}B"
+                  f"  {C_DIM}{', '.join(f.get('consumed_by', []))}{C_RESET}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Sync all shared   {C_BOLD}[2]{C_RESET} Back")
+    footer(w)
+
+
+def render_configs(w: int) -> None:
+    """Configs panel: universal config manager."""
+    from . import conflayer
+    header("Configs", "hermes / claude / router / atropos")
+    configs = conflayer.list_configs()
+    for c in configs[:16]:
+        state = "exists" if c.get("exists") else C_DIM + "missing" + C_RESET
+        print(f"  {c['mode']:<10} {C_BOLD}{c['name']:<22}{C_RESET} {state}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Validate all   {C_BOLD}[2]{C_RESET} Back")
+    footer(w)
+
+
+def render_memory(w: int) -> None:
+    """Memory panel: RAG notes."""
+    from . import memory
+    header("Memory", "notes + keyword search")
+    notes = memory.list()[:20]
+    if not notes:
+        print("  (no memory notes yet)")
+    else:
+        for n in notes:
+            print(f"  {C_CYAN}{n['id'][:8]}{C_RESET}  {n['text'][:70]}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Stats   {C_BOLD}[2]{C_RESET} Back")
+    footer(w)
+
+
+def render_audit(w: int) -> None:
+    """Audit panel: complete-picture resource matrix."""
+    from . import audit
+    header("Audit", "resource -> hermes / claude / atropos")
+    rows = audit.table()
+    stats = audit.summary()
+    print(f"  {C_DIM}canonical={stats.get('canonical', 0)} monitored={stats.get('monitored', 0)} "
+          f"ignored={stats.get('ignored', 0)} total={stats.get('total', 0)}{C_RESET}")
+    for r in rows[:22]:
+        status = r.get("atropos_status", "")
+        color = C_GREEN if status == "canonical" else (C_YELLOW if status == "monitored" else C_DIM)
+        print(f"  {color}{r['resource']:<18}{C_RESET} {status:<10} {r.get('recommendation', '')}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Back")
+    footer(w)
+
+
+def render_budget(w: int) -> None:
+    """Budget panel: usage & quota gate."""
+    from . import budget
+    header("Budget", "per-router token usage")
+    u = budget.usage()
+    pct = f"{u.get('pct', 0):.0f}%" if u.get("budget") else "unlimited"
+    print(f"  total: {u.get('total', 0):,} tokens  budget: {u.get('budget', 0):,} ({pct})"
+          f"  over: {C_RED if u.get('over') else C_GREEN}{u.get('over', False)}{C_RESET}")
+    for r, toks in u.get("per_router", {}).items():
+        print(f"    {C_CYAN}{r:<10}{C_RESET} {toks:,}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Check now (alert/failover)   {C_BOLD}[2]{C_RESET} Back")
+    footer(w)
+
+
+def render_snapshots(w: int) -> None:
+    """Snapshots panel: gallery + restore."""
+    from . import snapshots
+    header("Snapshots", "config + identity + settings")
+    items = snapshots.list_snapshots()
+    if not items:
+        print("  (no snapshots yet)")
+    else:
+        for s in items[:10]:
+            print(f"  {C_CYAN}{s['name'][:42]}{C_RESET} {s.get('size_mb', 0):>6}MB  {s.get('label', '')}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Create snapshot   {C_BOLD}[2]{C_RESET} Back")
+    footer(w)
+
+
+def render_activity(w: int) -> None:
+    """Activity panel: 24h timeline."""
+    from . import activity
+    header("Activity", "what happened on this box")
+    feed = activity.feed()
+    print(f"  updates={feed.get('updates', 0)}  alerts={feed.get('alerts', 0)}  "
+          f"backups={feed.get('backups', 0)}  jailbreaks={feed.get('jailbreaks', 0)}  "
+          f"sessions={feed.get('sessions', 0)}  routers={feed.get('routers', 0)}")
+    for e in feed.get("events", [])[:20]:
+        print(f"  {C_DIM}{e['ts'][:19]}{C_RESET} {C_CYAN}{e['event']:<14}{C_RESET} {e.get('detail', '')[:50]}")
+    print()
+    print(f"  {C_BOLD}[1]{C_RESET} Back")
     footer(w)
 
 
@@ -400,6 +536,45 @@ def run() -> None:
             elif key in ("m", "extensions"):
                 _history_push("extensions")
                 render_extensions(w)
+                _wait_key()
+            elif key in ("F", "fleet"):
+                _history_push("fleet")
+                render_fleet(w)
+                k2 = _read_key()
+                if k2 == "1":
+                    print(f"\n  {C_YELLOW}Pinging fleet...{C_RESET}")
+                    rows = fleet.ping("all")
+                    for r in rows:
+                        icon = "OK" if r.get("ok") else "FAIL"
+                        print(f"    [{icon}] {r['name']}: {r.get('latency_ms', '—')}ms — {r.get('error') or r.get('version', '')}")
+                    _wait_key()
+            elif key in ("I", "identity"):
+                _history_push("identity")
+                render_identity(w)
+                _wait_key()
+            elif key in ("C", "configs"):
+                _history_push("configs")
+                render_configs(w)
+                _wait_key()
+            elif key in ("M", "memory"):
+                _history_push("memory")
+                render_memory(w)
+                _wait_key()
+            elif key in ("A", "audit"):
+                _history_push("audit")
+                render_audit(w)
+                _wait_key()
+            elif key in ("B", "budget"):
+                _history_push("budget")
+                render_budget(w)
+                _wait_key()
+            elif key in ("S", "snapshots"):
+                _history_push("snapshots")
+                render_snapshots(w)
+                _wait_key()
+            elif key in ("T", "activity"):
+                _history_push("activity")
+                render_activity(w)
                 _wait_key()
     except KeyboardInterrupt:
         pass
