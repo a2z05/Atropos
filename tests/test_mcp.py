@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -24,8 +25,13 @@ class MCPBase(unittest.TestCase):
         self.home = Path(self.tmp)
         os.environ["ATROPOS_HOME"] = str(self.home)
         os.environ["HERMES_HOME"] = str(self.home / ".hermes")
+        # detect._home() reads the real ~ — pin it to the temp dir so claude
+        # discovery/projection never touch the developer's real ~/.claude*
+        self._orig_home_fn = mcp.detect._home
+        mcp.detect._home = lambda: self.home
 
     def tearDown(self):
+        mcp.detect._home = self._orig_home_fn
         shutil.rmtree(self.tmp, ignore_errors=True)
         for k, orig in (("ATROPOS_HOME", self._a), ("HERMES_HOME", self._h)):
             if orig is not None:
@@ -34,7 +40,10 @@ class MCPBase(unittest.TestCase):
                 os.environ.pop(k, None)
 
     def registry(self) -> list:
-        return json.loads((self.home / "mcp_servers.json").read_text(encoding="utf-8"))
+        p = self.home / "mcp_servers.json"
+        if not p.exists():
+            return []
+        return json.loads(p.read_text(encoding="utf-8"))
 
 
 class RegistryTests(MCPBase):
@@ -218,8 +227,8 @@ class ProbeTests(MCPBase):
         self.assertFalse(st["ok"])
 
     def test_probe_http_ok(self):
-        with unittest.mock.patch("core.mcp.urllib.request.urlopen") as urlopen:
-            fake = unittest.mock.MagicMock()
+        with mock.patch("core.mcp.urllib.request.urlopen") as urlopen:
+            fake = mock.MagicMock()
             fake.status = 200
             fake.__enter__.return_value = fake
             urlopen.return_value = fake
@@ -229,10 +238,12 @@ class ProbeTests(MCPBase):
         self.assertEqual(st["status_code"], 200)
 
     def test_probe_http_500_fails(self):
+        import io
         import urllib.error
-        with unittest.mock.patch("core.mcp.urllib.request.urlopen",
+        with mock.patch("core.mcp.urllib.request.urlopen",
                                  side_effect=urllib.error.HTTPError(
-                                     "https://example.com/mcp", 503, "down", None, None)):
+                                     "https://example.com/mcp", 503, "down", None,
+                                     io.BytesIO(b""))):
             mcp.add("web", "http", url="https://example.com/mcp")
             st = mcp.status("web")
         self.assertFalse(st["ok"])
@@ -240,7 +251,7 @@ class ProbeTests(MCPBase):
 
     def test_test_alias(self):
         mcp.add("web", "http", url="https://example.com/mcp")
-        with unittest.mock.patch("core.mcp.urllib.request.urlopen",
+        with mock.patch("core.mcp.urllib.request.urlopen",
                                  side_effect=OSError("refused")):
             st = mcp.test("web")
         self.assertFalse(st["ok"])
