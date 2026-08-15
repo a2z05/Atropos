@@ -1175,7 +1175,6 @@ def api_update_version():
 def api_self_heal():
     """Run the full self-healing pipeline: doctor --fix → patch verify/apply → watch.
     Returns each stage's result. Safe: patches are re-applied only if verify fails."""
-    import traceback
     from . import doctor as _doc
     from . import patches as _pat
     from .watch import run_watch

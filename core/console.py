@@ -21,7 +21,6 @@ Security properties:
   * history is written to ~/.atropos/console_history.jsonl (plain text).
 """
 import json
-import re
 import shlex
 import threading
 import time

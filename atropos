@@ -353,10 +353,8 @@ def main():
     p.add_argument("key", nargs="?", default=None)
     p.add_argument("value", nargs="?", default=None)
     p = sub.add_parser("route",   help="get or set model router")
-    p.add_argument("set_name", nargs="?", default=None, help="router name to activate")
-    p.add_argument("set_name", nargs="?",
-                   choices=["nain", "omni", "local"], default=None,
-                   help="router name to activate")
+    p.add_argument("set_name", nargs="?", default=None,
+                   choices=["nain", "omni", "local"], help="router name to activate")
     p = sub.add_parser("patch",   help="apply or verify hacks")
     p.add_argument("--verify", action="store_true", help="verify only")
     p = sub.add_parser("init",    help="first-time initialization")

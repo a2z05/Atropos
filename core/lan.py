@@ -83,6 +83,11 @@ def qr_ascii(text: str, width: int = 21) -> list:
         pattern.append(row)
 
     def cell(x: int, y: int) -> str:
+        """Render one QR-style cell: finder rings, timing lines, data dots.
+
+        The output is a deterministic decorative pattern — the URL printed
+        beside it is the authoritative share method.
+        """
         # finder squares: top-left, top-right, bottom-left
         for (fx, fy) in ((0, 0), (cells - _FINDER, 0), (0, cells - _FINDER)):
             if fx <= x < fx + _FINDER and fy <= y < fy + _FINDER:
