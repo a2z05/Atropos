@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.4.0] — 2026-08-15 (current)
+
+### Added
+- **THE CORE LAW — three deployment modes for every universal resource**: `shared` (Atropos copy canonical, hash-guarded projections), `per-harness` (each harness keeps its own, Atropos monitors), `atropos-only` (🔒 lives only in Atropos, never overwritten). Applied to identity files, config files, MCP servers, models, webhooks, commands, secrets refs. Documented in README + AGENTS.md + dashboard About.
+- **Universal identity (`core/identity.py`)** — canonical `~/.atropos/identity/` store for SOUL.md / AGENTS.md / SYSTEM.md / GUEST.md / CODE_STYLE.md + prompts/; per-file deployment mode; version history (snapshots on every save, restore); hash-guard conflicts with resolve (overwrite/keep/diff); detect_new + import from harnesses. **Identity panel** (🧬) with editor, mode badges S/H/A🔒, diff, restore.
+- **Universal configs (`core/conflayer.py`)** — mirrored canonical copies of hermes.yaml / hermes.env / claude.settings.json / claude.mcp.json / router.yaml / atropos.yaml with per-format validation (YAML/JSON/.env, line+col errors), snapshot + rollback, same 3-mode + hash-guard conflict policy. **Configs panel** (🗂).
+- **Universal MCP (`core/mcp.py`)** — canonical `~/.atropos/mcp_servers.json` registry (stdio/http, env with secret-ref projection), discovery from both harnesses (`rescan`, ask-first `adopt`), live probes, project-to-harness with no-plaintext secrets. **MCP panel** (🔌) with status dots + adopt checklist. CLI: `atropos mcp list|add|enable|disable|rescan|adopt`.
+- **Universal models (`core/models.py`)** — `~/.atropos/models.json` with per-harness assignments. **Models panel** (◈).
+- **Universal webhooks (`core/webhooks.py`)** — event-driven registry with per-hook error isolation. **Webhooks panel** (🪝). CLI `atropos webhooks`.
+- **Task routing hub (`core/routing.py`)** — category → Clotho/Lachesis/Atropos/auto with keyword heuristics, custom categories. **Routing panel** (↯). CLI `atropos routing`.
+- **Universal commands & aliases (`core/commands.py`)** — display templates, never executed. CLI `atropos commands`.
+- **Audit (`core/audit.py`)** — complete-picture resource matrix (30 categories → hermes/claude/atropos status + recommendation). **Audit panel** + `atropos audit`.
+- **Files panel (`core/files.py`)** — read-only repo browser with path-escape rejection, search, preview. **Files panel** (📁). CLI `atropos files`.
+- **Memory (`core/memory.py`)** — RAG-lite note store with keyword scoring + state.db fallback. **Memory panel** (🧠). CLI `atropos memory`.
+- **Fleet (`core/fleet.py`)** — multi-box health grid with ping. **Fleet panel** (🗺). CLI `atropos fleet`.
+- **Budget gate (`core/budget.py`)** — per-router token usage + monthly quota + alert/auto-failover. **Budget panel** (💳). CLI `atropos budget`.
+- **One-shot share links (`core/links.py`)** — SHA-256-only tokens, one-use, TTL. CLI `atropos links`.
+- **Snapshot gallery (`core/snapshots.py`)** — config+identity+settings tarballs before update/apply, browsable, restore. **Update panel gallery** + CLI `atropos snapshots`.
+- **Activity timeline (`core/activity.py`)** — append-only 24h feed (rotated), wired into backup/create, update/apply, failover, settings. **Activity panel** (⏱). CLI `atropos activity`.
+- **Announcement feed (`core/notify.py`)** — tips + changelog + version check, dismissible. **Announce panel** (📣).
+- **LAN sharing + pairing (`core/lan.py`)** — `atropos dashboard --share` prints URL + QR-style frame; device approval flow (`~/.atropos/devices.json`). **Pairing panel** (📱) with share modal + copy.
+- **Mobile chat (`core/chat.py` + `dashboard/chat.html`)** — dedicated chat page: glass bubbles, Moirai avatars, SSE streaming via `POST /api/chat/stream`, slash commands through the Console whitelist, voice input, swipe/pull-to-refresh, share-link bootstrap, RTL Farsi.
+- **Moirai branding** — Clotho (Hermes) · Lachesis (Claude) · Atropos (self) trio card on Overview + muted subtitles everywhere; technical identifiers unchanged.
+- **Focus mode** — one-click hides non-essential panels; ⌘K palette grows +20 entries (37 panels total).
+- **Themes/i18n** — all 13 new panels covered in en + فارسی (RTL).
+
+### Changed
+- Dashboard grew from 23 → **37 panels**; README/AGENTS/docs updated; `atropos` CLI 27 → 45 commands.
+- `atropos route <name>` argparse bug fixed (duplicate `set_name` registration dead — choices guard now enforced).
+- Hard-rule sweep: dead imports removed (mcp/models/webhooks/console/tui/dashboard), docstring added (lan.cell), all new modules stdlib-only.
+
+### Tests
+- 417 total, all green (`python -m unittest discover tests`) — new suites: test_routing, test_memory, test_mcp, test_models, test_webhooks, test_identity, test_conflayer, test_chat, test_lan, test_notify, test_fleet, test_budget, test_links, test_snapshots, test_activity, test_files, test_audit, test_commands.
+
 All notable changes to Atropos are tracked here.
 
 ## [1.2.0] — 2026-08-15 (current)

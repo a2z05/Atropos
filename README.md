@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-6366f1?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![stdlib only](https://img.shields.io/badge/stdlib%20only-22d3ee?style=flat-square)](#rules)
-[![106 tests](https://img.shields.io/badge/tests-106%20green-34d399?style=flat-square)](#tests)
+[![417 tests](https://img.shields.io/badge/tests-417%20green-34d399?style=flat-square)](#tests)
 [![PRs welcome](https://img.shields.io/badge/PRs%20welcome-34d399?style=flat-square)](https://github.com/arophin/Atropos)
 
 > **Atropos** (Ἄτροπος) — the Greek Fate who cuts the thread at the appointed moment: *she who cannot be turned.*
@@ -31,7 +31,7 @@ Atropos is a **self-healing control plane** for AI agents running in ephemeral c
                         │                               │
                  git fetch │            ┌───────────────┘
                  (upstream)│            │ dashboard/ (1 file + sw.js)
-                        ▼               │  23 panels · 60+ APIs · SSE
+                        ▼               │  37 panels · 60+ APIs · SSE
         ┌───────────────────────────────┴──────────────────────────┐
         │  hermes-agent (git repo)      dashboard :8787            │
         │  adapter.py ← 12 hacks        en/fa RTL · themes · PWA   │
@@ -57,7 +57,7 @@ Open `http://127.0.0.1:8787`, paste the token printed by the dashboard (stored a
 
 ---
 
-## 🖥 Dashboard — 23 panels, 60+ API endpoints
+## 🖥 Dashboard — 37 panels, 80+ API endpoints
 
 A single-file HTML/CSS/JS control plane with glassmorphism, particle canvas, live SSE push, three themes, five accents and **English / فارسی (RTL)** — zero external dependencies, installable as a PWA.
 
@@ -86,10 +86,23 @@ A single-file HTML/CSS/JS control plane with glassmorphism, particle canvas, liv
 | **Market** | 🆕 Trusted registries (Anthropic Skills, Superpowers, hermes plugins) with one-click install |
 | **Console** | 🆕 Safe whitelist-only REPL (doctor, backup create, route test, skills install…), SSE output |
 | **Settings** | 🆕 Every config key, typed editors, theme/lang/accent, YAML export/import |
+| **MCP** | 🆕 Universal registry: rescan harnesses, adopt ask-first, probe, project-to-harness (S/H/A🔒) |
+| **Identity** | 🆕 SOUL/AGENTS/SYSTEM/GUEST/CODE_STYLE: edit, mode, diff, version history, restore |
+| **Configs** | 🆕 hermes/claude/router/atropos configs: validate, edit, snapshot, rollback, conflicts |
+| **Routing** | 🆕 Category -> Clotho/Lachesis/Atropos/auto, custom categories |
+| **Files** | 🆕 Read-only repo browser + search + preview |
+| **Models** | 🆕 Universal models, per-harness assignment |
+| **Webhooks** | 🆕 Event registry, toggle, test |
+| **Pairing** | 🆕 LAN share URL + QR frame, device approval |
+| **Fleet** | 🆕 Multi-box health grid, ping all |
+| **Memory** | 🆕 RAG-lite notes, keyword search |
+| **Budget** | 🆕 Token usage, quota gate, auto-failover |
+| **Activity** | 🆕 24h timeline (updates/alerts/backups/sessions) |
+| **Announce** | 🆕 Tips + changelog + version check, dismissible |
 
 ### Dashboard features
 
-- **⌘K command palette** — search all 23 panels + actions
+- **⌘K command palette** — search all 37 panels + actions
 - **Themes & languages** — dark / light / auto; indigo / cyan / green / amber / violet; English / فارسی with full RTL (`?lang=fa` or the 🌐 button)
 - **SSE live hub** — one `EventSource` on `/api/events` feeds the Console, Logs and status channels with bounded queues + heartbeat
 - **PWA offline** — service worker (`dashboard/sw.js`) + webmanifest: the dashboard loads without a network
@@ -97,8 +110,43 @@ A single-file HTML/CSS/JS control plane with glassmorphism, particle canvas, liv
 - **Marketplace** — install 17 official Anthropic skills, 14 Superpowers, hermes plugins — into the right store, no arbitrary URLs
 
 ---
+## ⚖️ THE CORE LAW — three deployment modes
 
-## 🖥 CLI reference — 27 commands
+> *"Everything shared has ONE canonical version in Atropos. When a thing is used through Atropos, both harnesses use Atropos' version. Each item can also be set per-harness — separate, so each harness uses its own. Or it can be defined as Atropos-only: it lives only inside Atropos and is never overwritten by anything."*
+
+Every universal resource (identity files, config files, MCP servers, models, webhooks, commands, secrets refs…) gets three deployment modes:
+
+| Mode | Meaning |
+|---|---|
+| **shared** (S) | Atropos' copy is canonical; harnesses project from it. Editing in Atropos updates both. A harness file that drifted is a **conflict** — never a silent overwrite (resolve: overwrite / keep / diff). |
+| **per-harness** (H) | Each harness keeps its own copy in its own folder; Atropos reads/monitors both, never writes unless asked. |
+| **atropos-only** (A+🔒) | Lives ONLY in `~/.atropos/`; never projected, never overwritten by sync/update/import. The owner's personal override layer. |
+
+Override chain: `harness-local → atropos-shared → atropos-only (always wins)`. Discovery is always **ask-first** (MCP `rescan`/`adopt`, identity `detect_new`). Every managed item shows its mode badge (S / H / A+🔒) in the dashboard.
+
+## 🧶 The Three Moirai
+
+The internal brand narrative maps to the real engines — **Clotho** → Hermes Agent (brain: orchestration, sessions, memory, comms) · **Lachesis** → Claude Code (hands: writes/debugs code) · **Atropos** → the system itself (cuts the broken thread and re-weaves it: self-heal, patches, updates). The Moirai names are **user-facing labels only** — technical identifiers (endpoints, config keys, CLI commands, router names `nain/omni/local`, JSON fields, file names) never change. The Overview shows the trio card; chat messages carry the engine badge that answered.
+
+## ↯ Task routing hub
+
+`core/routing.py` decides **which harness does what** — every category (coding, debugging, research, summaries, monitoring…) maps to `clotho | lachesis | atropos | auto`. `auto` uses keyword heuristics (file extensions, "fix/debug/refactor" → Lachesis; "search/summarize/report" → Clotho; system ops → Atropos). Override priority: explicit → auto-heuristic → default. Custom categories are one command away:
+
+```bash
+atropos routing list                          # current map
+atropos routing set coding lachesis           # explicit override
+atropos routing add reviews --harness clotho  # custom category
+```
+
+## 📱 Mobile chat + LAN sharing
+
+`atropos dashboard --share` prints the LAN URL (auto-detected IP + port) and a QR frame. The dashboard binds `0.0.0.0` when sharing; new devices need **approval** (Pairing panel), and the optional password gate still applies.
+
+**`/chat`** is a dedicated mobile-first chat page (also great on desktop): glass bubbles with Moirai glyph avatars, **streaming replies** (`POST /api/chat/stream` → SSE deltas), slash commands routed through the Console whitelist (`/doctor`, `/backup`, `/skills list`…), voice input (Web Speech), swipe/pull gestures, copy/regenerate/edit per message, offline badge, Farsi RTL, and one-shot **share links** (`atropos links create <session>` → `/chat?share=…`, single-use, 1h TTL, SHA-256-only storage).
+
+---
+
+## 🖥 CLI reference — 45 commands
 
 | Command | Description |
 |---|---|
@@ -126,6 +174,24 @@ A single-file HTML/CSS/JS control plane with glassmorphism, particle canvas, liv
 | `atropos tui` | Arrow-key terminal UI with history |
 | `atropos alert [--test\|--check\|--send]` | Telegram alerts |
 | `atropos jailbreak [--status\|--apply-all]` | Restriction scanner + bypass |
+| `atropos routing list|set <cat> <h>|add <cat> <h>` | Task routing hub |
+| `atropos mcp list|add|remove|enable|disable|rescan|adopt` | Universal MCP registry |
+| `atropos models list|add|assign <harness> <name>` | Universal models |
+| `atropos webhooks list|add|remove|toggle|test` | Webhook registry |
+| `atropos identity list|edit|mode|sync|diff|restore` | Identity files (SOUL/AGENTS/...) |
+| `atropos configs list|show|edit|validate|mode|rollback|sync` | Universal config manager |
+| `atropos audit` | Complete-picture resource matrix |
+| `atropos fleet list|add|remove|ping` | Multi-box fleet |
+| `atropos budget [--check]` | Token usage + quota gate |
+| `atropos links create|list|revoke` | One-shot share links |
+| `atropos snapshots list|create|restore` | Snapshot gallery |
+| `atropos activity` | 24h timeline |
+| `atropos memory add|search|list|stats` | RAG notes |
+| `atropos files list|read|search` | Read-only repo browser |
+| `atropos chat sessions|send|export` | Chat engine (mobile) |
+| `atropos commands list|add|alias` | Commands & aliases |
+| `atropos announce` | Announcement feed |
+| `atropos dashboard --share` | LAN sharing + QR |
 
 ---
 
@@ -195,7 +261,7 @@ python3 run_tests.py              # or: python3 -m unittest discover tests
 node tests/test_js_syntax.js      # dashboard JS syntax + panel consistency
 ```
 
-**106 tests, all green** — YAML parser, config roundtrip, settings schema/coercion/migration/secrets, env detection, doctor, 12-hack engine, router + failover logic, extensions, console whitelist (including `rm -rf /` rejection), live HTTP API with auth, SSE. Pure `unittest`, zero dependencies.
+**417 tests, all green** — YAML parser, config roundtrip, settings schema/coercion/migration/secrets, env detection, doctor, 12-hack engine, router + failover logic, extensions, console whitelist (including `rm -rf /` rejection), live HTTP API with auth, SSE. Pure `unittest`, zero dependencies.
 
 ---
 

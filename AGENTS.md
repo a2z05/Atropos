@@ -36,6 +36,29 @@ bash /data/.hermes/scripts/atropos_patch.sh
 ```
 If either fails, fix it before doing anything else.
 
+## The Core Law — three deployment modes (universal resources)
+
+Every universal resource (MCP servers, models, commands, identity files,
+config files, webhooks, skills, plugins, secrets refs…) has ONE canonical
+version in Atropos and three deployment modes:
+
+- `shared` — Atropos' copy is canonical; harnesses project from it (hash-
+  guarded: a live file that drifted is a conflict, never a silent overwrite).
+- `per-harness` — each harness keeps its own copy; Atropos monitors both.
+- `atropos-only` — lives ONLY in `~/.atropos/`; never projected, never
+  overwritten by sync/update/import.
+
+Override chain: harness-local → atropos-shared → **atropos-only wins**.
+Ask-first on discovery (mcp rescan/adopt, identity detect_new); conflicts
+resolve via overwrite/keep/diff. Modules: `core/identity.py`,
+`core/conflayer.py`, `core/mcp.py`, `core/models.py`, `core/webhooks.py`.
+
+## Routing hub
+
+`core/routing.py` maps task categories to harnesses (clotho/hermes,
+lachesis/claude, atropos/internal, auto = keyword heuristics). Settings:
+`routing.map` + `routing.default`. CLI: `atropos routing`.
+
 ## Settings — single source of truth
 
 **`core/settings.py` owns every config key.** Modules must read through
