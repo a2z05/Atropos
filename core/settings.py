@@ -173,11 +173,76 @@ SETTINGS_SCHEMA = {
     # ---- extensions ----
     "extensions.enabled": {"type": "bool", "default": True, "group": "extensions",
                            "description": "Universal extension layer master switch"},
+    # ---- routing hub (which harness handles which task) ----
+    "routing.enabled": {"type": "bool", "default": True, "group": "routing",
+                        "description": "Task routing hub master switch"},
+    "routing.default": {"type": "choice", "default": "auto",
+                        "choices": ["clotho", "lachesis", "atropos", "auto"], "group": "routing",
+                        "description": "Fallback harness for unmatched tasks"},
+    "routing.map": {"type": "map", "default": {}, "group": "routing",
+                    "description": "Category → harness override (clotho|lachesis|atropos|auto)"},
+    # ---- universal MCP ----
+    "mcp.enabled": {"type": "bool", "default": True, "group": "mcp",
+                    "description": "Universal MCP registry master switch"},
+    "mcp.adopt_ask": {"type": "bool", "default": True, "group": "mcp",
+                      "description": "Ask before importing newly discovered harness servers"},
+    # ---- universal identity ----
+    "identity.map": {"type": "map", "default": {}, "group": "identity",
+                     "description": "Identity file → {targets, mode} deployment mapping"},
+    # ---- universal configs ----
+    "configs.mode": {"type": "choice", "default": "separate",
+                     "choices": ["shared", "separate", "atropos-only"], "group": "configs",
+                     "description": "Default deployment mode for config files"},
+    # ---- LAN sharing ----
+    "lan.enabled": {"type": "bool", "default": True, "group": "lan",
+                    "description": "LAN sharing + device approval flow"},
+    "lan.qr_ascii": {"type": "bool", "default": True, "group": "lan",
+                     "description": "Print an ASCII QR code in the terminal on --share"},
+    # ---- mobile chat ----
+    "chat.enabled": {"type": "bool", "default": True, "group": "chat",
+                     "description": "Mobile chat page + streaming endpoints"},
+    "chat.effort": {"type": "choice", "default": "medium", "choices": EFFORT_TIERS, "group": "chat",
+                    "description": "Default effort tier for chat sends"},
+    # ---- fleet ----
+    "fleet.enabled": {"type": "bool", "default": True, "group": "fleet",
+                      "description": "Multi-box fleet health grid"},
+    "fleet.refresh_ms": {"type": "int", "default": 30000, "min": 5000, "group": "fleet",
+                         "description": "Fleet ping interval ms"},
+    # ---- memory (RAG) ----
+    "memory.enabled": {"type": "bool", "default": True, "group": "memory",
+                       "description": "RAG memory keyword search"},
+    "memory.k": {"type": "int", "default": 8, "min": 1, "max": 100, "group": "memory",
+                 "description": "Default result count for memory search"},
+    # ---- usage / quota gate ----
+    "budget.enabled": {"type": "bool", "default": False, "group": "budget",
+                       "description": "Per-router monthly token budget gate"},
+    "budget.monthly_tokens": {"type": "int", "default": 0, "min": 0, "group": "budget",
+                              "description": "Monthly token budget (0 = unlimited)"},
+    "budget.auto_failover": {"type": "bool", "default": False, "group": "budget",
+                             "description": "Auto-failover to a cheaper router when over budget"},
+    # ---- one-shot share links ----
+    "links.ttl_hours": {"type": "int", "default": 1, "min": 1, "max": 168, "group": "links",
+                        "description": "One-shot share link lifetime hours"},
+    # ---- activity timeline ----
+    "activity.max_mb": {"type": "int", "default": 5, "min": 1, "max": 100, "group": "activity",
+                        "description": "activity.jsonl rotation size MB"},
+    # ---- snapshot gallery ----
+    "snapshots.enabled": {"type": "bool", "default": True, "group": "snapshots",
+                          "description": "Auto-snapshot before every update/apply"},
+    # ---- logs / webhooks / permissions (monitored resources) ----
+    "webhooks.enabled": {"type": "bool", "default": True, "group": "webhooks",
+                         "description": "Universal webhook registry"},
+    "permissions.preset": {"type": "choice", "default": "default",
+                           "choices": ["default", "acceptEdits", "plan", "bypassPermissions"], "group": "permissions",
+                           "description": "Claude permission preset projected via settings"},
 }
 
 GROUPS = [
     "core", "watch", "alerts", "dashboard", "backup",
     "guest", "skills", "jailbreak", "failover", "extensions",
+    "routing", "mcp", "identity", "configs", "lan", "chat",
+    "fleet", "memory", "budget", "links", "activity", "snapshots",
+    "webhooks", "permissions",
 ]
 
 
@@ -207,7 +272,7 @@ def mask_secrets(data: dict) -> dict:
         try:
             for part in parts[:-1]:
                 node = node[part]
-            if node.get(parts[-1]):
+            if isinstance(node, dict) and node.get(parts[-1]) not in (None, ""):
                 node[parts[-1]] = SECRET_MASK
         except (KeyError, TypeError):
             continue
@@ -277,10 +342,15 @@ def _coerce(spec: dict, value):
         return list(value)
     if t == "map":
         if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except Exception:
-                raise ValueError(f"expected a JSON object, got {value!r}")
+            # the legacy YAML dumper emits empty dicts as "key: " (empty
+            # string) — treat that as the empty mapping
+            if value.strip() == "":
+                value = {}
+            else:
+                try:
+                    value = json.loads(value)
+                except Exception:
+                    raise ValueError(f"expected a JSON object, got {value!r}")
         if not isinstance(value, dict):
             raise ValueError("expected a mapping")
         values_spec = spec.get("values")
