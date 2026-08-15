@@ -174,7 +174,13 @@ def _post(url: str, payload: dict) -> tuple:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return True, resp.status, None
     except urllib.error.HTTPError as err:
-        return err.code < 500, err.code, f"HTTP {err.code}: {err.reason}"
+        try:
+            code = err.code
+            reason = err.reason
+            err.close()  # release the response body file
+        except Exception:
+            code, reason = getattr(err, "code", None), getattr(err, "reason", None)
+        return code < 500, code, f"HTTP {code}: {reason}"
     except urllib.error.URLError as err:
         return False, None, str(err.reason or err)
     except Exception as exc:

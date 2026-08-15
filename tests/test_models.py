@@ -53,8 +53,15 @@ class SeedTests(ModelsBase):
             self.assertEqual(e["mode"], "shared")
 
     def test_seed_written_on_demand(self):
-        models.list_models()
-        self.assertTrue((self.home / "models.json").exists())
+        # read-only access never creates the file; the first write persists
+        # the seed so it is not lost on the next read
+        self.assertFalse((self.home / "models.json").exists())
+        models.assign("hermes", "deepmo")
+        p = self.home / "models.json"
+        self.assertTrue(p.exists())
+        data = json.loads(p.read_text(encoding="utf-8"))
+        self.assertEqual([e["name"] for e in data["entries"]],
+                         ["deepmo", "gpt-4o", "llama3"])
 
 
 class RegistryTests(ModelsBase):
@@ -133,7 +140,7 @@ class AssignmentTests(ModelsBase):
     def test_assign_validation(self):
         with self.assertRaises(ValueError):
             models.assign("openai", "deepmo")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(FileNotFoundError):
             models.assign("hermes", "ghost")
 
 

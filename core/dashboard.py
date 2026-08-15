@@ -1545,6 +1545,554 @@ def api_sessions_export():
         return {"ok": False, "error": str(e)}
 
 
+# ── v1.4 universal-resource APIs ─────────────────────────────────────────
+def _safe(fn, *args, **kwargs):
+    """Run fn and return {ok: True, ...} or {ok: False, error} — never raises."""
+    try:
+        return fn(*args, **kwargs)
+    except (ValueError, FileNotFoundError) as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+def api_routing():
+    """Task routing hub surface."""
+    from . import routing
+    return {"ok": True, "enabled": settings.get("routing.enabled", True),
+            "default": settings.get("routing.default", "auto"),
+            "categories": [{"name": c, "harness": routing.get(c)} for c in routing.categories()]}
+
+
+def api_routing_set(payload):
+    """POST /api/routing/set {category, harness}."""
+    from . import routing
+    category = (payload or {}).get("category", "")
+    harness = (payload or {}).get("harness", "")
+    if not category:
+        return {"ok": False, "error": "category required"}
+    res = _safe(routing.set, category, harness)
+    if res.get("ok") is False:
+        return res
+    history_log("routing", f"{category} -> {harness}")
+    return {"ok": True, "routing": api_routing()}
+
+
+def api_routing_add(payload):
+    """POST /api/routing/add {category, harness}."""
+    from . import routing
+    category = (payload or {}).get("category", "")
+    harness = (payload or {}).get("harness", "auto")
+    res = _safe(routing.add, category, harness=harness)
+    if res.get("ok") is False:
+        return res
+    history_log("routing", f"added {category} -> {harness}")
+    return {"ok": True, "routing": api_routing()}
+
+
+def api_memory_search(q=""):
+    """GET /api/memory/search?q= — RAG note search."""
+    from . import memory
+    if not q:
+        return {"ok": False, "error": "q required"}
+    return {"ok": True, "results": memory.search(q)}
+
+
+def api_memory_notes():
+    """GET /api/memory/notes — recent notes."""
+    from . import memory
+    return {"ok": True, "notes": memory.list(), "stats": memory.stats()}
+
+
+def api_memory_add(payload):
+    """POST /api/memory/add {text, tags}."""
+    from . import memory
+    text = (payload or {}).get("text", "")
+    if not text:
+        return {"ok": False, "error": "text required"}
+    note_id = memory.add(text, tags=(payload or {}).get("tags") or [])
+    history_log("memory", f"note {note_id[:8]}")
+    return {"ok": True, "id": note_id}
+
+
+def api_memory_delete(payload):
+    """POST /api/memory/delete {id}."""
+    from . import memory
+    note_id = (payload or {}).get("id", "")
+    res = _safe(memory.delete, note_id)
+    if res.get("ok") is False:
+        return res
+    history_log("memory", f"deleted {note_id[:8]}")
+    return {"ok": True}
+
+
+def api_mcp():
+    """Universal MCP registry listing."""
+    from . import mcp
+    return {"ok": True, "servers": mcp.list_servers(),
+            "stats": mcp.stats(), "enabled": settings.get("mcp.enabled", True)}
+
+
+def api_mcp_adopted():
+    """Servers pending/imported adoption (ask-first gate)."""
+    from . import mcp
+    entries = mcp.list_servers()
+    return {"ok": True, "adopted": [e for e in entries if e.get("adopted")],
+            "pending": [e for e in entries if not e.get("adopted")]}
+
+
+def api_mcp_action(payload):
+    """POST /api/mcp/* mutations: adopt|add|enable|disable|remove|mode|test|rescan."""
+    from . import mcp
+    action = (payload or {}).get("action", "")
+    name = (payload or {}).get("name", "")
+    if action == "rescan":
+        res = mcp.rescan()
+        history_log("mcp", f"rescan: +{len(res.get('added', []))} found={len(res.get('found', []))}")
+        return {"ok": True, **res}
+    if action == "adopt":
+        res = mcp.adopt((payload or {}).get("names") or "all")
+        history_log("mcp", f"adopt {res}")
+        return {"ok": True, "adopted": res}
+    if action == "add":
+        res = _safe(mcp.add, name, (payload or {}).get("type", "stdio"),
+                    (payload or {}).get("command", ""), url=(payload or {}).get("url", ""))
+        if res.get("ok") is False:
+            return res
+        history_log("mcp", f"added {name}")
+        return {"ok": True, "server": res}
+    if action in ("enable", "disable", "remove", "test", "mode"):
+        try:
+            if action == "enable":
+                res = mcp.enable(name)
+            elif action == "disable":
+                res = mcp.disable(name)
+            elif action == "remove":
+                res = mcp.remove(name)
+            elif action == "test":
+                res = mcp.status(name)
+            else:
+                res = mcp.mode(name, (payload or {}).get("mode", "shared"))
+        except (ValueError, FileNotFoundError) as e:
+            return {"ok": False, "error": str(e)}
+        history_log("mcp", f"{action} {name}")
+        return {"ok": True, "result": res}
+    return {"ok": False, "error": f"unknown mcp action: {action}"}
+
+
+def api_models_universal():
+    """Universal models + assignments."""
+    from . import models
+    return {"ok": True, "models": models.list_models(), "assignments": models.assignments(),
+            "active": {h: models.active(h) for h in ("hermes", "claude", "atropos")}}
+
+
+def api_models_action(payload):
+    """POST /api/models/* mutations: add|remove|assign."""
+    from . import models
+    action = (payload or {}).get("action", "")
+    name = (payload or {}).get("name", "")
+    if action == "add":
+        res = _safe(models.add, name, model=(payload or {}).get("model", ""),
+                    base_url=(payload or {}).get("base_url", ""),
+                    api_key_env=(payload or {}).get("api_key_env", ""))
+        if res.get("ok") is False:
+            return res
+        history_log("models", f"added {name}")
+        return {"ok": True, "model": res}
+    if action == "remove":
+        res = _safe(models.remove, name)
+        if res.get("ok") is False:
+            return res
+        history_log("models", f"removed {name}")
+        return {"ok": True}
+    if action == "assign":
+        harness = (payload or {}).get("harness", "")
+        res = _safe(models.assign, harness, name)
+        if res.get("ok") is False:
+            return res
+        history_log("models", f"assign {harness} -> {name}")
+        return {"ok": True, "models": api_models_universal()}
+    return {"ok": False, "error": f"unknown models action: {action}"}
+
+
+def api_webhooks():
+    """Universal webhook registry."""
+    from . import webhooks
+    return {"ok": True, "webhooks": webhooks.list_webhooks()}
+
+
+def api_webhooks_action(payload):
+    """POST /api/webhooks/* mutations: add|remove|toggle|test."""
+    from . import webhooks
+    action = (payload or {}).get("action", "")
+    name = (payload or {}).get("name", "")
+    if action == "add":
+        res = _safe(webhooks.add, name, (payload or {}).get("url", ""),
+                    (payload or {}).get("events") or ["all"])
+        if res.get("ok") is False:
+            return res
+        history_log("webhooks", f"added {name}")
+        return {"ok": True, "webhook": res}
+    try:
+        if action == "remove":
+            webhooks.remove(name)
+        elif action == "enable":
+            webhooks.enable(name)
+        elif action == "disable":
+            webhooks.disable(name)
+        elif action == "test":
+            res = webhooks.ping(name)
+            return {"ok": True, "result": res}
+        else:
+            return {"ok": False, "error": f"unknown webhook action: {action}"}
+    except (ValueError, FileNotFoundError) as e:
+        return {"ok": False, "error": str(e)}
+    history_log("webhooks", f"{action} {name}")
+    return {"ok": True}
+
+
+def api_identity():
+    """Universal identity files."""
+    from . import identity
+    return {"ok": True, "files": identity.list_files(), "stats": identity.stats()}
+
+
+def api_identity_diff(payload=None):
+    """GET /api/identity/diff?name= or POST."""
+    from . import identity
+    name = (payload or {}).get("name", "") if isinstance(payload, dict) else ""
+    if not name:
+        return {"ok": False, "error": "name required"}
+    return {"ok": True, "name": name, "diffs": identity.diff(name)}
+
+
+def api_identity_action(payload):
+    """POST /api/identity/* mutations: save|mode|sync|restore|conflict."""
+    from . import identity
+    action = (payload or {}).get("action", "")
+    name = (payload or {}).get("name", "")
+    if action == "save":
+        res = identity.save(name, (payload or {}).get("content", ""))
+        history_log("identity", f"saved {name}")
+        return {"ok": True, **res}
+    if action == "mode":
+        res = _safe(identity.mode, name, (payload or {}).get("mode", "shared"))
+        if res.get("ok") is False:
+            return res
+        history_log("identity", f"mode {name}")
+        return {"ok": True}
+    if action == "sync":
+        res = _safe(identity.sync, name)
+        if res.get("ok") is False:
+            return res
+        history_log("identity", f"synced {name}")
+        return {"ok": True, "result": res}
+    if action == "restore":
+        res = _safe(identity.restore, name, int((payload or {}).get("n", 0)))
+        if res.get("ok") is False:
+            return res
+        history_log("identity", f"restored {name}")
+        return {"ok": True}
+    if action == "conflict":
+        res = identity.resolve_conflict(name, (payload or {}).get("target", ""),
+                                        (payload or {}).get("action", "keep"))
+        history_log("identity", f"conflict {action} {name}")
+        return {"ok": True, "result": res}
+    return {"ok": False, "error": f"unknown identity action: {action}"}
+
+
+def api_configs():
+    """Universal config manager listing."""
+    from . import conflayer
+    return {"ok": True, "configs": conflayer.list_configs()}
+
+
+def api_configs_show(name=""):
+    """GET /api/configs/show?name= — file content."""
+    from . import conflayer
+    if not name:
+        return {"ok": False, "error": "name required"}
+    try:
+        return {"ok": True, "name": name, "content": conflayer.show(name)}
+    except FileNotFoundError as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_configs_action(payload):
+    """POST /api/configs/* mutations: save|mode|rollback|conflict."""
+    from . import conflayer
+    action = (payload or {}).get("action", "")
+    name = (payload or {}).get("name", "")
+    if action == "save":
+        res = conflayer.save(name, (payload or {}).get("content", ""))
+        history_log("configs", f"saved {name}")
+        return {"ok": True, **res}
+    if action == "mode":
+        res = _safe(conflayer.mode, name, (payload or {}).get("mode", "separate"))
+        if res.get("ok") is False:
+            return res
+        history_log("configs", f"mode {name}")
+        return {"ok": True}
+    if action == "rollback":
+        res = _safe(conflayer.rollback, name, int((payload or {}).get("n", 0)))
+        if res.get("ok") is False:
+            return res
+        history_log("configs", f"rolled back {name}")
+        return {"ok": True}
+    if action == "conflict":
+        res = conflayer.resolve_conflict(name, (payload or {}).get("target", ""),
+                                         (payload or {}).get("action", "keep"))
+        history_log("configs", f"conflict {action} {name}")
+        return {"ok": True, "result": res}
+    return {"ok": False, "error": f"unknown configs action: {action}"}
+
+
+def api_audit():
+    """Complete-picture resource audit."""
+    from . import audit
+    return {"ok": True, "table": audit.table(), "summary": audit.summary()}
+
+
+def api_fleet():
+    """Multi-box fleet."""
+    from . import fleet
+    return {"ok": True, "boxes": fleet.list_boxes()}
+
+
+def api_fleet_action(payload):
+    """POST /api/fleet/* mutations: add|remove|ping."""
+    from . import fleet
+    action = (payload or {}).get("action", "")
+    if action == "add":
+        res = _safe(fleet.add, (payload or {}).get("name", ""),
+                    (payload or {}).get("url", ""), (payload or {}).get("token", ""))
+        if res.get("ok") is False:
+            return res
+        history_log("fleet", f"added {payload.get('name', '')}")
+        return {"ok": True}
+    if action == "remove":
+        fleet.remove((payload or {}).get("id", ""))
+        history_log("fleet", "removed box")
+        return {"ok": True}
+    if action == "ping":
+        rows = fleet.ping((payload or {}).get("id", "") or "all")
+        return {"ok": True, "results": rows}
+    return {"ok": False, "error": f"unknown fleet action: {action}"}
+
+
+def api_budget():
+    """Usage & quota gate status."""
+    from . import budget
+    return {"ok": True, "usage": budget.usage()}
+
+
+def api_budget_check():
+    """POST /api/budget/check — run the gate (alert + optional failover)."""
+    from . import budget
+    res = budget.check_and_alert()
+    history_log("budget", f"check: {res}")
+    return {"ok": True, "result": res}
+
+
+def api_links():
+    """One-shot share links."""
+    from . import links
+    return {"ok": True, "links": links.list_links()}
+
+
+def api_links_action(payload):
+    """POST /api/links/* mutations: create|revoke."""
+    from . import links
+    action = (payload or {}).get("action", "")
+    if action == "create":
+        l = links.create((payload or {}).get("session_id", ""))
+        history_log("links", f"created share for {l.get('session_id')}")
+        return {"ok": True, "link": l}
+    if action == "revoke":
+        links.revoke((payload or {}).get("token", ""))
+        history_log("links", "revoked link")
+        return {"ok": True}
+    return {"ok": False, "error": f"unknown links action: {action}"}
+
+
+def api_snapshots():
+    """Snapshot gallery."""
+    from . import snapshots
+    return {"ok": True, "snapshots": snapshots.list_snapshots()}
+
+
+def api_snapshots_action(payload):
+    """POST /api/snapshots/* mutations: create|restore."""
+    from . import snapshots
+    action = (payload or {}).get("action", "")
+    if action == "create":
+        res = snapshots.create((payload or {}).get("label", "manual"))
+        history_log("snapshots", f"created {res.get('name', '')}")
+        return {"ok": True, "snapshot": res}
+    if action == "restore":
+        res = _safe(snapshots.restore, (payload or {}).get("name", ""))
+        if res.get("ok") is False:
+            return res
+        history_log("snapshots", f"restored {payload.get('name', '')}")
+        return {"ok": True, "result": res}
+    return {"ok": False, "error": f"unknown snapshots action: {action}"}
+
+
+def api_activity():
+    """24h activity timeline."""
+    from . import activity
+    return {"ok": True, "feed": activity.feed()}
+
+
+def api_files_list(path=""):
+    """GET /api/files/list?path= — repo file listing (read-only, safe)."""
+    from . import files
+    res = files.list_dir(path or None)
+    if not res.get("ok"):
+        return res
+    return {"ok": True, "root": res.get("root"), "entries": res["entries"]}
+
+
+def api_files_read(path=""):
+    """GET /api/files/read?path= — read a text file (bounded)."""
+    from . import files
+    if not path:
+        return {"ok": False, "error": "path required"}
+    return files.read_file(path)
+
+
+def api_files_search(q=""):
+    """GET /api/files/search?q= — filename search."""
+    from . import files
+    if not q:
+        return {"ok": False, "error": "q required"}
+    return {"ok": True, "results": files.search(q=q)}
+
+
+def api_announce():
+    """Announcement feed (tips + changelog + version check)."""
+    from . import notify
+    return {"ok": True, "feed": notify.feed()}
+
+
+def api_announce_dismiss(payload):
+    """POST /api/announce/dismiss {id}."""
+    from . import notify
+    notify.dismiss((payload or {}).get("id", ""))
+    return {"ok": True}
+
+
+def api_chat_sessions():
+    """Mobile chat sessions."""
+    from . import chat
+    return {"ok": True, "sessions": chat.session_list(), "stats": chat.stats()}
+
+
+def api_chat_send(payload):
+    """POST /api/chat/send {session_id?, text, harness?, effort?}."""
+    from . import chat
+    text = (payload or {}).get("text", "")
+    if not text:
+        return {"ok": False, "error": "text required"}
+    res = chat.send((payload or {}).get("session_id"), text,
+                    harness=(payload or {}).get("harness"),
+                    effort=(payload or {}).get("effort"))
+    if res.get("ok"):
+        try:
+            from . import sse
+            sse.hub.broadcast("chat", {"ts": _ts(), "session_id": res.get("session_id"),
+                                       "harness": res.get("harness")})
+        except Exception:
+            pass
+        history_log("chat", f"send to {res.get('harness', '?')}")
+    return res
+
+
+def api_chat_delete(payload):
+    """POST /api/chat/delete {session_id}."""
+    from . import chat
+    res = _safe(chat.delete_session, (payload or {}).get("session_id", ""))
+    if res.get("ok") is False:
+        return res
+    history_log("chat", "deleted session")
+    return {"ok": True}
+
+
+def api_chat_export(payload):
+    """POST /api/chat/export {session_id} — JSONL."""
+    from . import chat
+    try:
+        return {"ok": True, "jsonl": chat.export((payload or {}).get("session_id", ""))}
+    except FileNotFoundError as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_lan_share():
+    """LAN share card: URL + IP + port + decorative QR frame."""
+    from . import lan
+    return {"ok": True, "url": lan.share_url(), "ip": lan.lan_ip(),
+            "port": settings.get("dashboard.port", 8787),
+            "qr": lan.qr_ascii(lan.share_url())}
+
+
+def api_devices():
+    """Pairing/device approval flow."""
+    from . import lan
+    return {"ok": True, "devices": lan.known_devices()}
+
+
+def api_devices_action(payload):
+    """POST /api/devices/* mutations: approve|deny."""
+    from . import lan
+    action = (payload or {}).get("action", "")
+    device_id = (payload or {}).get("id", "")
+    try:
+        if action == "approve":
+            lan.approve(device_id)
+        elif action == "deny":
+            lan.deny(device_id)
+        else:
+            return {"ok": False, "error": f"unknown devices action: {action}"}
+    except (ValueError, FileNotFoundError) as e:
+        return {"ok": False, "error": str(e)}
+    history_log("devices", f"{action} {device_id}")
+    return {"ok": True, "devices": lan.known_devices()}
+
+
+def api_commands():
+    """Universal commands & aliases."""
+    from . import commands
+    return {"ok": True, **commands.list()}
+
+
+def api_commands_action(payload):
+    """POST /api/commands/* mutations: add|remove|alias."""
+    from . import commands
+    action = (payload or {}).get("action", "")
+    name = (payload or {}).get("name", "")
+    if action == "add":
+        res = _safe(commands.add_command, name, (payload or {}).get("template", ""),
+                    (payload or {}).get("description", ""))
+        if res.get("ok") is False:
+            return res
+        history_log("commands", f"added {name}")
+        return {"ok": True}
+    if action == "remove":
+        res = _safe(commands.remove_command, name)
+        if res.get("ok") is False:
+            return res
+        history_log("commands", f"removed {name}")
+        return {"ok": True}
+    if action == "alias":
+        res = _safe(commands.add_alias, name, (payload or {}).get("target", ""))
+        if res.get("ok") is False:
+            return res
+        history_log("commands", f"alias {name}")
+        return {"ok": True}
+    return {"ok": False, "error": f"unknown commands action: {action}"}
+
+
 # ── HTTP handler ─────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def _auth(self):
@@ -1641,7 +2189,41 @@ class Handler(BaseHTTPRequestHandler):
             "/api/marketplace": api_marketplace,
             "/api/failover": api_failover,
             "/api/sessions/export": api_sessions_export,
+            # v1.4 universal resources
+            "/api/routing": api_routing,
+            "/api/memory/notes": api_memory_notes,
+            "/api/mcp": api_mcp,
+            "/api/mcp/adopted": api_mcp_adopted,
+            "/api/models": api_models_universal,
+            "/api/webhooks": api_webhooks,
+            "/api/identity": api_identity,
+            "/api/configs": api_configs,
+            "/api/audit": api_audit,
+            "/api/fleet": api_fleet,
+            "/api/budget": api_budget,
+            "/api/links": api_links,
+            "/api/snapshots": api_snapshots,
+            "/api/activity": api_activity,
+            "/api/announce": api_announce,
+            "/api/chat/sessions": api_chat_sessions,
+            "/api/lan/share": api_lan_share,
+            "/api/devices": api_devices,
+            "/api/commands": api_commands,
         }
+        if path == "/api/memory/search":
+            return api_memory_search((q.get("q") or [""])[0])
+        if path == "/api/files/list":
+            return api_files_list((q.get("path") or [""])[0])
+        if path == "/api/files/read":
+            return api_files_read((q.get("path") or [""])[0])
+        if path == "/api/files/search":
+            return api_files_search((q.get("q") or [""])[0])
+        if path == "/api/identity/diff":
+            return api_identity_diff({"name": (q.get("name") or [""])[0]})
+        if path == "/api/configs/show":
+            return api_configs_show((q.get("name") or [""])[0])
+        if path == "/api/chat/stats":
+            return api_chat_sessions()
         if path in api:
             return api[path]()
         if path == "/api/logs":
@@ -1746,6 +2328,45 @@ class Handler(BaseHTTPRequestHandler):
             return api_marketplace_uninstall(payload)
         if path == "/api/run":
             return api_run(payload)
+        # v1.4 universal-resource mutations
+        if path == "/api/routing/set":
+            return api_routing_set(payload)
+        if path == "/api/routing/add":
+            return api_routing_add(payload)
+        if path == "/api/memory/add":
+            return api_memory_add(payload)
+        if path == "/api/memory/delete":
+            return api_memory_delete(payload)
+        if path.startswith("/api/mcp/"):
+            return api_mcp_action({**payload, "action": path.split("/api/mcp/", 1)[1]})
+        if path.startswith("/api/models/"):
+            return api_models_action({**payload, "action": path.split("/api/models/", 1)[1]})
+        if path.startswith("/api/webhooks/"):
+            return api_webhooks_action({**payload, "action": path.split("/api/webhooks/", 1)[1]})
+        if path == "/api/identity/save" or path.startswith("/api/identity/"):
+            return api_identity_action({**payload, "action": path.split("/api/identity/", 1)[1]})
+        if path.startswith("/api/configs/"):
+            return api_configs_action({**payload, "action": path.split("/api/configs/", 1)[1]})
+        if path == "/api/fleet/add" or path.startswith("/api/fleet/"):
+            return api_fleet_action({**payload, "action": path.split("/api/fleet/", 1)[1]})
+        if path == "/api/budget/check":
+            return api_budget_check()
+        if path == "/api/links/create" or path.startswith("/api/links/"):
+            return api_links_action({**payload, "action": path.split("/api/links/", 1)[1]})
+        if path.startswith("/api/snapshots/"):
+            return api_snapshots_action({**payload, "action": path.split("/api/snapshots/", 1)[1]})
+        if path == "/api/announce/dismiss":
+            return api_announce_dismiss(payload)
+        if path == "/api/chat/send":
+            return api_chat_send(payload)
+        if path == "/api/chat/delete":
+            return api_chat_delete(payload)
+        if path == "/api/chat/export":
+            return api_chat_export(payload)
+        if path == "/api/devices/approve" or path.startswith("/api/devices/"):
+            return api_devices_action({**payload, "action": path.split("/api/devices/", 1)[1]})
+        if path == "/api/commands/add" or path.startswith("/api/commands/"):
+            return api_commands_action({**payload, "action": path.split("/api/commands/", 1)[1]})
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def do_GET(self):
