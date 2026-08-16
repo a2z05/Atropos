@@ -80,11 +80,15 @@ def _status_icon(ok: bool) -> str:
     return f"{C_GREEN}●{C_RESET}" if ok else f"{C_RED}●{C_RESET}"
 
 
+_MOIRAI_LINE = "Clotho · Lachesis · Atropos — the unturnable"
+
+
 def header(title: str, subtitle: str = "") -> int:
     w = min(_cols(), 100)
     print(f"{CLEAR}{C_BG_DARK}")
     print(_center(f"  {C_BOLD}{C_CYAN}⟁ ATROPOS{C_RESET}  ", w))
-    print(_center(f"{C_DIM}{title}{C_RESET}", w))
+    print(_center(f"{C_DIM}{_MOIRAI_LINE}{C_RESET}", w))
+    print(_center(f"{C_BOLD}{title}{C_RESET}", w))
     if subtitle:
         print(_center(f"{C_DIM}{subtitle}{C_RESET}", w))
     print(f"{C_RESET}")

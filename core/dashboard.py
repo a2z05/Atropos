@@ -1321,6 +1321,14 @@ def api_settings():
         "particles": settings.get("dashboard.particles", True),
         "live": settings.get("dashboard.live", True),
         "refresh_ms": settings.get("dashboard.refresh_ms", 10000),
+        "cli_default_action": settings.get("cli.default_action", "cli"),
+        "update_auto": settings.get("update.auto", "off"),
+        "update_auto_ai": settings.get("update.auto_ai", False),
+        "update_ai": {
+            "mode": settings.get("update-ai.mode", "manual"),
+            "model": settings.get("update-ai.model", "deepmo"),
+            "effort": settings.get("update-ai.effort", "medium"),
+        },
     }
 
 
@@ -2053,7 +2061,7 @@ def api_chat_export(payload):
 
 
 def api_lan_share():
-    """LAN share card: URL + IP + port + decorative QR frame."""
+    """LAN share card: URL + IP + port + real scannable QR (ascii)."""
     from . import lan
     return {"ok": True, "url": lan.share_url(), "ip": lan.lan_ip(),
             "port": settings.get("dashboard.port", 8787),
@@ -2117,6 +2125,168 @@ def api_commands_action(payload):
     return {"ok": False, "error": f"unknown commands action: {action}"}
 
 
+# ── v1.4 final polish: QR / sync / backup multi-backend / update AI / wizard ─
+def api_qr():
+    """Real scannable QR for the dashboard URL (matrix + svg + ascii)."""
+    try:
+        from . import qr
+        from . import lan
+        url = lan.share_url()
+        matrix = qr.qr_matrix(url)
+        return {"ok": True, "url": url, "modules": len(matrix),
+                "svg": qr.qr_svg(url),
+                "ascii": qr.qr_ascii(url),
+                "version": "1-4"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_wizard_status():
+    """Setup wizard state: already-imported resources + detected harnesses."""
+    try:
+        from . import setup_wizard as wz
+        return {"ok": True, **wz.discover_summary()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_sync_status():
+    """Devices/sync panel: peers, pending, backends."""
+    try:
+        from . import sync as sync_mod
+        return {"ok": True, **sync_mod.sync_status()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_sync_action(payload):
+    """POST /api/sync/* — push|pull|host-pair|join|status."""
+    try:
+        from . import sync as sync_mod
+        action = (payload or {}).get("action", "")
+        backend = (payload or {}).get("backend", "file")
+        if action == "push":
+            out = sync_mod.sync_push(backend, target=(payload or {}).get("target"))
+            history_log("sync", f"push {backend}")
+            return {"ok": True, **out}
+        if action == "pull":
+            out = sync_mod.sync_pull(backend, source=(payload or {}).get("source"))
+            history_log("sync", f"pull {backend}")
+            return {"ok": True, **out}
+        if action == "host-pair":
+            return {"ok": True, **sync_mod.host_pair()}
+        if action == "join":
+            return sync_mod.join_pair((payload or {}).get("code", ""))
+        if action == "status":
+            return {"ok": True, **sync_mod.sync_status()}
+        return {"ok": False, "error": f"unknown sync action: {action}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_backup_backends():
+    """Multi-backend backup status: configured/connected per backend."""
+    try:
+        from . import backup as backup_mod
+        return {"ok": True, "backends": backup_mod.list_backends()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_backup_backend_action(payload):
+    """POST /api/backup/backend — backup-now to a backend / restore / preview."""
+    try:
+        from . import backup as backup_mod
+        action = (payload or {}).get("action", "")
+        backend = (payload or {}).get("backend", "file")
+        if action == "create":
+            result = backup_mod.create_backend(backend)
+            history_log("backup", f"backend {backend}: {result.get('ok')}")
+            return result
+        if action == "restore":
+            name = (payload or {}).get("name", "")
+            if not name:
+                return {"ok": False, "error": "name required"}
+            prev = backup_mod.restore_preview(name)
+            if not (payload or {}).get("confirm"):
+                return {"ok": True, "preview": prev, "confirm": True}
+            result = backup_mod.restore_backend(backend, name)
+            history_log("backup", f"restore {backend}:{name}")
+            return result
+        if action == "preview":
+            name = (payload or {}).get("name", "")
+            return {"ok": True, "preview": backup_mod.restore_preview(name)}
+        if action == "retention":
+            from . import settings as _st
+            _st.set("backup.retention", (payload or {}).get("keep", 5))
+            _st.set("backup.retention_weekly", (payload or {}).get("weekly", 4))
+            return {"ok": True}
+        return {"ok": False, "error": f"unknown backup action: {action}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_wizard_import(payload):
+    """POST /api/wizard/import — import a resource group from a harness."""
+    try:
+        from . import setup_wizard as wz
+        group = (payload or {}).get("group", "")
+        harness = (payload or {}).get("harness", "claude")
+        mode = (payload or {}).get("mode", "shared")
+        return wz._import_group(group, [harness], mode=mode)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_update_ai_status():
+    """AI update engine: history + current status + config."""
+    try:
+        from . import update_ai
+        return {"ok": True,
+                "history": update_ai.load_history().get("attempts", [])[-20:],
+                "mode": settings.get("update-ai.mode"),
+                "model": settings.get("update-ai.model"),
+                "effort": settings.get("update-ai.effort"),
+                "update_auto": settings.get("update.auto"),
+                "update_auto_ai": settings.get("update.auto_ai")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_update_ai_action(payload):
+    """POST /api/update-ai/* — check|apply|config."""
+    try:
+        from . import update_ai
+        action = (payload or {}).get("action", "")
+        if action == "check":
+            return {"ok": True, **update_ai.ai_check(update_ai.failed_patch_state())}
+        if action == "apply":
+            attempt_id = (payload or {}).get("attempt_id", "")
+            confirm = bool((payload or {}).get("confirm", False))
+            return update_ai.apply_ai(attempt_id, confirm=confirm)
+        if action == "config":
+            mode = (payload or {}).get("mode")
+            model = (payload or {}).get("model")
+            effort = (payload or {}).get("effort")
+            if mode:
+                settings.set("update-ai.mode", mode)
+            if model:
+                settings.set("update-ai.model", model)
+            if effort:
+                settings.set("update-ai.effort", effort)
+            history_log("update-ai", f"config mode={mode} model={model}")
+            return {"ok": True}
+        if action == "set-auto":
+            value = (payload or {}).get("value", "off")
+            settings.set("update.auto", value)
+            settings.set("update.auto_ai", bool((payload or {}).get("ai", False)))
+            history_log("update", f"auto={value} ai={bool((payload or {}).get('ai', False))}")
+            return {"ok": True}
+        return {"ok": False, "error": f"unknown update-ai action: {action}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── HTTP handler ─────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def _auth(self):
@@ -2152,12 +2322,15 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(404, b"dashboard/index.html missing")
             return True
-        # dashboard static assets (sw.js for PWA offline)
-        if path in ("/sw.js", "/manifest.webmanifest", "/chat.html"):
-            f = DASHBOARD_DIR / path.lstrip("/")
+        # dashboard static assets (sw.js for PWA offline, icon for header/favicon)
+        if path in ("/sw.js", "/manifest.webmanifest", "/chat.html", "/icon.png",
+                    "/icon-256.png", "/favicon.png"):
+            f = DASHBOARD_DIR / (path.lstrip("/").replace("favicon.png", "icon-256.png"))
             if f.exists():
                 ctype = ("application/javascript; charset=utf-8" if path.endswith(".js")
-                         else "application/manifest+json")
+                         else "application/manifest+json" if path.endswith(".webmanifest")
+                         else "image/png" if path.endswith(".png")
+                         else "text/html; charset=utf-8")
                 self._send(200, f.read_bytes(), ctype)
                 return True
         if not path.startswith("/api/"):
@@ -2233,6 +2406,13 @@ class Handler(BaseHTTPRequestHandler):
             "/api/lan/share": api_lan_share,
             "/api/devices": api_devices,
             "/api/commands": api_commands,
+            # v1.4 final polish
+            "/api/qr": api_qr,
+            "/api/sync": api_sync_status,
+            "/api/sync/status": api_sync_status,
+            "/api/backup/backends": api_backup_backends,
+            "/api/update-ai": api_update_ai_status,
+            "/api/wizard/status": api_wizard_status,
         }
         if path == "/api/memory/search":
             return api_memory_search((q.get("q") or [""])[0])
@@ -2396,6 +2576,22 @@ class Handler(BaseHTTPRequestHandler):
             return api_devices_action({**payload, "action": path.split("/api/devices/", 1)[1]})
         if path == "/api/commands/add" or path.startswith("/api/commands/"):
             return api_commands_action({**payload, "action": path.split("/api/commands/", 1)[1]})
+        if path == "/api/sync/action" or path.startswith("/api/sync/"):
+            sub = path.split("/api/sync/", 1)[1]
+            merged = dict(payload or {})
+            if sub != "action":
+                merged["action"] = sub
+            return api_sync_action(merged)
+        if path == "/api/backup/backend" or path.startswith("/api/backup/backend/"):
+            return api_backup_backend_action({**payload, "action": path.split("/api/backup/backend/", 1)[1]})
+        if path == "/api/update-ai/action" or path.startswith("/api/update-ai/"):
+            sub = path.split("/api/update-ai/", 1)[1]
+            merged = dict(payload or {})
+            if sub != "action":
+                merged["action"] = sub
+            return api_update_ai_action(merged)
+        if path == "/api/wizard/import":
+            return api_wizard_import(payload)
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def do_GET(self):

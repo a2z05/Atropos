@@ -22,11 +22,14 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
 # ── sys.path fix: ensure `core` package is importable when run as script ──
-_REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+# The script may be a symlink or copy (atropos install / npm bin) — resolve
+# the real location so `core` is always found, no matter the cwd.
+_REPO_DIR = os.path.dirname(os.path.realpath(__file__))
 if _REPO_DIR not in sys.path:
     sys.path.insert(0, _REPO_DIR)
 
@@ -55,13 +58,18 @@ def _fail(msg): print(f"  {_C_RED}{_C_BOLD}ERR{_C_RESET} {msg}")
 def _warn(msg): print(f"  {_C_YELLOW}{_C_BOLD}WARN{_C_RESET} {msg}")
 def _info(msg): print(f"  {_C_CYAN}{_C_BOLD}>>{_C_RESET}  {msg}")
 
+_MOIRAI_TAGLINE = "Clotho · Lachesis · Atropos — the unturnable"
 
-def cmd_version(args):
-    print(f"atropos {_C_CYAN}{__version__}{_C_RESET}")
-    rt = detect.detect()
-    print(f"  python  {rt.get('python_version','?')}")
-    print(f"  os      {rt.get('os','?')} / {rt.get('os_release','?')}")
-    print(f"  cloud   {rt.get('cloud','none')}")
+_MOIRAI_ASCII = r"""
+      _    _    _
+     / \  / \  / \
+    |   ||   ||   |
+     \_/  \_/  \_/
+      |    |    |
+   __/__\_/__\_/__\__
+  |  Clotho · Lachesis · Atropos  |
+   \_____________________________/
+"""
 
 
 def cmd_detect(args):
@@ -90,7 +98,7 @@ def cmd_doctor(args):
 
 
 def cmd_status(args):
-    print(f"{_C_BOLD}Atropos status{_C_RESET}")
+    print(f"{_C_BOLD}Atropos status{_C_RESET}  {_C_DIM}— {_MOIRAI_TAGLINE}{_C_RESET}")
     print(f"  atropos home: {detect.atropos_home()}")
     print(f"  hermes home:  {detect.hermes_home()}")
     print(f"  hermes agent: {detect.hermes_agent() or 'not found'}")
@@ -104,11 +112,56 @@ def cmd_status(args):
         print(f"  {line}")
 
 
+def _print_op(d):
+    """Pretty-print a dict result (sync/wizard/etc)."""
+    print(json.dumps(d, indent=2, ensure_ascii=False))
+
+
+def _print_update_result(r):
+    """Shared tail for apply/ai-check output."""
+    if r.get("up_to_date"):
+        _ok(f"up to date @ {r.get('head')}")
+        sys.exit(0)
+    if r.get("rolled_back"):
+        _fail("rolled back to previous revision")
+    for a in r.get("applied", []):
+        _ok(f"patch: {a}")
+    for sid, reason in r.get("skipped", []):
+        _warn(f"  {sid}: {reason}")
+    for e in r.get("errors", []):
+        _fail(f"patch error: {e}")
+    for c in r.get("doctor", []):
+        icon = _C_GREEN + "OK" + _C_RESET if c["ok"] else _C_RED + "FAIL" + _C_RESET
+        print(f"  doctor: {icon}  {c['name']}: {c['msg']}")
+    if r.get("backup"):
+        _info(f"backup: {r['backup']}")
+    if r.get("tests"):
+        t = r["tests"]
+        status = "OK" if t.get("ok") else "FAIL"
+        icon = _C_GREEN + status + _C_RESET if t.get("ok") else _C_RED + status + _C_RESET
+        print(f"  tests: {icon}  {(t.get('output') or '').strip().splitlines()[-1:]}")
+    sys.exit(0 if r.get("ok") else 1)
+
+
 def cmd_update(args):
     repo = detect.hermes_agent()
+    if args.set_auto:
+        try:
+            from core import settings as _st
+            _st.set("update.auto", args.set_auto)
+            _ok(f"update.auto = {args.set_auto}")
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
     if not repo:
         _fail("hermes-agent not found — can't update")
         sys.exit(1)
+    if args.ai_check:
+        from core import update_ai
+        r = update_ai.ai_check(update_ai.failed_patch_state())
+        print(json.dumps(r, indent=2, ensure_ascii=False))
+        sys.exit(0 if r.get("ok", True) else 1)
     if args.check:
         r = update.update_check(repo)
         if r.get("up_to_date"):
@@ -117,33 +170,142 @@ def cmd_update(args):
             _warn(f"behind: {r.get('behind')} commits")
             print(f"  head={r.get('head')} -> remote={r.get('remote')}")
             print(f"  diff:\n{r.get('diff', '(no diff)')}")
-            print("  Run `atropos update` to apply.")
+            dry = r.get("dry_run", {})
+            if dry:
+                n_conflicts = len(dry.get("conflicts", []))
+                state = "clean" if dry.get("clear") else f"{n_conflicts} hack conflicts"
+                print(f"  dry-run: {state}")
+                if dry.get("clear"):
+                    _ok("all hacks apply cleanly upstream")
+                else:
+                    for c in dry.get("conflicts", []):
+                        _warn(f"    {c['id']}: {c.get('reason')}")
+            print("  Run `atropos update apply` to apply.")
         else:
             _fail(f"error: {r.get('error')}")
             sys.exit(1)
-    else:
+    elif args.apply:
+        confirm = not args.yes
+        if confirm:
+            pre = update.update_check(repo)
+            if pre.get("up_to_date"):
+                _ok(f"up to date @ {pre.get('head')}")
+                sys.exit(0)
+            print(f"\n  {_C_BOLD}Update preview{_C_RESET}")
+            print(f"  head={pre.get('head')} -> remote={pre.get('remote')} ({pre.get('behind')} commits)")
+            dry = pre.get("dry_run", {})
+            if dry and not dry.get("clear"):
+                _warn(f"  {len(dry.get('conflicts', []))} hack(s) would conflict:")
+                for c in dry.get("conflicts", []):
+                    print(f"    ✗ {c['id']}: {c.get('reason')}")
+                if not args.yes:
+                    if args.auto_fix:
+                        _info("--auto-fix: will delegate conflicts to the AI update engine")
+                    else:
+                        _fail("aborting — use `--yes` to force, `--auto-fix` to delegate to AI")
+                        sys.exit(1)
+            try:
+                resp = input(f"  Apply {pre.get('behind')} commit(s)? [y/N] ").strip().lower()
+            except EOFError:
+                resp = ""
+            if resp not in ("y", "yes"):
+                _info("cancelled")
+                sys.exit(0)
         r = update.apply_update(repo)
-        if r.get("up_to_date"):
+        if r.get("ok") and r.get("head") != r.get("prev_head"):
+            tests = update.run_tests(update._home_repo())
+            r["tests"] = tests
+            if not tests.get("ok"):
+                _warn("post-update tests failed — rolling back")
+                from core import patches as _patches
+                subprocess_run = None
+                from core import update as _upd
+                _git = _upd._git
+                _git(repo, "reset", "--hard", r.get("prev_head"))
+                _patches.apply_hacks()
+                _fail("rolled back")
+                sys.exit(1)
+        if r.get("ok") and r.get("head") == r.get("prev_head"):
             _ok(f"up to date @ {r.get('head')}")
             sys.exit(0)
-        if r.get("ok"):
-            _ok(f"update applied: {r.get('prev_head')} -> {r.get('head')}")
-            if r.get("rolled_back"):
-                _fail("rolled back to previous revision")
+        _print_update_result({**r, "ok": r.get("ok"), "up_to_date": False})
+    else:
+        r = update.apply_update(repo)
+        _print_update_result(r)
+
+
+def cmd_install(args):
+    """Make `atropos` runnable from any directory (PATH integration).
+
+    Symlinks (or copies, when the filesystem forbids symlinks — e.g.
+    Windows without admin) the repo `atropos` script into a bin dir on
+    PATH. Defaults to ~/.local/bin; `--bin <dir>` overrides. Prints the
+    exact next step so the command works from a fresh shell.
+    """
+    from core import qr  # lazy: only used for the QR hint below
+    self_path = Path(__file__).resolve()
+    bin_dir = Path(args.bin_dir).expanduser() if getattr(args, "bin_dir", None) else (
+        Path.home() / ".local" / "bin")
+
+    try:
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        target = bin_dir / "atropos"
+        # remove stale link/copy first
+        if target.is_symlink() or target.exists():
+            target.unlink()
+        try:
+            os.symlink(str(self_path), str(target))
+            mode = "symlinked"
+        except (OSError, NotImplementedError):
+            # copy the whole runtime next to the script so the copy is
+            # self-contained (core/, VERSION, templates/, hacks/, patches/,
+            # dashboard/ are all resolved relative to the script)
+            for sub in ("core", "templates", "hacks", "patches", "dashboard"):
+                src = self_path.resolve().parent / sub
+                if src.is_dir():
+                    shutil.copytree(src, bin_dir / sub, dirs_exist_ok=True)
+            for f in ("VERSION", "icon.png"):
+                sf = self_path.resolve().parent / f
+                if sf.exists():
+                    shutil.copy2(str(sf), bin_dir / f)
+            shutil.copy2(str(self_path), str(target))
+            mode = "copied"
+        if os.name != "nt":
+            os.chmod(str(target), 0o755)
+        _ok(f"atropos {mode} to {target}")
+    except Exception as e:
+        _fail(f"could not install to {bin_dir}: {e}")
+        if bin_dir != Path("/usr/local/bin"):
+            _warn("try: atropos install --bin /usr/local/bin  (with sudo)")
+        sys.exit(1)
+
+    # is the target dir already on PATH?
+    path_dirs = {os.path.abspath(p) for p in os.environ.get("PATH", "").split(os.pathsep)}
+    if os.path.abspath(str(bin_dir)) not in path_dirs:
+        _warn(f"{bin_dir} is not on your PATH yet")
+        if os.name == "nt":
+            _info("Windows: add it to PATH via: setx PATH \"%PATH%;' + str(bin_dir) + '\"")
         else:
-            _fail(f"update failed: {r.get('error')}")
-        for a in r.get("applied", []):
-            _ok(f"patch: {a}")
-        for sid, reason in r.get("skipped", []):
-            _warn(f"  {sid}: {reason}")
-        for e in r.get("errors", []):
-            _fail(f"patch error: {e}")
-        for c in r.get("doctor", []):
-            icon = _C_GREEN + "OK" + _C_RESET if c["ok"] else _C_RED + "FAIL" + _C_RESET
-            print(f"  doctor: {icon}  {c['name']}: {c['msg']}")
-        if r.get("backup"):
-            _info(f"backup: {r['backup']}")
-        sys.exit(0 if r.get("ok") else 1)
+            _info(f"add it to your shell profile, e.g.:  export PATH=\"$HOME/.local/bin:$PATH\"")
+    _ok("Atropos available as: atropos — try it from any directory")
+    if _IS_TTY:
+        try:
+            print()
+            for ln in qr.qr_ascii("atropos is installed — the unturnable"):
+                print("  " + ln)
+        except Exception:
+            pass
+
+
+def cmd_version(args):
+    if not getattr(args, "quiet", False):
+        for ln in _MOIRAI_ASCII.strip("\n").splitlines():
+            print(f"  {_C_CYAN}{ln}{_C_RESET}")
+    print(f"atropos {_C_CYAN}{__version__}{_C_RESET}  {_C_DIM}— {_MOIRAI_TAGLINE}{_C_RESET}")
+    rt = detect.detect()
+    print(f"  python  {rt.get('python_version','?')}")
+    print(f"  os      {rt.get('os','?')} / {rt.get('os_release','?')}")
+    print(f"  cloud   {rt.get('cloud','none')}")
 
 
 def cmd_guest(args):
@@ -284,10 +446,21 @@ def cmd_init(args):
 
 
 def cmd_dashboard(args):
-    from core.dashboard import serve
+    from core import lan, qr
     cfg = config.load()
     d = cfg.get("dashboard", {})
-    serve(d.get("host", "127.0.0.1"), args.port or int(d.get("port", 8787)))
+    port = args.port or int(d.get("port", 8787))
+    url = f"http://{lan.lan_ip()}:{port}/"
+    if args.share:
+        print(f"  {_C_BOLD}Atropos dashboard — share{_C_RESET}")
+        print(f"  {_C_CYAN}URL:{_C_RESET}        {url}")
+        if not args.quiet:
+            print()
+            for ln in qr.qr_ascii(url.split("//")[1] + "  " + _MOIRAI_TAGLINE):
+                print("  " + ln)
+        print()
+    from core.dashboard import serve
+    serve(d.get("host", "127.0.0.1"), port)
 
 
 def cmd_jailbreak(args):
@@ -332,7 +505,7 @@ def cmd_alert(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="atropos", description="Atropos — Hermes + Claude fusion harness")
+    ap = argparse.ArgumentParser(prog="atropos", description="Atropos — the harness that cannot be turned (Clotho · Lachesis · Atropos)")
     sub = ap.add_subparsers(dest="cmd")
 
     p = sub.add_parser("detect",  help="detect runtime environment")
@@ -341,8 +514,15 @@ def main():
     p.add_argument("--json", dest="json_mode", action="store_true", help="JSON output")
     p = sub.add_parser("status",  help="system status overview")
     p = sub.add_parser("version", help="show atropos version")
+    p.add_argument("--quiet", action="store_true", help="suppress the ASCII banner")
     p = sub.add_parser("update",  help="update hermes-agent from upstream (full)")
     p.add_argument("--check", action="store_true", help="check only, don't apply")
+    p.add_argument("--apply", action="store_true", help="interactive preview -> confirm -> apply -> tests -> rollback")
+    p.add_argument("--yes", action="store_true", help="skip confirmation on apply")
+    p.add_argument("--auto-fix", action="store_true", help="delegate patch conflicts to the AI update engine")
+    p.add_argument("--ai-check", action="store_true", help="AI engine analysis of failed patches")
+    p.add_argument("--set-auto", choices=["off", "check", "apply"], default=None,
+                   help="set settings.update.auto mode")
     p = sub.add_parser("guest",   help="guest mode status / toggle")
     p.add_argument("--status", action="store_true", help="show guest mode status")
     p.add_argument("--toggle", action="store_true", help="enable/disable guest mode")
@@ -358,8 +538,14 @@ def main():
     p = sub.add_parser("patch",   help="apply or verify hacks")
     p.add_argument("--verify", action="store_true", help="verify only")
     p = sub.add_parser("init",    help="first-time initialization")
+    p = sub.add_parser("install", help="make `atropos` runnable from any directory (PATH)")
+    p.add_argument("--bin", dest="bin_dir", default=None, help="target bin dir (default ~/.local/bin)")
     p = sub.add_parser("dashboard", help="start web dashboard")
     p.add_argument("--port", type=int, default=None)
+    p.add_argument("--share", action="store_true",
+                   help="print the scannable QR + LAN URL, start the dashboard")
+    p.add_argument("--quiet", action="store_true",
+                   help="suppress the ASCII banner when printing the share QR")
     # watch
     p = sub.add_parser("watch", help="self-healing watchdog")
     p.add_argument("--daemon", action="store_true", help="run forever")
@@ -406,6 +592,23 @@ def main():
     # setup
     p = sub.add_parser("setup", help="first-time setup wizard")
     p.add_argument("--check", action="store_true", help="check only, don't install")
+    p.add_argument("--status", action="store_true", help="discovery summary (no tty)"
+                                                         + " + which harness wins per group")
+    p.add_argument("--import", dest="import_group", type=str, default=None,
+                   help="import a resource group: mcp|models|webhooks|routing|"
+                        "identity|memory|links|commands|files")
+    p.add_argument("--harness", type=str, default="both",
+                   choices=["both", "claude", "hermes"],
+                   help="which harness to import from (default both)")
+    p.add_argument("--mode", type=str, default="shared",
+                   choices=["shared", "per", "monitor"],
+                   help="import mode (default shared)")
+    p.add_argument("--which-wins", type=str, default=None,
+                   help="show owner of a group and exit")
+    p.add_argument("--diff", type=str, default=None,
+                   help="show per-file diff summary for a group")
+    p.add_argument("--tour", action="store_true",
+                   help="show the onboarding tour (dismissible)")
     # alert
     p = sub.add_parser("alert", help="telegram alerting")
     p.add_argument("--test", action="store_true", help="send test alert")
@@ -514,6 +717,15 @@ def main():
     p.add_argument("session_id", nargs="?", default=None, help="session id")
     # announce
     p = sub.add_parser("announce", help="announcement feed")
+    # sync (multi-backend delta sync)
+    p = sub.add_parser("sync", help="multi-backend delta sync (file/server/github/pair)")
+    p.add_argument("action", nargs="?", default="status",
+                   choices=["status", "push", "pull"], help="action")
+    p.add_argument("--backend", type=str, default=None, help="backend name")
+    p.add_argument("--target", type=str, default=None, help="file backend dir")
+    p.add_argument("--source", type=str, default=None, help="file backend dir (pull)")
+    p.add_argument("--pair", action="store_true", help="host a 6-digit pair code")
+    p.add_argument("--join", type=str, default=None, help="join with a 6-digit code")
     # commands
     p = sub.add_parser("commands", help="universal commands & aliases")
     p.add_argument("action", nargs="?", default=None,
@@ -524,7 +736,7 @@ def main():
     p.add_argument("target", nargs="?", default=None, help="alias target")
     args = ap.parse_args()
     if not args.cmd:
-        ap.print_help()
+        _dispatch_default(ap)
         sys.exit(0)
     handlers = {
         "detect": cmd_detect,
@@ -566,8 +778,48 @@ def main():
         "chat": cmd_chat,
         "announce": cmd_announce,
         "commands": cmd_commands,
+        "install": cmd_install,
+        "sync": cmd_sync,
     }
     handlers[args.cmd](args)
+
+
+# ── no-subcommand dispatch (settings.cli.default_action) ────────────────
+def _dispatch_default(ap):
+    """What a bare `atropos` (no subcommand) does, per cli.default_action.
+
+    cli          → status overview (mouse-friendly, no TTY needed)
+    dashboard    → start the web dashboard (prints URL + QR)
+    both         → dashboard in the background, then this status overview
+                   with a pointer to the dashboard URL
+    """
+    action = "cli"
+    try:
+        action = settings.get("cli.default_action", "cli") or "cli"
+    except Exception:
+        pass
+    if action == "dashboard":
+        cmd_dashboard(argparse.Namespace(port=None, share=True, quiet=False))
+        sys.exit(0)
+    if action == "both":
+        from core import lan
+        cfg = config.load()
+        d = cfg.get("dashboard", {})
+        port = int(d.get("port", 8787))
+        url = f"http://{lan.lan_ip()}:{port}/"
+        try:
+            import subprocess as _sp
+            _sp.Popen(
+                [sys.executable, str(Path(__file__).resolve()), "dashboard", "--port", str(port)],
+                stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                start_new_session=os.name != "nt",
+            )
+            _info(f"dashboard started in background: {url}")
+        except Exception as e:
+            _warn(f"could not start dashboard in background: {e}")
+        cmd_status(argparse.Namespace())
+        sys.exit(0)
+    cmd_status(argparse.Namespace())
 
 
 # (main call moved to end of file after all handlers)
@@ -1435,6 +1687,37 @@ def cmd_announce(args):
         print(f"  [{item['type']}] {item['text']}")
 
 
+def cmd_sync(args):
+    """Multi-backend delta sync: status|push|pull, --pair / --join."""
+    from core import sync
+    backend = args.backend or "file"
+    if args.pair:
+        _print_op(sync.host_pair())
+        return
+    if args.join:
+        try:
+            _print_op(sync.join_pair(args.join))
+        except ValueError as e:
+            _fail(str(e))
+            sys.exit(1)
+        return
+    if args.action == "push":
+        r = sync.sync_push(backend, target=args.target)
+        if r.get("error"):
+            _fail(f"sync push: {r['error']}")
+            sys.exit(1)
+        _ok(f"pushed {backend} ({len(r.get('pushed', []))} changed)")
+        return
+    if args.action == "pull":
+        r = sync.sync_pull(backend, source=args.source)
+        if r.get("error"):
+            _fail(f"sync pull: {r['error']}")
+            sys.exit(1)
+        _ok(f"pulled {backend}")
+        return
+    _print_op(sync.sync_status())
+
+
 def cmd_commands(args):
     """Universal commands & aliases: list|add|remove|alias."""
     from core import commands
@@ -1470,6 +1753,28 @@ def cmd_commands(args):
 
 
 def cmd_setup(args):
+    from core import setup_wizard as wz
+    if args.tour:
+        _print_op(wz.tour())
+        return
+    if args.which_wins:
+        _print_op({"group": args.which_wins, "owner": wz.which_wins(args.which_wins)})
+        return
+    if args.diff:
+        rows = wz._diff_group(args.diff)
+        _print_op({"group": args.diff, "files": len(rows),
+                   "newest": rows[0] if rows else None, "total_bytes": sum(
+                       r["size"] for r in rows)})
+        return
+    if args.import_group:
+        harnesses = (["claude", "hermes"] if args.harness == "both"
+                     else [args.harness])
+        res = wz._import_group(args.import_group, harnesses, mode=args.mode)
+        _print_op(res)
+        return
+    if args.status:
+        _print_op(wz.discover_summary())
+        return
     from core.setup_wizard import run_wizard
     run_wizard(check_only=args.check)
 

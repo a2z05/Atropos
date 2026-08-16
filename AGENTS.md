@@ -59,6 +59,19 @@ resolve via overwrite/keep/diff. Modules: `core/identity.py`,
 lachesis/claude, atropos/internal, auto = keyword heuristics). Settings:
 `routing.map` + `routing.default`. CLI: `atropos routing`.
 
+## Distribution — npm + PATH install
+
+`package.json` (`atropos-hs`) declares `bin: { atropos, atropos-dashboard }`.
+Publishing is owner-only (their npm token), done manually:
+
+```bash
+npm version patch && npm publish      # owner only — never in CI
+```
+
+Consumers run `npm i -g atropos-hs` or `atropos install` (symlink/copy into
+`~/.local/bin`; on Windows the install copies a self-contained runtime).
+Changes to packaging go in `package.json` + `bin/atropos-dashboard`.
+
 ## Settings — single source of truth
 
 **`core/settings.py` owns every config key.** Modules must read through

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Atropos dashboard launcher (npm bin shim).
+# `npm i -g atropos-hs` exposes `atropos-dashboard` on PATH:
+# it is a thin wrapper that starts the web dashboard the same as `atropos dashboard`.
+exec "$(dirname "$0")/../atropos" dashboard "$@"

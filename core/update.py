@@ -3,6 +3,7 @@
 apply hacks → doctor verify → rollback on failure."""
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -128,6 +129,47 @@ def apply_update(repo: str, dry_run=False):
     return result
 
 
+def dry_run_conflicts(repo: str) -> dict:
+    """Simulate hack application against origin/main and report conflicts.
+
+    For every hack, the ``old`` anchor is searched in the upstream version
+    of the target file (``git show origin/main:<target>``). No writes, no
+    checkout — purely diagnostic. Returns per-hack results plus a summary
+    of which hacks would fail after an update.
+    """
+    from . import patches
+    hacks = patches.load_hacks()
+    results = []
+    for h in hacks:
+        t = h.get("target", "plugins/platforms/telegram/adapter.py")
+        old = h.get("old", "")
+        if not old:
+            results.append({"id": h["id"], "ok": False, "reason": "no old anchor"})
+            continue
+        try:
+            out = subprocess.run(
+                ["git", "-C", repo, "show", f"origin/main:{t.lstrip('/')}"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if out.returncode != 0:
+                results.append({"id": h["id"], "ok": False,
+                                "reason": f"target missing upstream: {t}"})
+                continue
+            src = out.stdout
+            if old not in src:
+                results.append({"id": h["id"], "ok": False,
+                                "reason": "old anchor not found upstream"})
+            elif src.count(old) > 1:
+                results.append({"id": h["id"], "ok": False,
+                                "reason": f"anchor not unique ({src.count(old)}x)"})
+            else:
+                results.append({"id": h["id"], "ok": True, "target": t})
+        except Exception as e:
+            results.append({"id": h["id"], "ok": False, "reason": str(e)})
+    conflicts = [r for r in results if not r["ok"]]
+    return {"conflicts": conflicts, "total": len(results), "clear": not conflicts}
+
+
 def update_check(repo: str):
     """Non-destructive check. Returns dict with what would change."""
     try:
@@ -136,12 +178,102 @@ def update_check(repo: str):
         return {"ok": False, "error": str(e)}
     if up["head"] == up["remote"]:
         return {"ok": True, "up_to_date": True, **up}
+    dry = dry_run_conflicts(repo)
     return {
         "ok": True,
         "up_to_date": False,
         **up,
         "diff": diff_summary(repo),
+        "dry_run": dry,
     }
+
+
+def run_tests(repo: str, timeout=600) -> dict:
+    """Run the Atropos test suite. Returns {ok, output}."""
+    try:
+        out = subprocess.run(
+            [sys.executable, "-m", "unittest", "discover", "tests"],
+            cwd=repo, capture_output=True, text=True, timeout=timeout,
+        )
+        return {"ok": out.returncode == 0, "returncode": out.returncode,
+                "output": (out.stdout + out.stderr)[-4000:]}
+    except Exception as e:
+        return {"ok": False, "output": str(e)}
+
+
+def auto_check() -> dict:
+    """settings.update.auto == 'check': alert when an update is available.
+
+    Stores last-check state like the dashboard, clears old alerts when
+    up to date. Returns the check result.
+    """
+    import json
+    from . import settings
+    home = detect.atropos_home()
+    state_path = home / "update_state.json"
+    repo = detect.hermes_agent()
+    if not repo:
+        return {"ok": False, "error": "hermes-agent not found"}
+    r = update_check(repo)
+    state = {
+        "last_check": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "up_to_date": r.get("up_to_date", False),
+        "behind": r.get("behind"),
+        "head": r.get("head"),
+        "remote": r.get("remote"),
+    }
+    try:
+        home.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    if not r.get("ok"):
+        return r
+    if not r.get("up_to_date"):
+        try:
+            from . import alerts
+            alerts.send_alert(
+                f"🔄 Atropos update available: {r.get('behind', '?')} commits behind "
+                f"({r.get('head')} → {r.get('remote')}). Run `atropos update apply`.",
+                force=True)
+        except Exception:
+            pass
+    return r
+
+
+def auto_apply() -> dict:
+    """settings.update.auto == 'apply': auto-apply clean non-conflicting updates.
+
+    Always snapshots before (backup_state), re-applies hacks, runs doctor +
+    tests, and rolls back on failure. Conflict updates are NOT auto-applied —
+    they surface for the AI engine / manual apply.
+    """
+    from . import settings
+    repo = detect.hermes_agent()
+    if not repo:
+        return {"ok": False, "error": "hermes-agent not found"}
+    r = update_check(repo)
+    if r.get("up_to_date"):
+        return {**r, "auto": "apply", "action": "none"}
+    if not r.get("ok"):
+        return r
+    dry = r.get("dry_run", {})
+    if not dry.get("clear") and not settings.get("update.auto_ai", False):
+        return {**r, "auto": "apply", "action": "deferred", "reason": "conflicts",
+                "conflicts": dry.get("conflicts", [])}
+    result = apply_update(repo)
+    result["auto"] = "apply"
+    if result.get("ok"):
+        try:
+            result["tests"] = run_tests(_home_repo())
+        except Exception as e:
+            result["tests"] = {"ok": False, "output": str(e)}
+    return result
+
+
+def _home_repo():
+    """The repo dir of this Atropos install (used as the test cwd)."""
+    return Path(__file__).resolve().parent.parent
 
 
 def bump_changelog(changelog_path: Path, version: str = "", source: str = "") -> dict:

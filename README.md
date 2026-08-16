@@ -55,6 +55,30 @@ python3 atropos dashboard                 # web control plane on :8787
 
 Open `http://127.0.0.1:8787`, paste the token printed by the dashboard (stored at `~/.atropos/auth_token`).
 
+### Install from anywhere (PATH)
+
+```bash
+python3 atropos install              # symlinks (or copies) `atropos` into ~/.local/bin
+cd / && atropos version             # works from any directory
+```
+
+On Windows the install copies a self-contained runtime next to the script
+(`core/`, `templates/`, `hacks/`, `patches/`, `dashboard/`, `VERSION`) so the
+binary keeps working no matter where you run it. `--bin <dir>` overrides the
+target directory.
+
+### npm packaging (owner-only)
+
+`package.json` declares `atropos-hs` with `bin` entries `atropos` and
+`atropos-dashboard`. Publishing is **not** part of any CI — the owner pushes
+with their own npm token:
+
+```bash
+npm version patch                     # bumps package.json + VERSION
+npm publish                           # requires owner npm token + repo access
+npm i -g atropos-hs                   # consumers: atropos + atropos-dashboard on PATH
+```
+
 ---
 
 ## 🖥 Dashboard — 37 panels, 80+ API endpoints
@@ -140,7 +164,7 @@ atropos routing add reviews --harness clotho  # custom category
 
 ## 📱 Mobile chat + LAN sharing
 
-`atropos dashboard --share` prints the LAN URL (auto-detected IP + port) and a QR frame. The dashboard binds `0.0.0.0` when sharing; new devices need **approval** (Pairing panel), and the optional password gate still applies.
+`atropos dashboard --share` prints the LAN URL (auto-detected IP + port) and a **real scannable QR** (pure-stdlib encoder). The dashboard binds `0.0.0.0` when sharing; new devices need **approval** (Pairing panel), and the optional password gate still applies.
 
 **`/chat`** is a dedicated mobile-first chat page (also great on desktop): glass bubbles with Moirai glyph avatars, **streaming replies** (`POST /api/chat/stream` → SSE deltas), slash commands routed through the Console whitelist (`/doctor`, `/backup`, `/skills list`…), voice input (Web Speech), swipe/pull gestures, copy/regenerate/edit per message, offline badge, Farsi RTL, and one-shot **share links** (`atropos links create <session>` → `/chat?share=…`, single-use, 1h TTL, SHA-256-only storage).
 
@@ -151,6 +175,12 @@ atropos routing add reviews --harness clotho  # custom category
 | Command | Description |
 |---|---|
 | `atropos setup [--check]` | First-time wizard: detect → check → install → configure |
+| `atropos setup --status` | Discovery summary + which harness owns each group |
+| `atropos setup --import <group> [--harness] [--mode]` | Import a resource group (shared/per/monitor) |
+| `atropos install [--bin <dir>]` | Symlink/copy `atropos` onto PATH (self-contained on Windows) |
+| `atropos update [--check] [--apply] [--ai-check] [--set-auto]` | Update check/dry-run, apply with rollback, AI engine preview, auto mode |
+| `atropos sync status / push / pull / host --pair / join <code>` | Delta sync across devices (file/server/github/pair) |
+| `atropos backup --backend s3\|server\|github\|pair [--restore]` | Multi-backend backup (file default), restore w/ preview |
 | `atropos init` | Detect env, write config, apply patches |
 | `atropos version` | Version + runtime |
 | `atropos detect` | Full environment detection |

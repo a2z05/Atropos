@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.4.0] — 2026-08-16 (final polish)
+
+### Added
+- **Real scannable QR codes (`core/qr.py`)** — pure-stdlib ISO/IEC 18004 encoder (v1-4, byte mode, ECC-M, Reed-Solomon GF(256), 8 masks with penalty scoring, PNG/SVG/ASCII renderers). Wired into `atropos dashboard --share` (prints a scannable QR next to the URL), `atropos link --chat`, the dashboard Share modal and Pairing panel. Verified by an independent hand-rolled decoder (24 tests).
+- **npm packaging (`package.json`)** — `atropos-hs` with `bin: { atropos, atropos-dashboard }` (`bin/atropos-dashboard` launcher). Publishing is owner-only with their npm token; steps documented in README + AGENTS.
+- **Install from anywhere** — `atropos install` symlinks or copies a self-contained runtime into `~/.local/bin` (Windows copies `core/`, `templates/`, `hacks/`, `patches/`, `dashboard/`, `VERSION` so the binary works from any cwd). Verified: `cd / && atropos version`.
+- **CLI default action** — `settings.cli.default_action` (`cli|dashboard|both`); bare `atropos` dispatches accordingly. Dashboard Settings dropdown.
+- **Update system (`core/update.py`)** — check with dry-run conflict report (`update check`), interactive apply (preview → confirm → tests → rollback on failure), `settings.update.auto` (`off|check|apply`) with `auto_check`/`auto_apply`, `--set-auto` no longer requires the hermes repo. Dashboard Update panel wired to `/api/update/check|apply|state`.
+- **AI update engine (`core/update_ai.py`)** — activates on failed patch apply: diagnose (api_renamed / path_moved / file_deleted / format_changed / conflict) → rewrite (mocked LLM hook with deterministic fallback) → tests + doctor → show diff → confirm → apply with rollback. `update-ai.*` settings, attempt history, `atropos update --ai-check / apply --auto-fix / --ai-always`, dashboard AI Update panel. (26 tests)
+- **Multi-backend sync (`core/sync.py`)** — delta hash-map sync over file/server/github/pair backends, `~/.atropos/sync/` flat store, LWW conflicts with `sync/conflicts` backups, per-file version history, secrets never synced, `settings.sync.*`, `atropos sync host --pair / join`, Dashboard Sync/Devices panel. (22 tests)
+- **Multi-backend backup (`core/backup.py` + `core/s3.py`)** — backends file/s3/server/github/pair; pure-stdlib S3 client with AWS SigV4 signing (urllib+hmac, test-suite literal vectors); broad content scope with secrets/logs/cache exclusions; retention keep-N + newest-per-ISO-week; restore with preview + confirm; `backup.s3.*` settings; Dashboard Backends panel. (12 tests)
+- **Setup wizard upgrade (`core/setup_wizard.py`)** — `setup --status` discovery summary (both harnesses × 9 resource groups), `--import <group> --harness --mode` (shared copy / per-resource tagging / monitor), `--which-wins`, `--diff`, dismissible tour state; Dashboard Wizard panel + `/api/wizard/import`. (10 tests)
+- **Moirai narrative** — CLI `--version` prints the ASCII icon + tagline ("Clotho · Lachesis · Atropos — the unturnable") with `--quiet`; `status` keeps the trio line; TUI header now shows the trio line on every panel.
+
+### Changed
+- `core/s3.py` closes response sockets on every HTTPError path (no more ResourceWarnings).
+- `backup.list_backups` sorts by mtime (not filename); `prune_all` keeps newest-per-ISO-week correctly.
+- `atropos` resolves its own location via `realpath` and dispatches bare invocations per `cli.default_action`.
+- Dashboard: 4 new panels (Sync/Devices ⇆, AI Update ✦, Backends ☁, Wizard 🧙) → 41 total; `sw.js` shells `icon-256.png`; Share modal + Pairing QR are real and scannable; scrollbars themed 6-8px; brand/auth/chat icons with inline-SVG fallback; every panel has a friendly empty state.
+- 511 tests green (was 417), stdlib-only throughout, VERSION stays 1.4.0.
+
 ## [1.4.0] — 2026-08-15 (current)
 
 ### Added

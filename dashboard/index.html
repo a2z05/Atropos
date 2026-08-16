@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0b1020">
 <meta name="description" content="Atropos control plane — Hermes + Claude fusion harness">
-<link rel="manifest" href='data:application/manifest+json,{"name":"Atropos Control Plane","short_name":"Atropos","start_url":".","display":"standalone","background_color":"%230b1020","theme_color":"%230b1020","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%236366f1%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2250%22 text-anchor=%22middle%22 fill=%22white%22%3E%E2%9A%9B%3C/text%3E%3C/svg%3E","sizes":"any","type":"image/svg+xml"}]}'>
+<link rel="manifest" href='data:application/manifest+json,{"name":"Atropos Control Plane","short_name":"Atropos","start_url":".","display":"standalone","background_color":"%230b1020","theme_color":"%230b1020","icons":[{"src":"/icon-256.png","sizes":"256x256","type":"image/png"},{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%236366f1%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2250%22 text-anchor=%22middle%22 fill=%22white%22%3E%E2%9A%9B%3C/text%3E%3C/svg%3E","sizes":"any","type":"image/svg+xml"}]}'>
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" type="image/png" href="/favicon.png">
 <title>Atropos — Control Plane</title>
 <style>
   :root {
@@ -32,6 +33,10 @@
     --glow: 0 0 24px rgba(99, 102, 241, .28);
     --card-border: 1px solid rgba(148, 163, 184, .14);
     --sidebar-w: 232px;
+    --scroll-w: 8px;
+    --scroll-thumb: rgba(148, 163, 184, .28);
+    --scroll-thumb-hover: rgba(148, 163, 184, .45);
+    --scroll-track: transparent;
   }
   [data-theme="light"] {
     --bg0: #f1f5f9;
@@ -57,6 +62,23 @@
   @keyframes slideRTL { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
+
+  /* ── custom scrollbars (6-8px, themed, hide-until-hover on desktop) ── */
+  :root { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) var(--scroll-track); }
+  *::-webkit-scrollbar { width: var(--scroll-w); height: var(--scroll-w); }
+  *::-webkit-scrollbar-track { background: var(--scroll-track); }
+  *::-webkit-scrollbar-thumb {
+    background: var(--scroll-thumb); border-radius: 8px;
+    border: 2px solid transparent; background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: content-box; }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  @media (hover: hover) {
+    * { scrollbar-width: thin; }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-thumb { opacity: 0; }
+    *:hover::-webkit-scrollbar-thumb, *:focus-within::-webkit-scrollbar-thumb { opacity: 1; }
+  }
   body {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: radial-gradient(1200px 600px at 20% -10%, #1e1b4b 0%, var(--bg0) 55%) no-repeat fixed,
@@ -90,6 +112,8 @@
   }
   .brand .nm { font-weight: 800; font-size: 17px; letter-spacing: 1.5px; line-height: 1.1; }
   .brand .nm small { display: block; font-size: 9.5px; letter-spacing: 2.5px; color: var(--muted); font-weight: 600; }
+  .brand .glyph img { width: 36px; height: 36px; border-radius: 11px; object-fit: cover; display: block; }
+  .brand .glyph .glyph-fallback { display: none; }
   .nav-item {
     display: flex; align-items: center; gap: 10px;
     padding: 9px 11px; border-radius: 11px; cursor: pointer;
@@ -461,6 +485,12 @@
     background: var(--bg1); border: var(--card-border); border-radius: 16px; padding: 30px 36px;
     text-align: center; max-width: 340px; width: 90%;
   }
+  .auth-logo { display: flex; justify-content: center; align-items: center; margin-bottom: 12px;
+    width: 64px; height: 64px; margin-left: auto; margin-right: auto;
+    border-radius: 18px; background: linear-gradient(135deg, var(--indigo), var(--violet));
+    box-shadow: var(--glow); font-size: 26px; overflow: hidden; }
+  .auth-logo img { width: 64px; height: 64px; object-fit: cover; display: block; }
+  .auth-logo span { display: none; }
   .auth-box h3 { font-size: 15px; margin-bottom: 14px; font-weight: 800; letter-spacing: .5px; }
   .auth-box input {
     width: 100%; padding: 10px 14px; background: rgba(15,23,42,.7); border: 1px solid rgba(148,163,184,.25);
@@ -703,7 +733,8 @@
   <!-- ── Sidebar ── -->
   <aside class="sidebar">
     <div class="brand">
-      <div class="glyph">⚛</div>
+      <div class="glyph" id="brand-glyph"><img src="icon-256.png" alt=""
+        onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="glyph-fallback">⚛</span></div>
       <div class="nm">ATROPOS<small>control plane</small></div>
     </div>
     <div class="nav-item active" data-panel="overview"><span class="ico">◎</span>Overview</div>
@@ -745,6 +776,10 @@
     <div class="nav-item" data-panel="budget"><span class="ico">💳</span>Budget</div>
     <div class="nav-item" data-panel="activity"><span class="ico">⏱</span>Activity</div>
     <div class="nav-item" data-panel="announce"><span class="ico">📣</span>Announce</div>
+    <div class="nav-item" data-panel="sync"><span class="ico">⇆</span>Sync/Devices</div>
+    <div class="nav-item" data-panel="update-ai"><span class="ico">✦</span>AI Update</div>
+    <div class="nav-item" data-panel="backends"><span class="ico">☁</span>Backends</div>
+    <div class="nav-item" data-panel="wizard"><span class="ico">🧙</span>Wizard</div>
     <div class="side-foot">
       <div class="share-card" id="sb-share" title="Share on LAN">
         <span style="font-size:15px;">⇪</span>
@@ -1100,6 +1135,103 @@
       </div>
     </section>
 
+    <!-- ════════ DEVICES / SYNC (item 7) ════════ -->
+    <section class="panel" id="panel-sync">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Devices</h3>
+          <div id="sync-devices"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Sync</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Delta-syncs config, identity, mcp, models, webhooks, routing, links and commands to a file/server/github/pair backend. Secrets are never synced.</p>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-sync-push">Push changes</button>
+            <button class="btn" id="btn-sync-pull">Pull changes</button>
+            <button class="btn green" id="btn-sync-pair">Host pair (6-digit)</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ AI UPDATE ENGINE (item 6) ════════ -->
+    <section class="panel" id="panel-update-ai">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>AI update engine</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Activates on failed patch apply: diagnose, rewrite, test + doctor, show diff, confirm, apply. Uses the mocked/configured LLM provider.</p>
+          <div id="uai-history"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Config</h3>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Mode</label>
+            <select id="uai-mode" class="token-input">
+              <option value="off">off</option><option value="manual">manual</option>
+              <option value="auto">auto</option>
+            </select>
+            <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Auto</label>
+            <select id="uai-auto" class="token-input">
+              <option value="off">off</option><option value="check">check</option>
+              <option value="apply">apply</option>
+            </select>
+          </div>
+          <div style="margin-top:10px;font-size:12px;color:var(--muted);">
+            model: <b id="uai-model" style="color:var(--text)">—</b> · effort: <b id="uai-effort" style="color:var(--text)">—</b><br>
+            <span id="uai-auto-note">—</span>
+          </div>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-uai-check">AI check</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ MULTI-BACKEND BACKUP (item 8) ════════ -->
+    <section class="panel" id="panel-backends">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Backends</h3>
+          <div id="bkb-list"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Push to backend</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Creates a tarball and pushes it to the chosen backend. Configure via Settings → backup section (s3 endpoint/bucket/keys, server url/token, GITHUB_TOKEN env for github).</p>
+          <div class="btn-row just-end">
+            <button class="btn" id="btn-bkb-s3">S3</button>
+            <button class="btn" id="btn-bkb-server">Server</button>
+            <button class="btn" id="btn-bkb-github">GitHub</button>
+            <button class="btn" id="btn-bkb-pair">Pair</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ SETUP WIZARD (item 9) ════════ -->
+    <section class="panel" id="panel-wizard">
+      <div class="grid">
+        <section class="card span-7">
+          <h3><span class="dot"></span>Resource groups</h3>
+          <div id="wz-harnesses" style="font-size:12px;color:var(--muted);margin-bottom:12px;">—</div>
+          <div id="wz-groups"><div class="log-empty">Loading…</div></div>
+        </section>
+        <section class="card span-5">
+          <h3><span class="dot"></span>Import</h3>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Import a group from the selected harness into atropos (shared copy, per-resource tagging, or monitor mode). Diff shows what is already there.</p>
+          <select id="wz-group-select" class="token-input" style="width:100%;margin-bottom:12px;">
+            <option value="mcp">mcp</option><option value="models">models</option>
+            <option value="webhooks">webhooks</option><option value="routing">routing</option>
+            <option value="identity">identity</option><option value="memory">memory</option>
+            <option value="links">links</option><option value="commands">commands</option>
+            <option value="files">files</option>
+          </select>
+          <div class="btn-row just-end">
+            <button class="btn green" id="btn-wz-import">Import</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <!-- ════════ EFFORT ════════ -->
     <section class="panel" id="panel-effort">
       <div class="grid">
@@ -1268,6 +1400,13 @@
             <select id="settings-accent" class="token-input" style="max-width:110px;">
               <option value="indigo">Indigo</option><option value="cyan">Cyan</option>
               <option value="green">Green</option><option value="amber">Amber</option><option value="violet">Violet</option>
+            </select>
+            <span style="font-size:12px;color:var(--muted);align-self:center;">CLI default</span>
+            <select id="settings-cli-action" class="token-input" style="max-width:110px;"
+                    title="What a bare `atropos` (no subcommand) does">
+              <option value="cli">CLI status</option>
+              <option value="dashboard">Dashboard</option>
+              <option value="both">Dashboard + CLI</option>
             </select>
           </div>
           <div id="settings-list"><div class="log-empty">Loading…</div></div>
@@ -1547,7 +1686,7 @@
 <!-- ── Auth Password Gate ── -->
 <div id="auth-backdrop" class="auth-backdrop">
   <div class="auth-box">
-    <div style="font-size:26px;margin-bottom:10px;">⚛</div>
+    <div class="auth-logo"><img src="icon-256.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span>⚛</span></div>
     <h3>Atropos — Password required</h3>
     <input id="auth-pw" type="password" placeholder="Enter dashboard password…" autocomplete="off">
     <button class="btn" id="btn-auth-submit" style="width:100%;justify-content:center;">Enter</button>
@@ -1572,7 +1711,7 @@
       <input id="share-url" readonly onclick="this.select()">
       <button class="btn" id="btn-share-copy">Copy</button>
     </div>
-    <p class="share-note">QR is decorative — open the URL on a phone on the same network. Pairing: approve the device in <b>Pairing</b> when it first connects.</p>
+    <p class="share-note">Scan the QR with a phone camera on the same network — it opens the shared chat. Pairing: approve the device in <b>Pairing</b> when it first connects.</p>
     <div class="btn-row just-end" style="margin-top:14px;">
       <button class="btn" id="btn-share-chat">Open chat</button>
       <button class="btn" id="btn-share-close">Close</button>
@@ -1813,7 +1952,8 @@ const PANELS = ['overview','doctor','patches','routers','sessions','cron','skill
                 'update','guest','logs','config','claude','analytics','history','backup','effort',
                 'selfheal','alerts','jailbreak','extensions','market','console','settings',
                 'mcp','identity','configs','routing','files','models','webhooks','pairing',
-                'fleet','memory','budget','activity','announce'];
+                'fleet','memory','budget','activity','announce','sync','update-ai',
+                'backends','wizard'];
 const TITLES = {
   overview: 'Overview', doctor: 'Doctor', patches: 'Patches', routers: 'Routers',
   sessions: 'Sessions', cron: 'Cron', skills: 'Skills', plugins: 'Plugins',
@@ -1824,7 +1964,8 @@ const TITLES = {
   extensions: 'Extensions', market: 'Market', console: 'Console', settings: 'Settings',
   mcp: 'MCP', identity: 'Identity', configs: 'Configs', routing: 'Routing',
   files: 'Files', models: 'Models', webhooks: 'Webhooks', pairing: 'Pairing',
-  fleet: 'Fleet', memory: 'Memory', budget: 'Budget', activity: 'Activity', announce: 'Announce'
+  fleet: 'Fleet', memory: 'Memory', budget: 'Budget', activity: 'Activity', announce: 'Announce',
+  sync: 'Sync / Devices', 'update-ai': 'AI Update', backends: 'Backends', wizard: 'Wizard'
 };
 function currentPanel() {
   const h = location.hash.replace('#', '');
@@ -1872,6 +2013,10 @@ function showPanel(name) {
     budget: [loadBudget],
     activity: [loadActivity],
     announce: [loadAnnounce],
+    sync: [loadSync],
+    'update-ai': [loadUpdateAi],
+    backends: [loadBackendBackups],
+    wizard: [loadWizard],
   };
   (loaders[name] || []).forEach(fn => { try { fn(); } catch (_) {} });
 }
@@ -2871,6 +3016,10 @@ const CMD_ITEMS = [
   { ico: '💳', name: 'Budget', panel: 'budget', action: 'Check now', fn: () => { location.hash='budget'; document.getElementById('btn-budget-check').click(); }},
   { ico: '⏱', name: 'Activity', panel: 'activity' },
   { ico: '📣', name: 'Announce', panel: 'announce' },
+  { ico: '⇆', name: 'Sync / Devices', panel: 'sync' },
+  { ico: '✦', name: 'AI Update', panel: 'update-ai', action: 'AI check', fn: () => { location.hash='update-ai'; updateAi(); }},
+  { ico: '☁', name: 'Backends', panel: 'backends' },
+  { ico: '🧙', name: 'Wizard', panel: 'wizard' },
   { ico: '⇪', name: 'Share on LAN', action: 'Open share modal', fn: () => openShareModal() },
   { ico: '🎞', name: 'Snapshot — Create', action: 'Create snapshot', fn: () => { toast('Creating snapshot…', 'ok'); api('/api/snapshots/create', { method:'POST', body: JSON.stringify({ label: 'manual' }) }).then(d => toast(d.ok ? 'Snapshot created ✓' : (d.error || 'failed'), d.ok ? 'ok' : 'err')).catch(e => toast(e.message, 'err')); }},
   { ico: '💬', name: 'Chat', action: 'Open mobile chat', fn: () => window.open('./chat.html', '_blank') },
@@ -2962,6 +3111,132 @@ async function loadUpdateState() {
     el.textContent = d.last_check ? 'last check: ' + d.last_check : '';
   } catch (_) {}
 }
+/* ── update-ai engine panel (item 6: diagnose->rewrite->test->confirm->apply) ─ */
+async function loadUpdateAi() {
+  const box = document.getElementById('uai-history');
+  if (!box) return;
+  try {
+    const d = await api('/api/update-ai');
+    const sel = document.getElementById('uai-mode');
+    if (sel) sel.value = d.mode || 'manual';
+    document.getElementById('uai-model').textContent = d.model || '—';
+    document.getElementById('uai-effort').textContent = d.effort || '—';
+    const auto = document.getElementById('uai-auto');
+    if (auto) auto.value = d.update_auto || 'off';
+    document.getElementById('uai-auto-note').textContent =
+      'auto: ' + (d.update_auto || 'off') + (d.update_auto_ai ? ' · ai-fix on' : '');
+    const hist = d.history || [];
+    if (!hist.length) { box.innerHTML = '<div class="log-empty">No AI update attempts yet. Check runs on demand.</div>'; return; }
+    box.innerHTML = hist.slice(0, 12).map(a =>
+      `<div class="bk-file"><span class="nm">${esc(a.id || '')}</span>` +
+      `<span class="sz">${esc(a.status || a.stage || '')}</span>` +
+      `<span class="dt">${esc(String(a.ts || a.date || ''))}</span></div>`
+    ).join('');
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+async function updateAi(configEvt) {
+  const btn = document.getElementById('btn-uai-check');
+  if (btn) btn.disabled = true;
+  try {
+    const d = await api('/api/update-ai/action', { method: 'POST', body: '{}' });
+    toast(d.ok ? (d.suggested ? 'AI suggestion ready' : 'AI check ok') : 'AI check failed', d.ok ? 'ok' : 'err');
+    await loadUpdateAi();
+  } catch (e) { toast(e.message, 'err'); }
+  if (btn) btn.disabled = false;
+}
+document.getElementById('btn-uai-check')?.addEventListener('click', updateAi);
+document.getElementById('uai-mode')?.addEventListener('change', async e => {
+  await api('/api/update-ai/action', { method: 'POST', body: JSON.stringify({ action: 'config', mode: e.target.value }) }).catch(() => {});
+  toast(t('toast_saved'), 'ok');
+});
+document.getElementById('uai-auto')?.addEventListener('change', async e => {
+  await api('/api/update-ai/action', { method: 'POST', body: JSON.stringify({ action: 'set-auto', value: e.target.value }) }).catch(() => {});
+  toast(t('toast_saved'), 'ok');
+});
+
+/* ── sync / devices panel (item 7: push/pull/pair/status) ─────────────── */
+async function loadSync() {
+  const box = document.getElementById('sync-devices');
+  if (!box) return;
+  try {
+    const d = await api('/api/sync/status');
+    const peers = d.peers || d.devices || {};
+    const entries = Object.entries(peers);
+    if (!entries.length) { box.innerHTML = '<div class="log-empty">No peers yet. Run a push or host-a-pair to add the first device.</div>'; return; }
+    box.innerHTML = entries.map(([id, p]) =>
+      `<div class="bk-file"><span class="nm">${esc(p.name || id)}</span>` +
+      `<span class="sz">${esc(p.backend || 'file')} · ${esc(String(p.last_seen || '—'))}</span>` +
+      `<span class="dt">${esc((p.pending && p.pending.length ? p.pending.length + ' pending' : 'synced'))}</span></div>`
+    ).join('');
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+async function syncAction(action, payload) {
+  const d = await api('/api/sync/action', { method: 'POST', body: JSON.stringify(Object.assign({ action }, payload || {})) });
+  if (d.code) { toast('Pair code: ' + d.code, 'ok'); }
+  toast(d.ok || d.error ? 'Sync done' : 'Sync failed', d.ok ? 'ok' : 'err');
+  await loadSync();
+  return d;
+}
+document.getElementById('btn-sync-push')?.addEventListener('click', () => syncAction('push'));
+document.getElementById('btn-sync-pull')?.addEventListener('click', () => syncAction('pull'));
+document.getElementById('btn-sync-pair')?.addEventListener('click', () => syncAction('host-pair'));
+
+/* ── multi-backend backup (item 8: s3/server/github/pair/file) ─────────── */
+async function loadBackendBackups() {
+  const box = document.getElementById('bkb-list');
+  if (!box) return;
+  try {
+    const d = await api('/api/backup/backends');
+    const bs = d.backends || {};
+    const rows = Object.entries(bs);
+    if (!rows.length) { box.innerHTML = '<div class="log-empty">No backends configured.</div>'; return; }
+    box.innerHTML = rows.map(([name, r]) =>
+      `<div class="bk-file"><span class="nm">${esc(name)}</span>` +
+      `<span class="sz">${r.configured ? '<b style="color:var(--green)">ready</b>' : '<span style="color:var(--muted)">not configured</span>'}</span>` +
+      `<span class="dt">${r.last_backup ? esc(String(r.last_backup.name)) : 'no backup yet'}</span></div>`
+    ).join('');
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+async function backendAction(backend) {
+  const d = await api('/api/backup/backend/action', { method: 'POST', body: JSON.stringify({ action: 'create', backend }) });
+  toast(d.ok ? 'Backup pushed to ' + backend : 'Backup failed: ' + (d.error || ''), d.ok ? 'ok' : 'err');
+  await loadBackendBackups();
+  await loadBackupPanel();
+}
+document.getElementById('btn-bkb-s3')?.addEventListener('click', () => backendAction('s3'));
+document.getElementById('btn-bkb-server')?.addEventListener('click', () => backendAction('server'));
+document.getElementById('btn-bkb-github')?.addEventListener('click', () => backendAction('github'));
+document.getElementById('btn-bkb-pair')?.addEventListener('click', () => backendAction('pair'));
+
+/* ── setup wizard panel (item 9: import groups / which-wins) ──────────── */
+async function loadWizard() {
+  const box = document.getElementById('wz-groups');
+  if (!box) return;
+  try {
+    const d = await api('/api/wizard/status');
+    const harnesses = d.harnesses || {};
+    const bins = Object.entries(harnesses).map(([h, v]) => `${h}: ${v.present ? 'present' : 'missing'}`).join(' · ');
+    document.getElementById('wz-harnesses').textContent = bins || '—';
+    const groups = d.groups || {};
+    const entries = Object.entries(groups);
+    if (!entries.length) { box.innerHTML = '<div class="log-empty">No resource groups discovered.</div>'; return; }
+    box.innerHTML = entries.map(([name, g]) =>
+      `<div class="bk-file"><span class="nm">${esc(name)}</span>` +
+      `<span class="sz">${(g.claude ? 'claude' : '')}${(g.claude && g.hermes) ? '+' : ''}${(g.hermes ? 'hermes' : '')}${g.target_exists ? ' · in-atropos' : ''}</span>` +
+      `<span class="dt">${g.diff ? g.diff.length + ' files' : '0 files'}</span></div>`
+    ).join('');
+  } catch (e) { box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
+}
+async function wizardImport(group) {
+  const d = await api('/api/wizard/import', { method: 'POST', body: JSON.stringify({ group }) }).catch(e => ({ ok: false, error: e.message }));
+  toast(d.ok ? 'Imported ' + group : 'Import failed: ' + (d.error || ''), d.ok ? 'ok' : 'err');
+  await loadWizard();
+}
+document.getElementById('btn-wz-import')?.addEventListener('click', async () => {
+  const sel = document.getElementById('wz-group-select');
+  if (sel) wizardImport(sel.value);
+});
+document.getElementById('wz-group-select')?.addEventListener('change', e => wizardImport(e.target.value));
 async function loadChangelog() {
   const box = document.getElementById('update-changelog');
   try {
@@ -3225,6 +3500,8 @@ async function loadSettings() {
     document.getElementById('settings-theme').value = d.theme || 'auto';
     document.getElementById('settings-lang').value = d.lang || 'en';
     document.getElementById('settings-accent').value = d.accent || 'indigo';
+    const cliSel = document.getElementById('settings-cli-action');
+    if (cliSel) cliSel.value = d.cli_default_action || 'cli';
     // group selector
     const sel = document.getElementById('settings-group');
     const groups = Object.keys(d.groups || {});
@@ -3291,6 +3568,10 @@ document.getElementById('settings-lang').addEventListener('change', async e => {
 document.getElementById('settings-accent').addEventListener('change', async e => {
   applyAccent(e.target.value);
   await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'dashboard.accent', value: e.target.value }) }).catch(() => {});
+});
+document.getElementById('settings-cli-action').addEventListener('change', async e => {
+  await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'cli.default_action', value: e.target.value }) }).catch(() => {});
+  toast(t('toast_saved'), 'ok');
 });
 document.getElementById('btn-settings-export').addEventListener('click', async () => {
   const d = await api('/api/settings/export').catch(e => ({ ok: false, error: e.message }));
@@ -3866,7 +4147,7 @@ async function loadPairing() {
       `<div class="kv"><span class="k">IP</span><span class="v">${esc(d.ip || '—')}</span></div>` +
       `<div class="kv"><span class="k">Port</span><span class="v">${esc(String(d.port))}</span></div>` +
       `<div class="btn-row just-end"><button class="btn" id="btn-pair-copy">Copy URL</button></div>` +
-      `<div class="edit-label">decorative QR</div>` +
+      `<div class="edit-label">scannable QR</div>` +
       `<div class="qr-frame" style="display:block;margin:0;background:#fff;border-radius:10px;padding:10px;overflow-x:auto;"><pre style="font-size:7px;line-height:8px;letter-spacing:0;color:#000;">${esc((d.qr || []).join('\n'))}</pre></div>`;
     const cb = document.getElementById('btn-pair-copy');
     if (cb) cb.addEventListener('click', () => copyText(d.url || ''));
@@ -4285,6 +4566,10 @@ function startLiveHub() {
     if (p === 'budget') loadBudget().catch(() => {});
     if (p === 'activity') loadActivity().catch(() => {});
     if (p === 'announce') loadAnnounce().catch(() => {});
+    if (p === 'sync') loadSync().catch(() => {});
+    if (p === 'update-ai') loadUpdateAi().catch(() => {});
+    if (p === 'backends') loadBackendBackups().catch(() => {});
+    if (p === 'wizard') loadWizard().catch(() => {});
   }, refreshMs);
   // fleet refresh: 30s regardless of which panel is open
   setInterval(() => { if (getToken() && currentPanel() === 'fleet') loadFleet().catch(() => {}); }, 30000);
