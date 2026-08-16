@@ -22,20 +22,13 @@ if str(_REPO) not in sys.path:
 
 from core import settings, update_ai  # noqa: E402
 
-PATCH_TEXT = """\
-# test hack
-id: "00-test-rewrite"
-target: plugins/A.py
-old: |-
-  def is_user_authorized(self, uid):
-      return True
-new: |-
-  def is_user_authorized(self, uid):
-      return True
-  # ATRA test marker
-verify:
-  - "def is_user_authorized(self, uid):"
-"""
+TEST_HACK = {
+    "id": "00-test-rewrite",
+    "fn": lambda s: s,  # code registry — the customization IS code
+    "target": "plugins/A.py",
+    "verify": ["def is_user_authorized(self, uid):"],
+    "apply_after": None,
+}
 
 OLD_SOURCE = """\
 class Builder:
@@ -49,22 +42,20 @@ class Builder:
         return True
 """
 
-HACK_FILE = _REPO / "hacks" / "00-test-rewrite.yml"
-
 
 class UpdateAiBase(unittest.TestCase):
     def setUp(self):
+        from core import patches
         self._a = os.environ.get("ATROPOS_HOME")
         self.tmp = tempfile.mkdtemp(prefix="atropos_ai_")
         os.environ["ATROPOS_HOME"] = self.tmp
-        self._prev_hack = HACK_FILE.read_text(encoding="utf-8") if HACK_FILE.exists() else None
-        HACK_FILE.write_text(PATCH_TEXT, encoding="utf-8")
+        # register the test hack in the in-memory code registry (no YAML files)
+        self._orig_patches = patches.HACKS
+        patches.HACKS = patches.HACKS + [TEST_HACK]
 
     def tearDown(self):
-        if self._prev_hack is not None:
-            HACK_FILE.write_text(self._prev_hack, encoding="utf-8")
-        elif HACK_FILE.exists():
-            HACK_FILE.unlink()
+        from core import patches
+        patches.HACKS = self._orig_patches
         shutil.rmtree(self.tmp, ignore_errors=True)
         if self._a is not None:
             os.environ["ATROPOS_HOME"] = self._a
@@ -93,8 +84,11 @@ class DiagnosisTests(UpdateAiBase):
         self.assertIn("is_guest_authorized", d["suggested_action"])
 
     def test_rename_detected_without_hack_file(self):
-        """Differential anchors work even when the patch YAML is missing."""
-        HACK_FILE.unlink()
+        """Differential anchors work even when the descriptor is absent
+        (the customization is code; diagnosis must not depend on YAML)."""
+        from core import patches
+        patches.HACKS = [h for h in patches.HACKS
+                          if (h["id"] if isinstance(h, dict) else h[0]) != "00-test-rewrite"]
         d = update_ai.diagnose_failure("00-test-rewrite", OLD_SOURCE, NEW_SOURCE)
         self.assertIn("api_renamed", d["reason_categories"])
         self.assertEqual(d["old_token"], "is_user_authorized")

@@ -231,8 +231,7 @@ class PatchesTests(unittest.TestCase):
     def test_hacks_have_required_fields(self):
         for h in patches.load_hacks():
             self.assertIn("id", h)
-            self.assertIn("old", h)
-            self.assertIn("new", h)
+            self.assertIn("fn", h)  # the customization IS code
             self.assertIn("target", h)
 
     def test_verify_against_fake_adapter(self):

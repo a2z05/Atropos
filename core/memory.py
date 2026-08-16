@@ -132,7 +132,11 @@ def add(text: str, tags=None, source: str = "manual") -> str:
         "tags": tags,
         "ts": _now(),
         "source": str(source or "manual"),
+        "_private": "private" in tags,
     }
+    # anything mentioning the owner/project/tokens is private by default
+    if any(w in text.lower() for w in ("a2z", "atropos", "arophin", "token", "api_key", "password")):
+        note["_private"] = True
     with _LOCK:
         notes = _load()
         notes.append(note)
@@ -140,12 +144,18 @@ def add(text: str, tags=None, source: str = "manual") -> str:
     return note["id"]
 
 
-def list(limit: int = 50) -> list:
-    """Most recent notes (newest first), capped at ``limit``."""
+def list(limit: int = 50, include_private: bool = True) -> list:
+    """Most recent notes (newest first), capped at ``limit``.
+
+    ``include_private=False`` hides anything tagged private — guest context
+    never sees owner/project notes.
+    """
     with _LOCK:
         notes = _load()
     if not notes:
         return _LIST_TYPE()
+    if not include_private:
+        notes = [n for n in notes if not n.get("_private")]
     return _LIST_TYPE(reversed(notes[-limit:]))
 
 
@@ -160,13 +170,14 @@ def delete(note_id: str) -> bool:
         return True
 
 
-def search(q: str, k: int = None) -> list:
+def search(q: str, k: int = None, include_private: bool = True) -> list:
     """Keyword search over notes, best matches first.
 
     Scoring (see :func:`_score`): token overlap between query and note
     (text + tags) plus a tag-match bonus. ``k`` defaults to
     ``settings.get('memory.k', 8)`` and is clamped to a sane range.
     Returns note dicts with an extra ``score`` key, best first.
+    ``include_private=False`` filters private-tagged notes (guest context).
     """
     q = (q or "").strip()
     if not q:
@@ -180,6 +191,8 @@ def search(q: str, k: int = None) -> list:
     k = max(1, min(k, 100))
     with _LOCK:
         notes = _load()
+        if not include_private:
+            notes = [n for n in notes if not n.get("_private")]
         index = MemoryIndex(notes)
         # candidate filter: only notes sharing at least one query token
         # (text or tag) get scored — this is where the inverted index pays

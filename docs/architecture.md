@@ -133,6 +133,7 @@ The v1.2 settings hub became the seed of a universal-resource layer:
 - **Ops modules** — fleet, budget gate, snapshots, activity timeline,
   files (read-only), audit matrix, announce feed, LAN sharing + device
   pairing (`core/lan.py`).
-- **Surfaces** — dashboard grew to 37 panels (13 new, +i18n en/fa),
-  `dashboard/chat.html` mobile page, TUI +8 panels, CLI 45 commands,
-  417 tests green.
+- **Surfaces** — dashboard grew to 43 panels (Filters/Agents/Telegram
+  added in 1.4.1, i18n 11 langs, 9 themes, bottom-nav mobile),
+  `dashboard/chat.html` mobile page with action sheets + stop + pin/rename,
+  TUI +8 panels, CLI 62 commands, 625 tests green.

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1020">
 <meta name="description" content="Atropos control plane — Hermes + Claude fusion harness">
 <link rel="manifest" href='data:application/manifest+json,{"name":"Atropos Control Plane","short_name":"Atropos","start_url":".","display":"standalone","background_color":"%230b1020","theme_color":"%230b1020","icons":[{"src":"/icon-256.png","sizes":"256x256","type":"image/png"},{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%236366f1%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2250%22 text-anchor=%22middle%22 fill=%22white%22%3E%E2%9A%9B%3C/text%3E%3C/svg%3E","sizes":"any","type":"image/svg+xml"}]}'>
@@ -49,6 +49,59 @@
     --glow: 0 0 24px rgba(99, 102, 241, .18);
     --accent-soft: rgba(99, 102, 241, .12);
     --accent-border: rgba(99, 102, 241, .35);
+  }
+  [data-theme="black"] {
+    --bg0: #000; --bg1: #0a0a0a; --slate: #111; --slate2: #1a1a1a;
+    --text: #f5f5f5; --muted: #9ca3af;
+    --card-border: 1px solid rgba(255,255,255,.1);
+    --glow: none;
+    --accent-soft: rgba(255,255,255,.05); --accent-border: rgba(255,255,255,.18);
+  }
+  [data-theme="sepia"] {
+    --bg0: #f5ecd9; --bg1: #ede0c4; --slate: #e2d3af; --slate2: #d8c69c;
+    --text: #3b2f23; --muted: #7a6a52;
+    --card-border: 1px solid rgba(59,47,35,.16);
+    --glow: 0 0 24px rgba(180,140,70,.14);
+    --accent-soft: rgba(180,140,70,.14); --accent-border: rgba(180,140,70,.3);
+  }
+  [data-theme="midnight"] {
+    --bg0: #0a0e1a; --bg1: #10162b; --slate: #182141; --slate2: #22305c;
+    --text: #dbe7ff; --muted: #7e93bd;
+    --card-border: 1px solid rgba(120,160,255,.14);
+    --glow: 0 0 24px rgba(70,130,255,.2);
+    --accent-soft: rgba(70,130,255,.12); --accent-border: rgba(70,130,255,.3);
+  }
+  [data-theme="matrix"] {
+    --bg0: #020804; --bg1: #051005; --slate: #0a1a0c; --slate2: #0f2612;
+    --text: #baf7ba; --muted: #4f8a52;
+    --card-border: 1px solid rgba(60,255,90,.14);
+    --glow: 0 0 24px rgba(60,255,90,.12);
+    --accent-soft: rgba(60,255,90,.07); --accent-border: rgba(60,255,90,.25);
+    --accent: #37f95a; --accent-l: #8fffa5; --accent-2: #1fae39;
+  }
+  [data-theme="ink"] {
+    --bg0: #17171b; --bg1: #1e1e24; --slate: #26262e; --slate2: #30303a;
+    --text: #e8e6e3; --muted: #8f8d88;
+    --card-border: 1px solid rgba(232,230,227,.1);
+    --glow: none;
+    --accent-soft: rgba(232,230,227,.05); --accent-border: rgba(232,230,227,.16);
+    --accent: #d4cfc4; --accent-l: #f0ede6; --accent-2: #a8a294;
+  }
+  [data-theme="embers"] {
+    --bg0: #0d0605; --bg1: #1a0b08; --slate: #2a120c; --slate2: #3a1a12;
+    --text: #ffe8d9; --muted: #c98d74;
+    --card-border: 1px solid rgba(255,120,70,.14);
+    --glow: 0 0 24px rgba(255,90,40,.14);
+    --accent-soft: rgba(255,90,40,.1); --accent-border: rgba(255,90,40,.28);
+    --accent: #ff6b3d; --accent-l: #ff9d7a; --accent-2: #e2491f;
+  }
+  [data-theme="glass"] {
+    --bg0: #0e1122; --bg1: #141a33; --slate: #1c2445; --slate2: #26305c;
+    --text: #e6ecff; --muted: #8fa0d4;
+    --card-border: 1px solid rgba(200,220,255,.16);
+    --glow: 0 0 30px rgba(140,170,255,.16);
+    --accent-soft: rgba(140,170,255,.1); --accent-border: rgba(140,170,255,.26);
+    --accent: #9db8ff; --accent-l: #c3d2ff; --accent-2: #6d8ef0;
   }
   [data-accent="cyan"]   { --accent: #06b6d4; --accent-l: #22d3ee; --accent-2: #0891b2; --accent-soft: rgba(6,182,212,.14); --accent-border: rgba(6,182,212,.32); --glow: 0 0 24px rgba(6,182,212,.26); }
   [data-accent="green"]  { --accent: #10b981; --accent-l: #34d399; --accent-2: #059669; --accent-soft: rgba(16,185,129,.14); --accent-border: rgba(16,185,129,.32); --glow: 0 0 24px rgba(16,185,129,.26); }
@@ -152,6 +205,9 @@
     background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.3);
     padding: 5px 12px; border-radius: 999px; white-space: nowrap;
   }
+  .brand-mark { width: 40px; height: 40px; border-radius: 0; margin: 0 8px; flex-shrink: 0; }
+  .beta-badge { font-size: 10px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent-border); padding: 2px 7px; border-radius: 6px; letter-spacing: 1px; margin-left: 8px; animation: beta-pulse 2s ease-in-out infinite; }
+  @keyframes beta-pulse { 0%,100% { opacity: 1; } 50% { opacity: .7; } }
   .token-input {
     background: rgba(15,23,42,.6); border: 1px solid rgba(148,163,184,.25);
     color: var(--text); padding: 8px 13px; border-radius: 10px; font-size: 12.5px; width: 210px; outline: none;
@@ -547,6 +603,57 @@
     font-family: ui-monospace, Menlo, Consolas, monospace; margin-top: 12px;
   }
 
+  /* ── Mobile bottom nav (≤768px) ── */
+  .bottomnav {
+    display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    background: var(--card-strong, rgba(15,23,42,.92)); backdrop-filter: blur(18px);
+    border-top: 1px solid var(--card-border);
+    padding: 6px 4px calc(env(safe-area-inset-bottom) + 6px);
+  }
+  .bottomnav a {
+    flex: 1; min-height: 48px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 2px; color: var(--muted); font-size: 10px;
+    text-decoration: none; border-radius: 10px; cursor: pointer; user-select: none;
+  }
+  .bottomnav a .bico { font-size: 19px; line-height: 1; }
+  .bottomnav a.active { color: var(--accent-2, var(--text)); background: var(--accent-soft); }
+
+  @media (max-width: 768px) {
+    .bottomnav { display: flex; }
+    body { padding-bottom: calc(env(safe-area-inset-bottom) + 62px); }
+    /* status strip floats above the bottom nav */
+    .status-strip { bottom: calc(env(safe-area-inset-bottom) + 56px); }
+    .topbar .token-input { width: 118px; }
+    /* tables become cards on phones */
+    table.tbl, .tbl thead, .tbl tbody, .tbl tr, .tbl td { display: block; }
+    .tbl td { border: none; border-bottom: 1px solid var(--card-border); padding: 8px 4px; }
+    .tbl th { display: none; }
+    /* modals become bottom sheets on phones */
+    .share-backdrop.open, .auth-backdrop.open, .cmd-backdrop.open {
+      align-items: flex-end;
+    }
+    .share-modal, .auth-box, .cmd-modal {
+      width: 100%; max-width: 100vw; border-radius: 18px 18px 0 0;
+      box-shadow: 0 -10px 60px rgba(0,0,0,.55);
+      padding-bottom: calc(env(safe-area-inset-bottom) + 22px);
+      animation: sheetUp .22s ease both;
+    }
+    /* session trace: bottom sheet instead of right drawer */
+    .trace-overlay.open { align-items: flex-end; }
+    .trace-panel {
+      width: 100%; max-width: 100vw; height: 74vh; border-left: none;
+      border-top: var(--card-border); border-radius: 18px 18px 0 0;
+      animation: sheetUp .22s ease both;
+    }
+    @keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+    /* taller touch targets for nav items in the drawer */
+    .nav-item { min-height: 44px; }
+  }
+  @media (max-width: 430px) {
+    .topbar .btn { padding: 4px 8px; font-size: 11px; }
+    .brand-mark { width: 32px; height: 32px; }
+  }
+
   /* ── Hamburger for mobile ── */
   .hamburger {
     display: none; background: none; border: none; color: var(--muted); font-size: 20px;
@@ -776,6 +883,9 @@
     <div class="nav-item" data-panel="budget"><span class="ico">💳</span>Budget</div>
     <div class="nav-item" data-panel="activity"><span class="ico">⏱</span>Activity</div>
     <div class="nav-item" data-panel="announce"><span class="ico">📣</span>Announce</div>
+    <div class="nav-item" data-panel="filters"><span class="ico">🧿</span>Filters</div>
+    <div class="nav-item" data-panel="agents"><span class="ico">🤖</span>Agents</div>
+    <div class="nav-item" data-panel="telegram"><span class="ico">✈️</span>Telegram</div>
     <div class="nav-item" data-panel="sync"><span class="ico">⇆</span>Sync/Devices</div>
     <div class="nav-item" data-panel="update-ai"><span class="ico">✦</span>AI Update</div>
     <div class="nav-item" data-panel="backends"><span class="ico">☁</span>Backends</div>
@@ -797,7 +907,9 @@
   <main class="main">
     <div class="topbar">
       <button class="hamburger" id="hamburger" title="Menu">☰</button>
+      <img src="icon-256.png" alt="" class="brand-mark" onerror="this.style.display='none'">
       <div class="title" id="top-title">Overview <span>control plane</span></div>
+      <span class="beta-badge" id="beta-badge" title="Preview build — things may shift.">BETA</span>
       <div class="spacer"></div>
       <button class="btn" id="btn-share-top" style="padding:4px 11px;" title="Share on LAN">⇪ Share</button>
       <button class="btn" id="btn-focus" style="padding:4px 11px;" title="Focus mode — only the active panel">⛶ Focus</button>
@@ -1389,12 +1501,20 @@
             <button class="btn" id="btn-settings-import">Import YAML</button>
             <span class="spacer" style="flex:1"></span>
             <span style="font-size:12px;color:var(--muted);align-self:center;">theme</span>
-            <select id="settings-theme" class="token-input" style="max-width:110px;">
+            <select id="settings-theme" class="token-input" style="max-width:130px;">
               <option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option>
+              <option value="black">Black</option><option value="sepia">Sepia</option>
+              <option value="midnight">Midnight</option><option value="matrix">Matrix</option>
+              <option value="ink">Ink</option><option value="embers">Embers</option><option value="glass">Glass</option>
             </select>
             <span style="font-size:12px;color:var(--muted);align-self:center;">lang</span>
-            <select id="settings-lang" class="token-input" style="max-width:110px;">
+            <select id="settings-lang" class="token-input" style="max-width:130px;">
               <option value="en">English</option><option value="fa">فارسی</option>
+              <option value="de">Deutsch</option><option value="fr">Français</option>
+              <option value="es">Español</option><option value="ru">Русский</option>
+              <option value="ar">العربية</option><option value="tr">Türkçe</option>
+              <option value="zh">中文</option><option value="hi">हिन्दी</option>
+              <option value="it">Italiano</option>
             </select>
             <span style="font-size:12px;color:var(--muted);align-self:center;">accent</span>
             <select id="settings-accent" class="token-input" style="max-width:110px;">
@@ -1630,6 +1750,39 @@
       </div>
     </section>
 
+    <!-- ════════ FILTERS (Middleware) ════════ -->
+    <section class="panel" id="panel-filters">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Filters &amp; Plugins <span class="right" id="filters-summary"></span></h3>
+          <div class="edit-label">Smart filters that sit between you and the AI — flip them on for safety, savings, or better answers.</div>
+          <div id="filters-list" style="margin-top:10px;"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ AGENTS ════════ -->
+    <section class="panel" id="panel-agents">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Agents <span class="right" id="agents-summary"></span></h3>
+          <div class="edit-label">One agent per job — pick a harness and model, give it a task, watch it run.</div>
+          <div id="agents-list" style="margin-top:10px;"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════ TELEGRAM ════════ -->
+    <section class="panel" id="panel-telegram">
+      <div class="grid">
+        <section class="card span-12">
+          <h3><span class="dot"></span>Telegram <span class="right" id="tg-summary"></span></h3>
+          <div class="edit-label">Long-polling gateway with guest modes and glass buttons.</div>
+          <div id="tg-state" style="margin-top:10px;"><div class="log-empty">Loading…</div></div>
+        </section>
+      </div>
+    </section>
+
     <!-- ════════ BUDGET ════════ -->
     <section class="panel" id="panel-budget">
       <div class="grid">
@@ -1669,6 +1822,15 @@
   </main>
 </div>
 
+<!-- ── Mobile bottom nav ── -->
+<nav class="bottomnav" id="bottomnav">
+  <a data-nav="overview" title="Overview"><span class="bico">▦</span>Overview</a>
+  <a data-nav="chat" title="Chat"><span class="bico">✉</span>Chat</a>
+  <a data-nav="sessions" title="Sessions"><span class="bico">☰</span>Sessions</a>
+  <a data-nav="settings" title="Settings"><span class="bico">⚙</span>Settings</a>
+  <a data-nav="more" title="More"><span class="bico">⁝</span>More</a>
+</nav>
+
 <div class="status-strip" id="status-strip">
   <span class="s-item"><span class="s-dot" id="strip-dot"></span><span id="strip-disk">—</span></span>
   <span class="s-sep"></span>
@@ -1687,7 +1849,7 @@
 <div id="auth-backdrop" class="auth-backdrop">
   <div class="auth-box">
     <div class="auth-logo"><img src="icon-256.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span>⚛</span></div>
-    <h3>Atropos — Password required</h3>
+    <h3>Atropos <span class="beta-badge">BETA</span> — Password required</h3>
     <input id="auth-pw" type="password" placeholder="Enter dashboard password…" autocomplete="off">
     <button class="btn" id="btn-auth-submit" style="width:100%;justify-content:center;">Enter</button>
     <div class="auth-err" id="auth-err"></div>
@@ -1849,12 +2011,30 @@ const I18N = {
   }
 };
 let _lang = 'en';
-function t(key) { return (I18N[_lang] && I18N[_lang][key]) || I18N.en[key] || key; }
+async function loadLang(lang, silent) {
+  try {
+    const r = await fetch('languages/' + lang + '.json', { cache: 'no-store' });
+    if (!r.ok) throw 0;
+    I18N[lang] = await r.json();
+    _lang = lang;
+    localStorage.setItem('atropos_lang', _lang);
+    document.documentElement.lang = _lang;
+    const RTL = ['fa', 'ar', 'he', 'ur'];
+    document.documentElement.dir = RTL.includes(_lang) ? 'rtl' : 'ltr';
+    document.documentElement.setAttribute('data-lang', _lang);
+    if (!silent) { applyStaticI18n(); renderCurrentPanelTitle(); }
+    if (window.__langDropdown) window.__langDropdown.value = _lang;
+  } catch (e) {
+    applyLang(lang, silent);
+  }
+}
+function t(key) { return (I18N[_lang] && I18N[_lang][key]) || (I18N.en && I18N.en[key]) || key; }
 function applyLang(lang, silent) {
-  _lang = lang === 'fa' ? 'fa' : 'en';
+  if (I18N[lang]) { _lang = lang; } else { _lang = 'en'; }
   localStorage.setItem('atropos_lang', _lang);
   document.documentElement.lang = _lang;
-  document.documentElement.dir = _lang === 'fa' ? 'rtl' : 'ltr';
+  const RTL = ['fa', 'ar', 'he', 'ur'];
+  document.documentElement.dir = RTL.includes(_lang) ? 'rtl' : 'ltr';
   document.documentElement.setAttribute('data-lang', _lang);
   if (!silent) { applyStaticI18n(); renderCurrentPanelTitle(); }
 }
@@ -1878,8 +2058,56 @@ function applyStaticI18n() {
 }
 function renderCurrentPanelTitle() {
   const name = currentPanel();
-  document.getElementById('top-title').innerHTML = t('t_' + name) + ' <span>' + t('control_plane') + '</span>';
+  const sub = SUBTITLES[name] || t('control_plane');
+  document.getElementById('top-title').innerHTML = t('t_' + name) + ' <span>' + esc(sub) + '</span>';
 }
+/* one-line human subtitles per panel */
+const SUBTITLES = {
+  overview: 'the loom at a glance',
+  doctor: 'seven checks, one command',
+  patches: 'self-healing, re-arms on update',
+  routers: 'nain · omni · local failover',
+  sessions: 'every thread, searchable',
+  cron: 'scheduled runs, read-only',
+  skills: 'shared skills, marketplace',
+  plugins: 'same as skills, different name',
+  update: 'check, backup, apply',
+  guest: 'same engine, filtered context',
+  logs: 'the raw record',
+  config: 'your configs, all three modes',
+  claude: 'claude side of the house',
+  analytics: 'numbers behind the loom',
+  history: 'past sessions and their costs',
+  backup: 'one snapshot away from safe',
+  sync: 'push configs, never secrets',
+  backends: 'file · s3 · server · github · pair',
+  wizard: 'first-run, step by step',
+  effort: 'how hard the loom tries',
+  selfheal: 'doctor, on schedule',
+  alerts: 'thresholds and warnings',
+  jailbreak: 'the rescue hatch',
+  extensions: 'hermes extras',
+  market: 'community skills',
+  console: 'whitelisted commands',
+  settings: 'theme, language, secrets',
+  mcp: 'model context protocol',
+  identity: 'who the loom is',
+  configs: 'shared vs per-harness',
+  routing: 'task routing hub',
+  files: 'workspace files',
+  models: 'what the routers can talk to',
+  webhooks: 'inbound events',
+  pairing: 'phone ↔ box on LAN',
+  fleet: 'other boxes in your home',
+  memory: 'notes that persist',
+  budget: 'the spending gate',
+  activity: 'everything the loom did',
+  announce: 'broadcast to the fleet',
+  filters: 'rules before and after every call',
+  agents: 'your workforce, defined as JSON',
+  telegram: 'the chat gateway',
+  'update-ai': 'ai-assisted updates',
+};
 function applyTheme(theme) {
   const root = document.documentElement;
   root.setAttribute('data-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : theme);
@@ -1953,7 +2181,7 @@ const PANELS = ['overview','doctor','patches','routers','sessions','cron','skill
                 'selfheal','alerts','jailbreak','extensions','market','console','settings',
                 'mcp','identity','configs','routing','files','models','webhooks','pairing',
                 'fleet','memory','budget','activity','announce','sync','update-ai',
-                'backends','wizard'];
+                'backends','wizard','filters','agents','telegram'];
 const TITLES = {
   overview: 'Overview', doctor: 'Doctor', patches: 'Patches', routers: 'Routers',
   sessions: 'Sessions', cron: 'Cron', skills: 'Skills', plugins: 'Plugins',
@@ -1965,7 +2193,8 @@ const TITLES = {
   mcp: 'MCP', identity: 'Identity', configs: 'Configs', routing: 'Routing',
   files: 'Files', models: 'Models', webhooks: 'Webhooks', pairing: 'Pairing',
   fleet: 'Fleet', memory: 'Memory', budget: 'Budget', activity: 'Activity', announce: 'Announce',
-  sync: 'Sync / Devices', 'update-ai': 'AI Update', backends: 'Backends', wizard: 'Wizard'
+  sync: 'Sync / Devices', 'update-ai': 'AI Update', backends: 'Backends', wizard: 'Wizard',
+  filters: 'Filters', agents: 'Agents', telegram: 'Telegram'
 };
 function currentPanel() {
   const h = location.hash.replace('#', '');
@@ -2017,6 +2246,9 @@ function showPanel(name) {
     'update-ai': [loadUpdateAi],
     backends: [loadBackendBackups],
     wizard: [loadWizard],
+    filters: [loadFilters],
+    agents: [loadAgents],
+    telegram: [loadTelegram],
   };
   (loaders[name] || []).forEach(fn => { try { fn(); } catch (_) {} });
 }
@@ -2086,6 +2318,8 @@ async function loadVersion() {
     const label = 'v' + (d.version || '1.0.0') + (d.sha ? ' · ' + d.sha : '');
     document.getElementById('version').textContent = label;
     document.getElementById('side-ver').textContent = label;
+    const badge = document.getElementById('beta-badge');
+    if (badge && !(d.version || '').includes('-beta')) badge.style.display = 'none';
     if (lastVersion && lastVersion !== (d.version || '1.0.0')) {
       document.getElementById('update-banner-text').textContent =
         '🔄 New version ' + (d.version || '?') + ' — the dashboard refreshed itself.';
@@ -2969,6 +3203,32 @@ document.getElementById('mobile-overlay').addEventListener('click', () => {
   document.getElementById('mobile-overlay').classList.remove('open');
 });
 
+/* ── mobile bottom nav ───────────────────────────────────────────── */
+const BOTTOM_TABS = ['overview', 'chat', 'sessions', 'settings', 'more'];
+function renderBottomNav(active) {
+  document.querySelectorAll('.bottomnav a').forEach(a => {
+    a.classList.toggle('active', a.dataset.nav === active);
+  });
+}
+document.getElementById('bottomnav').addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-nav]');
+  if (!a) return;
+  const tab = a.dataset.nav;
+  if (tab === 'chat') { location.href = 'chat.html'; return; }
+  if (tab === 'more') {
+    const sb = document.querySelector('.sidebar');
+    const ov = document.getElementById('mobile-overlay');
+    sb.classList.toggle('mobile-open'); ov.classList.toggle('open');
+    return;
+  }
+  showPanel(tab);
+});
+const _origShowPanel = showPanel;
+showPanel = function(name) {
+  _origShowPanel(name);
+  renderBottomNav(BOTTOM_TABS.includes(name) ? name : 'more');
+};
+
 /* ── command palette (Ctrl/Cmd + K) ─────────────────────────────── */
 const CMD_ITEMS = [
   { ico: '◎', name: 'Overview', panel: 'overview' },
@@ -3073,6 +3333,14 @@ document.getElementById('cmd-input').addEventListener('keydown', e => {
 });
 document.getElementById('cmd-backdrop').addEventListener('click', e => { if (e.target.id === 'cmd-backdrop') closeCmdPalette(); });
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); } });
+/* ── keyboard shortcuts: jump between panels ────────────────────── */
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const key = e.key.toLowerCase();
+  const jump = { '1': 'overview', '2': 'sessions', '3': 'routers', '4': 'filters', '5': 'agents', '6': 'telegram', '7': 'logs', '8': 'settings' };
+  if (jump[key]) { e.preventDefault(); showPanel(jump[key]); }
+  else if (e.key === '?') { e.preventDefault(); showPanel('overview'); toast('Shortcuts: 1 Overview · 2 Sessions · 3 Routers · 4 Filters · 5 Agents · 6 Telegram · 7 Logs · 8 Settings · Ctrl+K palette'); }
+});
 
 /* ── session trace drill-down ───────────────────────────────────── */
 async function loadSessionTrace(sessionId) {
@@ -3496,9 +3764,12 @@ async function loadSettings() {
     const d = await api('/api/settings');
     if (!d.ok) { box.innerHTML = `<span style="color:var(--red)">${esc(d.error || 'failed')}</span>`; return; }
     _settingsData = d;
+    const badge = document.getElementById('beta-badge');
+    if (badge && !d.beta_badge) badge.style.display = 'none';
     // theme/lang/accent selects
     document.getElementById('settings-theme').value = d.theme || 'auto';
     document.getElementById('settings-lang').value = d.lang || 'en';
+    window.__langDropdown = document.getElementById('settings-lang');
     document.getElementById('settings-accent').value = d.accent || 'indigo';
     const cliSel = document.getElementById('settings-cli-action');
     if (cliSel) cliSel.value = d.cli_default_action || 'cli';
@@ -3562,7 +3833,7 @@ document.getElementById('settings-theme').addEventListener('change', async e => 
   await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'dashboard.theme', value: v }) }).catch(() => {});
 });
 document.getElementById('settings-lang').addEventListener('change', async e => {
-  applyLang(e.target.value === 'fa' ? 'fa' : 'en');
+  await loadLang(e.target.value, false);
   await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'dashboard.lang', value: e.target.value }) }).catch(() => {});
 });
 document.getElementById('settings-accent').addEventListener('change', async e => {
@@ -4249,6 +4520,86 @@ document.getElementById('btn-fleet-ping').addEventListener('click', async () => 
   loadFleet().catch(() => {});
 });
 
+/* ── v1.4.1: Filters (Middleware) panel ───────────────────────────────── */
+async function loadFilters() {
+  const box = document.getElementById('filters-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/middleware/list');
+    if (!d.ok) { box.innerHTML = `<span style="color:var(--red)">${esc(d.error || 'failed')}</span>`; return; }
+    const en = d.enabled || [];
+    document.getElementById('filters-summary').textContent = `${en.length}/${(d.filters || []).length} on`;
+    box.innerHTML = (d.filters || []).map(f => {
+      const on = en.includes(f[0]);
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--card-border);">
+        <input type="checkbox" data-filter="${esc(f[0])}" ${on ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--accent);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;">${esc(f[0])}</div>
+          <div style="font-size:12px;color:var(--muted);">${esc(f[1])}</div>
+        </div>
+        <span style="font-size:11px;color:var(--muted);">${on ? 'on' : 'off'}</span>
+      </div>`;
+    }).join('') || '<div class="log-empty">Nothing here yet.</div>';
+    box.querySelectorAll('input[data-filter]').forEach(cb => cb.addEventListener('change', async () => {
+      const name = cb.dataset.filter;
+      const act = cb.checked ? 'on' : 'off';
+      const r = await api('/api/middleware/' + act, { method: 'POST', body: JSON.stringify({ name }) }).catch(e => ({ ok: false, error: e.message }));
+      if (r.ok) { toast(`${name} ${act}`, 'ok'); loadFilters().catch(() => {}); }
+      else toast(r.error || 'failed', 'err');
+    }));
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  }
+}
+
+/* ── v1.4.1: Agents panel ────────────────────────────────────────────── */
+async function loadAgents() {
+  const box = document.getElementById('agents-list');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/agents');
+    if (!d.ok) { box.innerHTML = `<span style="color:var(--red)">${esc(d.error || 'failed')}</span>`; return; }
+    document.getElementById('agents-summary').textContent = `${d.agents.length} agents · ${d.runs} runs`;
+    box.innerHTML = (d.agents || []).map(a => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--card-border);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;">${esc(a.name)} <span style="font-size:11px;color:var(--muted);">${esc(a.harness || 'auto')} · ${esc(a.effort || 'medium')}</span></div>
+          <div style="font-size:12px;color:var(--muted);">${esc(a.description || '')}</div>
+        </div>
+        <button class="btn" data-ago="${esc(a.name)}">Run</button>
+      </div>`).join('') || '<div class="log-empty">No agents yet — create one with `atropos agent create`.</div>';
+    box.querySelectorAll('button[data-ago]').forEach(btn => btn.addEventListener('click', async () => {
+      const name = btn.dataset.ago;
+      const task = prompt('Task for ' + name + ':') || '';
+      if (!task) return;
+      const r = await api('/api/agents/run', { method: 'POST', body: JSON.stringify({ name, task }) }).catch(e => ({ ok: false, error: e.message }));
+      toast(r.ok ? `${name}: ${r.result || 'done'}`.slice(0, 80) : (r.error || 'failed'), r.ok ? 'ok' : 'err');
+      loadAgents().catch(() => {});
+    }));
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  }
+}
+
+/* ── v1.4.1: Telegram panel ──────────────────────────────────────────── */
+async function loadTelegram() {
+  const box = document.getElementById('tg-state');
+  box.innerHTML = '<div class="log-empty">Loading…</div>';
+  try {
+    const d = await api('/api/telegram/status');
+    if (!d.ok) { box.innerHTML = `<span style="color:var(--red)">${esc(d.error || 'failed')}</span>`; return; }
+    const s = d.status || {};
+    document.getElementById('tg-summary').textContent = s.configured ? 'configured' : 'not configured';
+    box.innerHTML = Object.entries(s).map(([k, v]) => `
+      <div style="display:flex;gap:10px;padding:7px 4px;border-bottom:1px solid var(--card-border);">
+        <span style="width:130px;color:var(--muted);font-size:12px;">${esc(k)}</span>
+        <span style="word-break:break-word;">${esc(v)}</span>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  }
+}
+
 /* ── v1.4: Memory panel ──────────────────────────────────────────────── */
 async function loadMemory() {
   const box = document.getElementById('memory-list');
@@ -4522,12 +4873,16 @@ function startLiveHub() {
       applyTheme(s.theme || 'auto');
       applyAccent(s.accent || 'indigo');
       const fromUrl = new URLSearchParams(location.search).get('lang');
-      applyLang(fromUrl === 'fa' ? 'fa' : (s.lang === 'fa' ? 'fa' : 'en'), true);
+      const want = fromUrl || s.lang || 'en';
+      if (I18N[want]) applyLang(want, true); else await loadLang(want, true);
     }
   } catch (_) {}
   const savedLang = localStorage.getItem('atropos_lang');
-  if (savedLang && savedLang === 'fa') applyLang('fa', true);
-  document.getElementById('btn-lang').addEventListener('click', () => applyLang(_lang === 'en' ? 'fa' : 'en', false));
+  if (savedLang && I18N[savedLang]) applyLang(savedLang, true); else if (savedLang) await loadLang(savedLang, true);
+  document.getElementById('btn-lang').addEventListener('click', () => {
+    const next = _lang === 'en' ? 'fa' : 'en';
+    loadLang(next, false);
+  });
   document.getElementById('token').placeholder = t('token_ph');
   applyStaticI18n();
   await showPanel(currentPanel());

@@ -33,7 +33,16 @@ _REPO_DIR = os.path.dirname(os.path.realpath(__file__))
 if _REPO_DIR not in sys.path:
     sys.path.insert(0, _REPO_DIR)
 
+from core import ascii as _ascii
 from core import config, detect, doctor, guest, logs, patches, router, settings, update
+
+# block glyphs / Persian need UTF-8 on Windows consoles
+if sys.platform == "win32":
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
 
 _VERSION_FILE = os.path.join(_REPO_DIR, "VERSION")
 try:
@@ -94,11 +103,18 @@ def cmd_doctor(args):
     failed = [r for r in results if not r["ok"]]
     if failed and not args.fix:
         print(f"\n  {len(failed)} issue(s). Run `atropos doctor --fix` to auto-fix.")
+    from core import cliui
+    print(f"\n  {_C_DIM}{cliui.doctor_verdict(len(failed))}{_C_RESET}")
     sys.exit(0 if not failed else 1)
 
 
 def cmd_status(args):
     print(f"{_C_BOLD}Atropos status{_C_RESET}  {_C_DIM}— {_MOIRAI_TAGLINE}{_C_RESET}")
+    if not getattr(args, "quiet", False):
+        from core import cliui
+        _oracle = cliui.oracle_line()
+        if _oracle:
+            print(f"  {_C_DIM}{_oracle}{_C_RESET}")
     print(f"  atropos home: {detect.atropos_home()}")
     print(f"  hermes home:  {detect.hermes_home()}")
     print(f"  hermes agent: {detect.hermes_agent() or 'not found'}")
@@ -299,7 +315,7 @@ def cmd_install(args):
 
 def cmd_version(args):
     if not getattr(args, "quiet", False):
-        for ln in _MOIRAI_ASCII.strip("\n").splitlines():
+        for ln in _ascii.banner().splitlines():
             print(f"  {_C_CYAN}{ln}{_C_RESET}")
     print(f"atropos {_C_CYAN}{__version__}{_C_RESET}  {_C_DIM}— {_MOIRAI_TAGLINE}{_C_RESET}")
     rt = detect.detect()
@@ -310,8 +326,22 @@ def cmd_version(args):
 
 def cmd_guest(args):
     # bare "atropos guest" without flags shows status
-    if not args.status and not args.toggle:
+    if not args.status and not args.toggle and getattr(args, "test", None) is None:
         args.status = True
+    if getattr(args, "test", None) is not None:
+        from core import i18n
+        pv = guest.preview(args.test)
+        print(f"  {_C_BOLD}guest system prompt{_C_RESET} (private terms masked):")
+        for ln in (pv["system_prompt"] or "—").splitlines()[:12]:
+            print(f"    {ln}")
+        print(f"\n  {_C_BOLD}memory visible to guests{_C_RESET}: {len(pv['memory_visible'])}")
+        for t in pv["memory_visible"][:5]:
+            print(f"    · {t[:60]}")
+        if pv["memory_filtered"]:
+            print(f"  {_C_BOLD}memory hidden (private tag){_C_RESET}: {len(pv['memory_filtered'])}")
+        g = pv["guard_reply"]
+        print(f"\n  {_C_BOLD}guard reply{_C_RESET}: {g if g else '— no private terms detected'}")
+        sys.exit(0)
     if args.toggle:
         st = guest.toggle()
         state = "enabled" if st["enabled"] else "disabled"
@@ -383,6 +413,18 @@ def _coerce(value: str):
 
 
 def cmd_route(args):
+    # actions may appear in either positional slot ("route models nain" /
+    # "route nain models" both mean list nain's models)
+    _ACT = ("models", "chat", "omni", "health", "list", "status")
+    for attr in ("action", "set_name"):
+        if getattr(args, attr, None) in _ACT:
+            args.action = getattr(args, attr)
+            args.set_name = getattr(args, "set_name", None)
+            if getattr(args, attr) == args.action and attr == "action":
+                args.set_name = None
+            else:
+                args.set_name = None
+            return _route_manage(args)
     if args.set_name:
         try:
             r = router.set_active(args.set_name)
@@ -395,12 +437,57 @@ def cmd_route(args):
         except ValueError as e:
             _fail(str(e))
             sys.exit(1)
-    else:
-        r = router.get()
-        print(f"  active:    {r.get('active','?')}")
-        print(f"  model:     {r.get('model','?')}")
-        print(f"  base_url:  {r.get('base_url','default') or 'default'}")
-        print(f"  available: {', '.join(router.available())}")
+        return
+    return _route_manage(args)
+
+
+def _route_manage(args):
+    """Manage/use the router backends: models, chat, omni, health."""
+    from core import cliui
+    action = getattr(args, "action", None)
+    if action == "models":
+        name = getattr(args, "name", None) or "nain"
+        res = router.discover_models(name)
+        if not res.get("ok"):
+            _fail(f"{name}: {res.get('error')}")
+            return
+        rows = [[m] for m in res.get("models", [])]
+        print(cliui.table(rows, headers=[f"{name} models"], max_w=None))
+        print(f"  {len(res.get('models', []))} models")
+        return
+    if action == "chat":
+        name = getattr(args, "name", None) or "nain"
+        text = getattr(args, "text", "") or ""
+        if not text:
+            _fail("usage: atropos route chat <name> \"message\" [--model M]")
+            return
+        res = router.chat(name, text, model=getattr(args, "model", None))
+        if res.get("ok"):
+            print(f"  {_C_CYAN}{name}{_C_RESET} ({res.get('model','')}):")
+            print(f"  {res.get('text','')}")
+        else:
+            _fail(f"{name}: {res.get('error')}")
+        return
+    if action == "omni":
+        res = router.omniroute(getattr(args, "omni_args", []) or [])
+        print(res.get("output") or (res.get("error") or "(no output)"))
+        if not res.get("ok"):
+            sys.exit(1)
+        return
+    if action == "health":
+        h = router.health()
+        for name, p in h.get("pings", {}).items():
+            icon = _C_GREEN + "OK" + _C_RESET if p.get("ok") else _C_RED + "FAIL" + _C_RESET
+            lat = f'{p.get("latency_ms")}ms' if p.get("latency_ms") is not None else "—"
+            print(f"  [{icon}] {name}: {lat} — {p.get('error') or p.get('model', '')}")
+        print(f"  active: {h.get('active')}  all_down: {h.get('all_down')}")
+        return
+    r = router.get()
+    print(f"  active:    {r.get('active','?')}")
+    print(f"  model:     {r.get('model','?')}")
+    print(f"  base_url:  {r.get('base_url','default') or 'default'}")
+    print(f"  available: {', '.join(router.available())}")
+    print("  manage:    atropos route models [name] · route chat <name> \"msg\" · route omni <cmd…>")
 
 
 def cmd_patch(args):
@@ -506,6 +593,10 @@ def cmd_alert(args):
 
 def main():
     ap = argparse.ArgumentParser(prog="atropos", description="Atropos — the harness that cannot be turned (Clotho · Lachesis · Atropos)")
+    ap.add_argument("--lang", choices=settings.LANGS, default=None,
+                    help="output language (en|fa|de|fr|es|ru|ar|tr|zh|hi|it)")
+    ap.add_argument("--theme", choices=settings.THEMES, default=None,
+                    help="terminal theme (light|dark|black)")
     sub = ap.add_subparsers(dest="cmd")
 
     p = sub.add_parser("detect",  help="detect runtime environment")
@@ -526,15 +617,21 @@ def main():
     p = sub.add_parser("guest",   help="guest mode status / toggle")
     p.add_argument("--status", action="store_true", help="show guest mode status")
     p.add_argument("--toggle", action="store_true", help="enable/disable guest mode")
+    p.add_argument("--test", type=str, default=None, metavar="MSG",
+                   help="preview exactly what a guest would see for a message")
     p = sub.add_parser("logs",    help="tail recent gateway logs")
     p.add_argument("--tail", type=int, default=40, help="number of lines")
     p = sub.add_parser("config",  help="get/set config keys")
     p.add_argument("action", choices=["get", "set"])
     p.add_argument("key", nargs="?", default=None)
     p.add_argument("value", nargs="?", default=None)
-    p = sub.add_parser("route",   help="get or set model router")
-    p.add_argument("set_name", nargs="?", default=None,
-                   choices=["nain", "omni", "local"], help="router name to activate")
+    p = sub.add_parser("route",   help="get/set the model router, or manage the backends")
+    p.add_argument("set_name", nargs="?", default=None, help="router name to activate (nain|omni|local), or models|chat|omni|health")
+    p.add_argument("action", nargs="?", default=None, help="manage/use the routers (models|chat|omni|health)")
+    p.add_argument("name", nargs="?", default=None, help="router name (models/chat)")
+    p.add_argument("text", nargs="?", default=None, help="message text (chat)")
+    p.add_argument("--model", type=str, default=None, help="model override (chat)")
+    p.add_argument("omni_args", nargs="*", default=None, help="omniroute CLI args (omni)")
     p = sub.add_parser("patch",   help="apply or verify hacks")
     p.add_argument("--verify", action="store_true", help="verify only")
     p = sub.add_parser("init",    help="first-time initialization")
@@ -589,6 +686,71 @@ def main():
     p.add_argument("name", nargs="?", default=None, help="plugin name")
     # tui
     p = sub.add_parser("tui", help="interactive terminal UI (Claude Code-style)")
+    # repl
+    p = sub.add_parser("repl", help="persistent REPL (history, tab-complete, slash-commands)")
+    # lore
+    p = sub.add_parser("lore", help="the Moirai story — one oracle line, or the whole myth")
+    p.add_argument("--all", action="store_true", help="print the full MOIRAI.md story")
+    # tools — Hermes/Claude parity
+    p = sub.add_parser("search", help="full-text search across chat history")
+    p.add_argument("query", nargs="?", default=None, help="search terms")
+    p = sub.add_parser("cron", help="list hermes cron jobs")
+    p.add_argument("action", nargs="?", default="list", choices=["list"], help="list only")
+    p = sub.add_parser("web", help="web tools (needs NINEROUTER_URL/NINEROUTER_KEY)")
+    p.add_argument("action", nargs="?", default="search", choices=["search", "fetch"], help="search | fetch <url>")
+    p.add_argument("target", nargs="?", default=None, help="query or url")
+    p = sub.add_parser("kanban", help="simple task board (todo/doing/done)")
+    p.add_argument("action", nargs="?", default="list", choices=["list", "add", "move"], help="list | add <text> | move <text> <col>")
+    p.add_argument("text", nargs="?", default=None, help="task text")
+    p.add_argument("col", nargs="?", default=None, help="target column")
+    p = sub.add_parser("email", help="email via himalaya (inbox | send)")
+    p.add_argument("action", nargs="?", default="inbox", choices=["inbox", "send"], help="inbox | send <to> <subject> <body>")
+    p.add_argument("to", nargs="?", default=None)
+    p.add_argument("subject", nargs="?", default=None)
+    p.add_argument("body", nargs="*", default=None)
+    p = sub.add_parser("tts", help="text-to-speech via the 9Router gateway")
+    p.add_argument("text", nargs="*", default=None, help="text to speak")
+    p = sub.add_parser("vision", help="image → description (9Router gateway)")
+    p.add_argument("image", nargs="?", default=None, help="image file path")
+    p = sub.add_parser("imagine", help="image generation (9Router gateway)")
+    p.add_argument("prompt", nargs="*", default=None, help="what to draw")
+    p = sub.add_parser("video", help="video generation (9Router gateway)")
+    p.add_argument("prompt", nargs="*", default=None, help="what to animate")
+    p = sub.add_parser("youtube", help="transcript + info for a YouTube URL (yt-dlp)")
+    p.add_argument("url", nargs="?", default=None, help="video url")
+    p = sub.add_parser("x", help="X/Twitter post (xurl)")
+    p.add_argument("action", nargs="?", default="post", choices=["post"], help="post <text>")
+    p.add_argument("text", nargs="*", default=None, help="tweet text")
+    p = sub.add_parser("docs", help="office docs (view manifest)")
+    p.add_argument("kind", nargs="?", default="any", help="docx|pdf|sheet|deck")
+    p.add_argument("path", nargs="?", default=None, help="file path")
+    p = sub.add_parser("hue", help="smart-home lights (openhue)")
+    p.add_argument("command", nargs="*", default=None, help="openhue args")
+    p = sub.add_parser("audio", help="audio file info")
+    p.add_argument("action", nargs="?", default="info", choices=["info"], help="info <file>")
+    p.add_argument("file", nargs="?", default=None)
+    p = sub.add_parser("delegate", help="spawn an isolated subagent for a goal")
+    p.add_argument("goal", nargs="*", default=None, help="the goal")
+    p.add_argument("--agent", type=str, default=None, help="use a named agent")
+    p = sub.add_parser("bridge", help="RAFT-style wake/activity bridge")
+    p.add_argument("action", nargs="?", default="start", choices=["start", "status"], help="start | status")
+    # telegram
+    p = sub.add_parser("telegram", help="Telegram gateway (long-poll, guest modes, glass buttons)")
+    p.add_argument("action", nargs="?", default="status", choices=["status", "start", "stop", "test", "send"],
+                   help="status | start | stop | test | send <chat_id> <text>")
+    p.add_argument("chat_id", nargs="?", default=None, help="chat id (send)")
+    p.add_argument("text", nargs="*", default=None, help="message text (send)")
+    # agents
+    p = sub.add_parser("agent", help="one agent per job — harness & model per agent")
+    p.add_argument("action", nargs="?", default="list", choices=["list", "create", "edit", "delete", "run", "status"],
+                   help="list | create | edit <name> | delete <name> | run <name> [task] | status")
+    p.add_argument("name", nargs="?", default=None, help="agent name")
+    p.add_argument("task", nargs="*", default=None, help="task text (run)")
+    # middleware (Filters & Plugins)
+    p = sub.add_parser("middleware", help="Filters & Plugins — hooks that sit between you and the AI")
+    p.add_argument("action", nargs="?", default="list", choices=["list", "on", "off", "order"],
+                   help="list | on <name> | off <name> | order <name1> <name2> …")
+    p.add_argument("names", nargs="*", default=None, help="filter name(s)")
     # setup
     p = sub.add_parser("setup", help="first-time setup wizard")
     p.add_argument("--check", action="store_true", help="check only, don't install")
@@ -735,6 +897,10 @@ def main():
     p.add_argument("description", nargs="?", default=None, help="description")
     p.add_argument("target", nargs="?", default=None, help="alias target")
     args = ap.parse_args()
+    from core import i18n
+    lang = args.lang or settings.get("cli.lang", "en") or "en"
+    i18n.set_lang(lang)
+    _theme = args.theme or settings.get("cli.theme", "dark") or "dark"
     if not args.cmd:
         _dispatch_default(ap)
         sys.exit(0)
@@ -780,8 +946,375 @@ def main():
         "commands": cmd_commands,
         "install": cmd_install,
         "sync": cmd_sync,
+        "repl": cmd_repl,
+        "lore": cmd_lore,
+        "middleware": cmd_middleware,
+        "agent": cmd_agent,
+        "telegram": cmd_telegram,
+        "search": cmd_search,
+        "cron": cmd_cron,
+        "web": cmd_web,
+        "kanban": cmd_kanban,
+        "email": cmd_email,
+        "tts": cmd_tts,
+        "vision": cmd_vision,
+        "imagine": cmd_imagine,
+        "video": cmd_video,
+        "youtube": cmd_youtube,
+        "x": cmd_x,
+        "docs": cmd_docs,
+        "hue": cmd_hue,
+        "audio": cmd_audio,
+        "delegate": cmd_delegate,
+        "bridge": cmd_bridge,
     }
     handlers[args.cmd](args)
+
+
+def cmd_middleware(args):
+    """Filters & Plugins — human names, no hook jargon."""
+    from core import cliui, middleware
+    if args.action == "list":
+        rows = middleware.list_filters()
+        print(cliui.table([[r[0], r[1], r[2]] for r in rows], headers=["filter", "what it does", "state"], max_w=None))
+        if not middleware.enabled_list():
+            print(cliui.dim("  none on — run `atropos middleware on pii` to try one"))
+    elif args.action in ("on", "off") and args.names:
+        for name in args.names:
+            order = middleware.set_enabled(name, args.action == "on")
+            print(f"  {args.action} {name} → enabled: {order}")
+    elif args.action == "order" and args.names:
+        order = middleware.set_order(args.names)
+        print(f"  order: {order}")
+    else:
+        _fail("usage: atropos middleware list | on <name> | off <name> | order <n1> <n2> …")
+
+
+def cmd_agent(args):
+    """One agent per job: list / create / edit / delete / run / status."""
+    from core import agents, cliui
+    if args.action == "list":
+        rows = [[a["name"], a.get("description", ""), a.get("harness", "auto"),
+                 a.get("effort", "medium")] for a in agents.list_agents()]
+        print(cliui.table(rows, headers=["name", "description", "harness", "effort"]))
+        if not rows:
+            print(cliui.dim("  no agents yet — run `atropos agent create`"))
+    elif args.action == "create":
+        name = args.name or cliui.text("agent name", "")
+        if not name:
+            _fail("name required")
+            return
+        desc = cliui.text("description", "")
+        prompt = cliui.text("prompt (what it does)", "")
+        harness = ["auto", "clotho", "lachesis", "atropos"][
+            cliui.select("which harness", ["auto", "clotho (hermes)", "lachesis (claude)", "atropos (self)"])]
+        effort = cliui.text("effort tier", "medium")
+        try:
+            a = agents.save_agent({"name": name, "description": desc, "prompt": prompt,
+                                   "harness": harness, "model": None, "effort": effort,
+                                   "tools": ["*"], "permissions": "default"})
+            _ok(f"agent {a['name']} created")
+        except ValueError as e:
+            _fail(str(e))
+    elif args.action == "edit" and args.name:
+        a = agents.get_agent(args.name)
+        if not a:
+            _fail(f"unknown agent: {args.name}")
+            return
+        a["prompt"] = cliui.text("prompt", a.get("prompt", ""))
+        a["effort"] = cliui.text("effort", a.get("effort", "medium"))
+        agents.save_agent(a)
+        _ok(f"agent {a['name']} updated")
+    elif args.action == "delete" and args.name:
+        if agents.delete_agent(args.name):
+            _ok(f"agent {args.name} deleted")
+        else:
+            _fail(f"unknown agent: {args.name}")
+    elif args.action == "run" and args.name:
+        task = " ".join(args.task or [])
+        rec = agents.run_agent(args.name, task)
+        if rec.get("ok"):
+            _ok(f"[{rec.get('harness')}] {rec.get('result', '')[:200]}")
+        else:
+            _fail(rec.get("error", "run failed"))
+    elif args.action == "status":
+        runs = agents.recent_runs(10)
+        rows = [[r["agent"], r["harness"], "✓" if r.get("ok") else "✗",
+                 r.get("ts", "")[11:19]] for r in runs]
+        print(cliui.table(rows, headers=["agent", "harness", "ok", "time"]))
+        if not rows:
+            print(cliui.dim("  no runs yet"))
+    else:
+        _fail("usage: atropos agent list | create | edit <name> | delete <name> | run <name> [task] | status")
+
+
+def cmd_telegram(args):
+    """Telegram gateway: status | start | test | send."""
+    from core import telegram, cliui
+    if args.action == "status":
+        s = telegram.status()
+        print(cliui.table([[k, str(v)] for k, v in s.items()], headers=["key", "value"]))
+    elif args.action == "start":
+        _info("starting Telegram gateway (long-polling) — Ctrl+C to stop")
+        telegram.run()
+    elif args.action == "test":
+        token = telegram._token()
+        if not token:
+            _fail("telegram.token not configured — set it with `atropos settings set telegram.token <bot-token>`")
+            return
+        print(cliui.table([[k, str(v)] for k, v in telegram.status().items()], headers=["key", "value"]))
+        print(cliui.dim("  to actually receive messages, run `atropos telegram start`"))
+    elif args.action == "send" and args.chat_id:
+        text = " ".join(args.text or [])
+        r = telegram.send_message(args.chat_id, text)
+        if r.get("ok"):
+            _ok(f"sent to {args.chat_id}")
+        else:
+            _fail(r.get("error", "send failed"))
+    else:
+        _fail("usage: atropos telegram status | start | test | send <chat_id> <text>")
+
+
+def cmd_search(args):
+    """Full-text search across chat history."""
+    from core import cliui, tools
+    q = args.query or ""
+    if not q:
+        _fail("usage: atropos search <query>")
+        return
+    res = tools.search(q)
+    rows = [[r["title"][:30], r["role"], r["content"][:60]] for r in res["results"]]
+    print(cliui.table(rows, headers=["session", "role", "snippet"]))
+    if not rows:
+        print(cliui.dim("  no matches"))
+
+
+def cmd_cron(args):
+    """List hermes cron jobs."""
+    from core import cliui, tools
+    res = tools.cron_list()
+    rows = [[j.get("file", ""), str(j.get("schedule", "")), str(j.get("command", ""))[:50]]
+            for j in res.get("jobs", [])]
+    print(cliui.table(rows, headers=["file", "schedule", "command"])) if rows else print(cliui.dim("  no cron jobs"))
+
+
+def cmd_web(args):
+    """Web search/fetch via the 9Router gateway."""
+    from core import cliui, tools
+    target = args.target or ""
+    if args.action == "search":
+        if not target:
+            _fail("usage: atropos web search <query>")
+            return
+        res = tools.web_search(target)
+        if not res.get("ok"):
+            _fail(res.get("error", "web search failed"))
+            return
+        print(json.dumps(res.get("results", {}), indent=2, ensure_ascii=False))
+    else:
+        if not target:
+            _fail("usage: atropos web fetch <url>")
+            return
+        res = tools.web_fetch(target)
+        if not res.get("ok"):
+            _fail(res.get("error", "web fetch failed"))
+            return
+        print(json.dumps(res.get("content", {}), indent=2, ensure_ascii=False))
+
+
+def cmd_kanban(args):
+    """Task board: list | add <text> | move <text> <col>."""
+    from core import cliui, tools
+    if args.action == "add" and args.text:
+        res = tools.kanban_add(args.text)
+    elif args.action == "move" and args.text and args.col:
+        res = tools.kanban_move(args.text, args.col)
+    else:
+        res = tools.kanban_list()
+    cols = res.get("cols", {})
+    for name in ("todo", "doing", "done"):
+        items = " · ".join(c["text"][:30] for c in cols.get(name, [])) or "—"
+        print(f"  {name.ljust(5)} {items}")
+    if args.action == "add" and args.text:
+        _ok(f"added '{args.text}'")
+
+
+def cmd_email(args):
+    """Email via himalaya."""
+    from core import tools
+    if args.action == "inbox":
+        res = tools.email_inbox()
+    else:
+        res = tools.email_send(args.to or "", args.subject or "", " ".join(args.body or []))
+    if not res.get("ok"):
+        _fail(res.get("error", "email failed"))
+    else:
+        print(res.get("output", res))
+
+
+def cmd_tts(args):
+    from core import tools
+    text = " ".join(args.text or [])
+    if not text:
+        _fail("usage: atropos tts <text>")
+        return
+    res = tools.tts(text)
+    if res.get("ok"):
+        _ok("tts generated (see gateway response)")
+        print(json.dumps(res["data"], indent=2, ensure_ascii=False))
+    else:
+        _fail(res.get("error", "tts failed"))
+
+
+def cmd_vision(args):
+    from core import tools
+    if not args.image:
+        _fail("usage: atropos vision <image-path>")
+        return
+    res = tools.vision(args.image)
+    print(json.dumps(res, indent=2, ensure_ascii=False)) if not res.get("ok") else _ok("described (see response)")
+
+
+def cmd_imagine(args):
+    from core import tools
+    prompt = " ".join(args.prompt or [])
+    if not prompt:
+        _fail("usage: atropos imagine <prompt>")
+        return
+    res = tools.imagine(prompt)
+    if res.get("ok"):
+        _ok("image generated")
+        print(json.dumps(res["data"], indent=2, ensure_ascii=False))
+    else:
+        _fail(res.get("error", "image failed"))
+
+
+def cmd_video(args):
+    from core import tools
+    prompt = " ".join(args.prompt or [])
+    if not prompt:
+        _fail("usage: atropos video <prompt>")
+        return
+    res = tools.video(prompt)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+
+
+def cmd_youtube(args):
+    from core import tools
+    if not args.url:
+        _fail("usage: atropos youtube <url>")
+        return
+    res = tools.youtube(args.url)
+    if not res.get("ok"):
+        _fail(res.get("error", "page fetch failed"))
+    else:
+        _info("transcript saved next to the video id")
+
+
+def cmd_x(args):
+    from core import tools
+    text = " ".join(args.text or [])
+    if not text:
+        _fail("usage: atropos x post <text>")
+        return
+    res = tools.x_post(text)
+    print(json.dumps(res, indent=2, ensure_ascii=False)) if not res.get("ok") else _ok("posted")
+
+
+def cmd_docs(args):
+    from core import tools
+    if not args.path:
+        _fail("usage: atropos docs <kind> <path>")
+        return
+    print(json.dumps(tools.docs(args.kind, args.path), indent=2, ensure_ascii=False))
+
+
+def cmd_hue(args):
+    from core import tools
+    res = tools.hue(" ".join(args.command or []))
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+
+
+def cmd_audio(args):
+    from core import tools
+    if not args.file:
+        _fail("usage: atropos audio info <file>")
+        return
+    print(json.dumps(tools.audio_info(args.file), indent=2, ensure_ascii=False))
+
+
+def cmd_delegate(args):
+    from core import tools
+    goal = " ".join(args.goal or [])
+    if not goal:
+        _fail("usage: atropos delegate <goal>")
+        return
+    print(json.dumps(tools.delegate(goal, args.agent), indent=2, ensure_ascii=False))
+
+
+def cmd_bridge(args):
+    from core import tools
+    if args.action == "status":
+        print(json.dumps(tools._BRIDGE_STATE, indent=2))
+    else:
+        print(json.dumps(tools.bridge_start(), indent=2, ensure_ascii=False))
+
+
+def cmd_lore(args):
+    """One oracle line, or the full Moirai story."""
+    from core import cliui
+    if getattr(args, "all", False):
+        md = Path(_REPO_DIR) / "docs" / "MOIRAI.md"
+        try:
+            print(md.read_text(encoding="utf-8"))
+        except OSError:
+            _fail("MOIRAI.md not found")
+        return
+    print(f"  {_C_DIM}{cliui.oracle_line()}{_C_RESET}")
+    print("  (add --all for the whole story)")
+
+
+def cmd_repl(args):
+    """Interactive REPL: history, tab-complete, ?, slash-commands, Ctrl+C safe."""
+    from core import cliui
+
+    def dispatch(cmd):
+        parts = cmd.split()
+        name = parts[0]
+        sub = argparse.Namespace(**vars(args))
+        sub.cmd = name
+        handler = handlers.get(name)
+        if not handler:
+            print(f"  unknown command: {name}")
+            return
+        # rebuild a per-command namespace with the subcommand's parsed defaults
+        try:
+            handler(sub)
+        except SystemExit:
+            pass
+
+    cliui.repl(dispatch)
+
+
+# ── menu dispatch helper (used by cliui.menu + cliui.repl) ───────────────
+def _dispatch_cmd(cmd):
+    """Run a CLI command string through the handlers (menu/REPL dispatch)."""
+    parts = cmd.split(maxsplit=1)
+    name = parts[0]
+    handler = handlers.get(name)
+    if not handler:
+        print(f"  unknown command: {name}")
+        return
+    ns = argparse.Namespace(cmd=name, lang=None, theme=None)
+    if len(parts) > 1:
+        rest = parts[1]
+        for flag, val in zip(rest.split()[::2], rest.split()[1::2]):
+            if flag.startswith("--"):
+                setattr(ns, flag.lstrip("-").replace("-", "_"), val)
+    try:
+        handler(ns)
+    except SystemExit:
+        pass
 
 
 # ── no-subcommand dispatch (settings.cli.default_action) ────────────────
@@ -798,6 +1331,13 @@ def _dispatch_default(ap):
         action = settings.get("cli.default_action", "cli") or "cli"
     except Exception:
         pass
+    if action == "menu":
+        from core import cliui
+        cliui.menu(_dispatch_cmd)
+        sys.exit(0)
+    if action == "repl":
+        cmd_repl(argparse.Namespace())
+        sys.exit(0)
     if action == "dashboard":
         cmd_dashboard(argparse.Namespace(port=None, share=True, quiet=False))
         sys.exit(0)

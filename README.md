@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-6366f1?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![stdlib only](https://img.shields.io/badge/stdlib%20only-22d3ee?style=flat-square)](#rules)
-[![417 tests](https://img.shields.io/badge/tests-417%20green-34d399?style=flat-square)](#tests)
+[![625 tests](https://img.shields.io/badge/tests-625%20green-34d399?style=flat-square)](#tests)
 [![PRs welcome](https://img.shields.io/badge/PRs%20welcome-34d399?style=flat-square)](https://github.com/arophin/Atropos)
 
 > **Atropos** (Ἄτροπος) — the Greek Fate who cuts the thread at the appointed moment: *she who cannot be turned.*
@@ -16,7 +16,7 @@ Atropos is a **self-healing control plane** for AI agents running in ephemeral c
 
 ```
                             ┌──────────────────────────────────────────┐
-                            │            Atropos CLI (27 cmds)         │
+                            │            Atropos CLI (62 cmds)         │
                             │  doctor · route · patch · update · …     │
                             │  settings · skills · plugin · failover   │
                             └──────┬───────────────────┬───────────────┘
@@ -31,10 +31,10 @@ Atropos is a **self-healing control plane** for AI agents running in ephemeral c
                         │                               │
                  git fetch │            ┌───────────────┘
                  (upstream)│            │ dashboard/ (1 file + sw.js)
-                        ▼               │  37 panels · 60+ APIs · SSE
+                        ▼               │  43 panels · 90+ APIs · SSE
         ┌───────────────────────────────┴──────────────────────────┐
         │  hermes-agent (git repo)      dashboard :8787            │
-        │  adapter.py ← 12 hacks        en/fa RTL · themes · PWA   │
+        │  adapter.py ← 12 hacks        11 langs · 9 themes · PWA  │
         └──────────────────────────────────────────────────────────┘
 ```
 
@@ -81,9 +81,9 @@ npm i -g atropos-hs                   # consumers: atropos + atropos-dashboard o
 
 ---
 
-## 🖥 Dashboard — 37 panels, 80+ API endpoints
+## 🖥 Dashboard — 43 panels, 90+ API endpoints
 
-A single-file HTML/CSS/JS control plane with glassmorphism, particle canvas, live SSE push, three themes, five accents and **English / فارسی (RTL)** — zero external dependencies, installable as a PWA.
+A single-file HTML/CSS/JS control plane with glassmorphism, particle canvas, live SSE push, **9 themes** (dark / light / black / sepia / midnight / matrix / ink / embers / glass + auto), five accents and **11 languages** (en master + fa/ar/he/ur RTL, de/fr/es/ru/tr/zh/hi/it partial) — zero external dependencies, installable as a PWA.
 
 | Panel | What it shows |
 |---|---|
@@ -123,11 +123,16 @@ A single-file HTML/CSS/JS control plane with glassmorphism, particle canvas, liv
 | **Budget** | 🆕 Token usage, quota gate, auto-failover |
 | **Activity** | 🆕 24h timeline (updates/alerts/backups/sessions) |
 | **Announce** | 🆕 Tips + changelog + version check, dismissible |
+| **Filters** | 🆕 Middleware engine: 18 prebuilt filters (PII, retry, summary, brand…) + custom YAML/py in `~/.atropos/custom_filters/` |
+| **Agents** | 🆕 JSON-defined agent workforce, harness auto-resolve, background runs, results history |
+| **Telegram** | 🆕 Bot gateway: long-poll, guest modes (allow/read-only/deny), step trails, rotating logs |
 
 ### Dashboard features
 
-- **⌘K command palette** — search all 37 panels + actions
-- **Themes & languages** — dark / light / auto; indigo / cyan / green / amber / violet; English / فارسی with full RTL (`?lang=fa` or the 🌐 button)
+- **⌘K command palette** — search all 43 panels + actions
+- **Mobile-complete** — bottom nav (Overview/Chat/Sessions/Settings/More), modals drop to bottom sheets ≤768px, 44px touch targets, safe-area insets, tables become cards
+- **Keyboard shortcuts** — `1..8` jump panels, `⌘K` palette, `?` help
+- **Themes & languages** — 9 themes + auto; 11 languages with full RTL for fa/ar/he/ur (`?lang=fa`, the 🌐 button, or `settings.language` / `--lang`)
 - **SSE live hub** — one `EventSource` on `/api/events` feeds the Console, Logs and status channels with bounded queues + heartbeat
 - **PWA offline** — service worker (`dashboard/sw.js`) + webmanifest: the dashboard loads without a network
 - **Auth** — per-browser token + optional password gate; secrets never leave the box unmasked
@@ -166,11 +171,15 @@ atropos routing add reviews --harness clotho  # custom category
 
 `atropos dashboard --share` prints the LAN URL (auto-detected IP + port) and a **real scannable QR** (pure-stdlib encoder). The dashboard binds `0.0.0.0` when sharing; new devices need **approval** (Pairing panel), and the optional password gate still applies.
 
-**`/chat`** is a dedicated mobile-first chat page (also great on desktop): glass bubbles with Moirai glyph avatars, **streaming replies** (`POST /api/chat/stream` → SSE deltas), slash commands routed through the Console whitelist (`/doctor`, `/backup`, `/skills list`…), voice input (Web Speech), swipe/pull gestures, copy/regenerate/edit per message, offline badge, Farsi RTL, and one-shot **share links** (`atropos links create <session>` → `/chat?share=…`, single-use, 1h TTL, SHA-256-only storage).
+**`/chat`** is a dedicated mobile-first chat page (also great on desktop): glass bubbles with Moirai glyph avatars, **streaming replies** (`POST /api/chat/stream` → SSE deltas), slash commands routed through the Console whitelist (`/doctor`, `/backup`, `/skills list`…), voice input (Web Speech), swipe/pull gestures, offline badge, Farsi RTL, and one-shot **share links** (`atropos links create <session>` → `/chat?share=…`, single-use, 1h TTL, SHA-256-only storage).
+
+Chat round-2: per-message actions (copy / regenerate / edit-and-resend / delete / inspect, via tap-⋯ sheet, 44px targets), fenced code blocks with a copy button, welcome suggestions, a **stop** button that aborts a streaming reply, and full session management — rename, pin-to-top, and delete straight from the drawer (long-press / right-click). Inspect opens the per-message trace (harness, model, effort, latency, tokens, timestamp) — the same data the Sessions trace panel shows.
 
 ---
 
-## 🖥 CLI reference — 45 commands
+## 🖥 CLI reference — 62 commands
+
+Bare `atropos` opens the **menu UI** (numbered actions, arrow keys, `/` commands — a trimmed Claude Code-style shell). `atropos repl` is the interactive REPL with `/doctor`, `/backup`, `/lore`…; both are terminal-theme aware. Global flags: `--lang <code>`, `--theme <name>`, `--json`.
 
 | Command | Description |
 |---|---|
@@ -222,6 +231,24 @@ atropos routing add reviews --harness clotho  # custom category
 | `atropos commands list|add|alias` | Commands & aliases |
 | `atropos announce` | Announcement feed |
 | `atropos dashboard --share` | LAN sharing + QR |
+| `atropos repl` | 🆕 Interactive REPL (`/doctor`, `/backup`, `?` for help) |
+| `atropos lore` | 🆕 Daily oracle line from the Moirai |
+| `atropos middleware list\|enable\|disable\|order` | 🆕 Filters & plugins (18 prebuilt) |
+| `atropos agent list\|run\|start\|defs` | 🆕 Agent workforce (JSON defs, harness auto-resolve) |
+| `atropos telegram [run\|status]` | 🆕 Telegram gateway (long-poll, guest modes) |
+| `atropos search <q>` | 🆕 Session content search |
+| `atropos cron` | 🆕 List cron jobs |
+| `atropos web search\|fetch` | 🆕 Web tools via 9Router |
+| `atropos kanban` | 🆕 Task board |
+| `atropos email inbox\|send` | 🆕 Email via himalaya |
+| `atropos tts / vision / imagine / video` | 🆕 Media generation via gateway (9Router) |
+| `atropos youtube <url>` | 🆕 Transcript → summary via yt-dlp |
+| `atropos x post` | 🆕 Post to X via xurl |
+| `atropos docs <kind> <path>` | 🆕 Office docs (docx/xlsx/pdf/pptx) |
+| `atropos hue` | 🆕 Smart-home lights via openhue |
+| `atropos audio <file>` | 🆕 Audio info/analysis |
+| `atropos delegate <text>` | 🆕 Delegate to an agent |
+| `atropos bridge start` | 🆕 RAFT bridge: /health /activity /wake |
 
 ---
 
@@ -291,7 +318,7 @@ python3 run_tests.py              # or: python3 -m unittest discover tests
 node tests/test_js_syntax.js      # dashboard JS syntax + panel consistency
 ```
 
-**417 tests, all green** — YAML parser, config roundtrip, settings schema/coercion/migration/secrets, env detection, doctor, 12-hack engine, router + failover logic, extensions, console whitelist (including `rm -rf /` rejection), live HTTP API with auth, SSE. Pure `unittest`, zero dependencies.
+**625 tests, all green** — YAML parser, config roundtrip, settings schema/coercion/migration/secrets, env detection, doctor, 12-hack engine, router + failover logic, extensions, console whitelist (including `rm -rf /` rejection), live HTTP API with auth, SSE, plus round-2 suites: ASCII identity, i18n (11 langs), CLI menu/REPL/tables, middleware filters, agents, capability probe, Telegram gateway, parity matrix, guest isolation, dashboard control checks, mobile-complete markup. Pure `unittest`, zero dependencies.
 
 ---
 
@@ -311,8 +338,9 @@ In Greek mythology, Atropos (Ἄτροπος) was the eldest of the three Moirai
 
 - **stdlib only** — `unittest`, `http.server`, `sqlite3`, `urllib`, `subprocess`, `json`, `shutil`. No pip, no lockfile, not even in CI.
 - **No hardcoded `/data` or `/opt` in `core/`** — `detect.py` owns every path via env vars.
-- **English comments**, فارسی UI strings correct UTF-8 + RTL-aware.
+- **WHY-only comments in English** — no narration, no TODO/FIXME, no AI-isms; فارسی UI strings correct UTF-8 + RTL-aware.
 - **Routers = nain · omni · local** — `deepmo` is the model nain serves, never a router.
+- **BETA badge** — version-flagged builds show it; `settings.beta_badge` off hides it.
 - **Console /api/run is whitelist-only** — arbitrary shell is forbidden by design.
 - **Dry-run only** — Atropos is a control plane, never trades real money.
 

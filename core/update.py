@@ -47,16 +47,13 @@ def diff_summary(repo: str):
 
 
 def backup_state(atropos_home: Path) -> Path:
-    """Copy config + hacks to a timestamped backup dir. Returns backup path."""
+    """Copy config to a timestamped backup dir. Returns backup path."""
     ts = _ts()
     bk = atropos_home / "backups" / ts
     bk.mkdir(parents=True, exist_ok=True)
     cfg = atropos_home / "config.yaml"
     if cfg.exists():
         shutil.copy2(cfg, bk / "config.yaml")
-    hacks = Path(__file__).resolve().parent.parent / "hacks"
-    if hacks.exists():
-        shutil.copytree(hacks, bk / "hacks", dirs_exist_ok=True)
     return bk
 
 

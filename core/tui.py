@@ -10,10 +10,11 @@ Pure stdlib (ANSI escape codes). Works on any terminal.
 """
 import json
 import os
+import re
 import shutil
 import sys
 
-from . import config, detect, doctor, patches, router, settings
+from . import ascii, config, detect, doctor, patches, router, settings
 from . import fleet
 from .backup import create as backup_create, list_backups
 from .watch import run_watch
@@ -69,10 +70,18 @@ def _line(width: int, color: str = C_CYAN) -> str:
     return f"{color}└{'─' * (width - 2)}┘{C_RESET}"
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _visible(s: str) -> str:
+    return _ANSI_RE.sub("", s)
+
+
 def _center(text: str, width: int) -> str:
-    if len(text) >= width:
-        return text[: width - 1]
-    pad = (width - len(text)) // 2
+    vis = _visible(text)
+    if len(vis) >= width:
+        return text
+    pad = (width - len(vis)) // 2
     return " " * pad + text
 
 
@@ -86,8 +95,13 @@ _MOIRAI_LINE = "Clotho · Lachesis · Atropos — the unturnable"
 def header(title: str, subtitle: str = "") -> int:
     w = min(_cols(), 100)
     print(f"{CLEAR}{C_BG_DARK}")
-    print(_center(f"  {C_BOLD}{C_CYAN}⟁ ATROPOS{C_RESET}  ", w))
-    print(_center(f"{C_DIM}{_MOIRAI_LINE}{C_RESET}", w))
+    try:
+        _theme = settings.get("theme", "dark") or "dark"
+    except Exception:
+        _theme = "dark"
+    for ln in ascii.tui_header("", theme=_theme, color=True).splitlines():
+        if ln.strip():
+            print(_center(ln, w))
     print(_center(f"{C_BOLD}{title}{C_RESET}", w))
     if subtitle:
         print(_center(f"{C_DIM}{subtitle}{C_RESET}", w))
