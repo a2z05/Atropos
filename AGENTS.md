@@ -72,6 +72,37 @@ Consumers run `npm i -g atropos-hs` or `atropos install` (symlink/copy into
 `~/.local/bin`; on Windows the install copies a self-contained runtime).
 Changes to packaging go in `package.json` + `bin/atropos-dashboard`.
 
+## Round 2 (1.4.1) — human-feel + UX layer
+
+- **i18n lives in `languages/*.json`** (en.json master, partial files fall
+  back key-by-key, RTL set fa/ar/he/ur). Add keys to `en.json` first, then
+  mirror in `fa.json`; other files may stay partially translated. UI picks
+  it up via `core/i18n.t(key)` + `--lang` + `settings.cli.lang`/`dashboard.lang`.
+- **Themes**: `settings.theme` (dark/light/black/sepia/midnight/matrix/ink/embers/glass + auto)
+  drives dashboard CSS vars AND the CLI/TUI accent (`core/ascii.py` ACCENTS).
+- **CLI menu/REPL**: `settings.cli.default_action` (`cli|menu|repl|dashboard|both`).
+  Bare `atropos` shows the menu when set. All new commands must register in
+  the subparsers AND `_extras` dispatch table AND `tests/test_parity.py`
+  CLAIMED list — that test is the contract.
+- **Middleware filters** live in `core/middleware.py`; custom filters drop
+  into `~/.atropos/custom_filters/*.yaml|py`. Filters call into the same
+  hooks that middleware used — never import middleware internals in panels.
+- **Agents** are JSON in `~/.atropos/agents/*.json`; `resolve_harness`
+  answers "which engine runs this agent" (lachesis → real `claude -p` when
+  present, else dry-run). `core/detect._find_claude()` is the gate.
+- **Telegram**: token in `settings.telegram.token` (secret), owner ids +
+  per-user `guests` mode (allow/readonly/deny). `telegram.run(until=…)` is
+  the loop; the panel/API never blocks on it.
+- **Capability probe** (`core/probe.py`) is the source of truth for
+  dashboard auto-sections: when you add a panel, register its required
+  capability in `SECTION_REQUIRES` or it won't show on lean boxes.
+- **Chat endpoints**: `/api/chat/action` (rename/pin/tag/delete_message)
+  and `/api/chat/share` (one-shot link via `core/links`). `chat.html`
+  renders message actions client-side — keep the 44px sheet pattern.
+- **Dashboard mobile** is non-negotiable: bottom nav ≤768px, modals become
+  bottom sheets, every control ≥44px. `tests/test_js_syntax.js` also
+  syntax-checks `dashboard/chat.html` now.
+
 ## Settings — single source of truth
 
 **`core/settings.py` owns every config key.** Modules must read through
@@ -92,7 +123,7 @@ dashboard Settings panel is the web surface.
 - **Dashboard auth** supports an optional password gate: set `dashboard.password` in `~/.atropos/config.yaml` and the dashboard requires it before the token field is used.
 
 ## Principles (from SOUL.md)
-1. **Truth > politeness.** Always. Filter OFF with Artan.
+1. **Truth > politeness.** Always. Filter OFF with the owner.
 2. **Initiative.** Decide, execute, report. Don't ask permission for every step.
 3. **Continuity.** Keep backups sharp, patches clean, state persistent.
 4. **Naturalness.** Sound like a girl talking, not a system producing text.

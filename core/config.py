@@ -307,9 +307,14 @@ def dump_yaml(obj: dict, indent=0) -> str:
             out.append(f"{pad}{k}:")
             out.append(dump_yaml(v, indent + 2))
         elif isinstance(v, list):
-            out.append(f"{pad}{k}:")
-            for item in v:
-                out.append(f"{pad}  - {_dump_scalar(item)}")
+            if not v:
+                # empty lists must round-trip: emit `[]` so the parser
+                # reads a list back, not an empty string
+                out.append(f"{pad}{k}: []")
+            else:
+                out.append(f"{pad}{k}:")
+                for item in v:
+                    out.append(f"{pad}  - {_dump_scalar(item)}")
         elif isinstance(v, bool):
             out.append(f"{pad}{k}: {'true' if v else 'false'}")
         elif v is None:
@@ -335,13 +340,22 @@ def _dump_scalar(v):
         return "true" if v else "false"
     if v is None:
         return "null"
+    # typed numbers are unambiguous — a bare `85` parses back as int
+    if isinstance(v, (int, float)):
+        return str(v)
     return _quote(str(v))
 
 
 def _quote(s: str) -> str:
+    """Quote a string scalar unless it round-trips unambiguously. The parser
+    reads YAML-1.1 booleans, so `off/on/yes/no/true/false/null` and bare
+    numbers must be quoted on write — otherwise `update.auto: off` comes
+    back as the boolean False and settings round-trips break."""
     if s and s[0] in "\"'":
         return s
     if any(c in s for c in ":#\n{}"):
+        return json.dumps(s, ensure_ascii=False)
+    if s.lower() in ("true", "false", "yes", "no", "on", "off", "null", "none", "~", ""):
         return json.dumps(s, ensure_ascii=False)
     return s
 

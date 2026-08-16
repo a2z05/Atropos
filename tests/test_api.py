@@ -208,6 +208,23 @@ class MarketplaceApiTests(ApiBase):
         self.assertFalse(d["ok"])
 
 
+class MiddlewareApiTests(ApiBase):
+    def test_middleware_list(self):
+        d = self.request("/api/middleware/list")
+        self.assertTrue(d["ok"])
+        self.assertGreaterEqual(len(d["filters"]), 12)
+        for row in d["filters"]:
+            self.assertEqual(len(row), 3)  # [name, description, state]
+
+    def test_middleware_on_off(self):
+        d = self.request("/api/middleware/on", {"name": "pii"})
+        self.assertTrue(d["ok"])
+        self.assertIn("pii", d["enabled"])
+        d2 = self.request("/api/middleware/off", {"name": "pii"})
+        self.assertTrue(d2["ok"])
+        self.assertNotIn("pii", d2["enabled"])
+
+
 class SessionApiTests(ApiBase):
     def test_search_requires_query(self):
         d = self.get("/api/sessions/search?q=")

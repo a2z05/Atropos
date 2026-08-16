@@ -41,6 +41,41 @@ body {
 }
 .topbar .title { flex: 1; font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar .badge { font-size: 11px; color: var(--dim); }
+.chat-beta { font-size: 9px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); opacity: .7; padding: 1px 5px; border-radius: 5px; letter-spacing: 1px; vertical-align: middle; margin-left: 4px; }
+/* fenced code blocks: screen reader keeps raw text, copy reads innerText */
+.code-block { position: relative; margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,.25); overflow-x: auto; white-space: pre; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; }
+.code-block .code-copy { position: absolute; top: 6px; right: 6px; z-index: 2; background: var(--card); color: var(--dim); border: 1px solid var(--border); font-size: 10px; padding: 3px 8px; border-radius: 7px; cursor: pointer; }
+.chips-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 2px 0; }
+.chips-row button { min-height: 40px; padding: 0 14px; border-radius: 20px; background: var(--card); color: var(--text); border: 1px solid var(--border); font-size: 13px; cursor: pointer; }
+#btn-stop { display: none; }
+#btn-stop.show { display: flex; }
+/* ── message action sheet (bottom) ────────────────────── */
+#backdrop2 { position: fixed; inset: 0; z-index: 45; background: rgba(0,0,0,.45); opacity: 0; pointer-events: none; transition: opacity .2s; }
+#backdrop2.show { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  background: var(--bg); border-top: 1px solid var(--border); border-radius: 18px 18px 0 0;
+  padding: 10px 12px calc(env(safe-area-inset-bottom) + 14px);
+  transform: translateY(102%); transition: transform .25s ease;
+}
+.sheet.open { transform: translateY(0); }
+.sheet button {
+  width: 100%; min-height: 46px; text-align: left; background: none; border: none;
+  color: var(--text); font-size: 14.5px; padding: 0 14px; border-radius: 10px; cursor: pointer;
+}
+.sheet button:active { background: var(--card); }
+.sheet button.danger { color: var(--red); }
+.sheet button.close { color: var(--dim); text-align: center; margin-top: 4px; }
+/* inspect popup */
+#inspect {
+  display: none; position: absolute; z-index: 60; top: calc(env(safe-area-inset-top) + 12px);
+  left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 28px));
+  background: var(--bg); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px; font-size: 12px; line-height: 1.7; color: var(--dim);
+  max-height: 70vh; overflow-y: auto;
+}
+#inspect.show { display: block; }
+#inspect b { color: var(--text); }
 .avatar {
   width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -135,7 +170,7 @@ body {
   <span class="avatar" id="top-avatar"><img src="icon-256.png" alt=""
     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><i>✂</i></span>
   <div>
-    <div class="title" id="chat-title">Atropos Chat</div>
+    <div class="title" id="chat-title">Atropos Chat <span class="chat-beta" id="chat-beta">BETA</span></div>
     <div class="badge" id="chat-sub">Clotho · Lachesis · Atropos</div>
   </div>
   <button class="btn" id="btn-new" title="New chat">✎</button>
@@ -152,15 +187,35 @@ body {
 <div class="inputbar">
   <button class="btn ghost" id="btn-voice" title="Voice">🎤</button>
   <textarea id="input" placeholder="Message Atropos…  (/doctor, /backup…)" rows="1"></textarea>
+  <button class="btn ghost" id="btn-stop" title="Stop">■</button>
   <button class="btn" id="btn-send" title="Send">➤</button>
+</div>
+
+<!-- message action sheet -->
+<div id="backdrop2"></div>
+<div class="sheet" id="sheet">
+  <button data-sheet-act="copy">Copy text</button>
+  <button data-sheet-act="regenerate">Regenerate reply</button>
+  <button data-sheet-act="edit">Edit and resend</button>
+  <button data-sheet-act="share">Share this chat</button>
+  <button data-sheet-act="inspect">Inspect message</button>
+  <button data-sheet-act="delete" class="danger">Delete message</button>
+  <button data-sheet-act="close" class="close">Cancel</button>
 </div>
 
 <script>
 'use strict';
 /* ── tiny markdown-lite renderer (bold/code/lists) ────────────────── */
 function md(text) {
-  return String(text)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  let s = esc(text);
+  // fenced code blocks first (raw text kept inside; copy uses innerText)
+  s = s.replace(/```([\s\S]*?)```/g, (m, body) => {
+    const label = body.split('\n')[0].trim().slice(0, 20);
+    const labelHtml = label ? `<div style="font-size:10px;color:var(--dim);padding:0 2px 6px;white-space:normal">${esc(label)}</div>` : '';
+    const payload = body.replace(/^\w+\n/, '');
+    return '<div class="code-block"><button class="code-copy">copy</button>' + labelHtml + payload + '</div>';
+  });
+  return s
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
     .replace(/`(.+?)`/g, '<code style="background:var(--card);padding:1px 5px;border-radius:6px;font-size:12px">$1</code>')
     .replace(/^[-*] (.*)$/gm, '• $1');
@@ -179,11 +234,15 @@ async function api(path, opts) {
 }
 
 /* ── streams / SSO: POST /api/chat/stream read as SSE lines ──────── */
+let streamAbort = null;
 async function streamSend(sessionId, text, onDelta) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  streamAbort = ctrl;
   const res = await fetch('/api/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Atropos-Token': token },
     body: JSON.stringify({ session_id: sessionId, text }),
+    signal: ctrl ? ctrl.signal : undefined,
   });
   if (!res.ok) throw new Error('stream failed: ' + res.status);
   const reader = res.body.getReader();
@@ -212,9 +271,13 @@ async function streamSend(sessionId, text, onDelta) {
 let sessions = [];
 let current = null;          // {id, title}
 let awaiting = false;
+let aborted = false;         // user pressed stop
+let msgId = 0;               // local ids for message actions
+let sheetTarget = null;      // {element, id}
 let draft = '';
 const msgArea = document.getElementById('msg-area');
 const input = document.getElementById('input');
+const SUGGESTIONS = ['/doctor', '/status', '/lore', '/backup', '/memory top', 'What can you do?'];
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -222,6 +285,7 @@ function esc(s) {
 function addMsg(role, text, harness) {
   const div = document.createElement('div');
   div.className = 'msg ' + role;
+  div.dataset.id = String(++msgId);
   const chip = harness ? `<div class="harness-chip">✂ ${esc(harness)}</div>` : '';
   div.innerHTML = `<span class="avatar">${role === 'user' ? '🧑' : '<img src="icon-256.png" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><i>✂</i>'}</span>
     <div><div class="bubble">${md(text)}</div>${chip}
@@ -229,11 +293,24 @@ function addMsg(role, text, harness) {
       <button data-act="copy">copy</button>
       <button data-act="reg">regenerate</button>
       <button data-act="edit">edit</button>
+      <button data-act="more">⋯</button>
     </div></div>`;
   msgArea.appendChild(div);
   msgArea.scrollTop = msgArea.scrollHeight;
   return div;
 }
+/* welcome state: suggestions instead of an empty page */
+function welcome() {
+  if (msgArea.children.length) return;
+  msgArea.innerHTML = `<div style="text-align:center;color:var(--dim);padding-top:64px">
+    <div style="font-size:26px;margin-bottom:10px">✂</div>
+    <div style="font-weight:700;color:var(--text);font-size:16px;margin-bottom:4px">New chat</div>
+    <div style="font-size:12.5px;margin-bottom:16px">Pick a starting point or type anything.</div>
+  </div>
+  <div class="chips-row" style="justify-content:center;max-width:400px;margin:0 auto">` +
+    SUGGESTIONS.map(s => `<button class="chip">${escapeHtmlAttr(s)}</button>`).join('') + '</div>';
+}
+function escapeHtmlAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function addTyping() {
   const div = document.createElement('div');
   div.className = 'msg bot'; div.id = 'typing-msg';
@@ -247,17 +324,31 @@ async function loadSessions() {
   const d = await api('/api/chat/sessions');
   sessions = d.sessions || [];
   const list = document.getElementById('session-list');
-  list.innerHTML = sessions.map(s =>
-    `<div class="session ${current && s.id === current.id ? 'active' : ''}" data-id="${esc(s.id)}">
-       <span class="st">${esc(s.title)}</span><span class="sm">${s.message_count || 0} msgs</span>
-     </div>`).join('') || '<div style="color:var(--dim);font-size:12px;padding:8px;">No sessions yet</div>';
+  const pinned = sessions.filter(s => (s.tags || []).includes('pin'));
+  const rest = sessions.filter(s => !(s.tags || []).includes('pin'));
+  const row = s => `<div class="session ${current && s.id === current.id ? 'active' : ''}" data-id="${esc(s.id)}">
+       <span class="st">${(s.tags || []).includes('pin') ? '📌 ' : ''}${esc(s.title)}</span><span class="sm">${s.message_count || 0} msgs</span>
+     </div>`;
+  list.innerHTML = (pinned.map(row).join('') + (pinned.length ? '<div style="color:var(--dim);font-size:10px;padding:4px 6px;">— pinned</div>' : '') + rest.map(row).join(''))
+    || '<div style="color:var(--dim);font-size:12px;padding:8px;">No sessions yet</div>';
 }
 async function openSession(id) {
   current = sessions.find(s => s.id === id) || { id, title: 'Chat' };
   document.getElementById('chat-title').textContent = current.title;
   const msgs = await api('/api/chat/session/' + id).catch(() => ({ messages: [] }));
   msgArea.innerHTML = '';
-  (msgs.messages || []).forEach(m => addMsg(m.role === 'user' ? 'user' : 'bot', m.content, m.harness));
+  if (!(msgs.messages || []).length) { welcome(); return; }
+  (msgs.messages || []).forEach(m => {
+    const role = m.role === 'user' ? 'user' : (m.role === 'assistant' ? 'bot' : 'bot');
+    const el = addMsg(role, m.content, m.harness);
+    if (m.id != null) el.dataset.dbId = m.id;          // real id for delete
+    if (m.harness) el.dataset.harness = m.harness;
+    if (m.model) el.dataset.model = m.model;
+    if (m.effort) el.dataset.effort = m.effort;
+    if (m.latency_ms != null) el.dataset.latency = m.latency_ms;
+    if (m.tokens != null) el.dataset.tokens = m.tokens;
+    if (m.ts) el.dataset.ts = m.ts;
+  });
   closeDrawer();
   loadSessions();
 }
@@ -268,10 +359,11 @@ async function openShare(token) {
   } catch (_) {}
   msgArea.innerHTML = '<div style="text-align:center;color:var(--dim);padding-top:40%">Invalid or expired share link.</div>';
 }
-function newSession() {
+async function newSession() {
   current = null;
   msgArea.innerHTML = '';
   document.getElementById('chat-title').textContent = 'New chat';
+  welcome();
   closeDrawer();
 }
 function closeDrawer() { document.getElementById('drawer').classList.remove('open'); document.getElementById('backdrop').classList.remove('show'); }
@@ -280,8 +372,12 @@ function openDrawer() { loadSessions().catch(() => {}); document.getElementById(
 async function send(text) {
   if (awaiting || !text.trim()) return;
   awaiting = true;
+  aborted = false;
+  document.getElementById('btn-stop').classList.add('show');
+  document.getElementById('btn-send').style.display = 'none';
   draft = '';
   input.value = '';
+  welcome();
   addMsg('user', text);
   const typing = addTyping();
   let acc = '';
@@ -290,20 +386,31 @@ async function send(text) {
     const done = await streamSend(current ? current.id : null, text, (delta) => {
       if (!replyEl) { removeTyping(); replyEl = addMsg('bot', ''); replyEl.querySelector('.bubble').innerHTML = ''; }
       acc += delta;
-      replyEl.querySelector('.bubble').innerHTML = md(acc);
+      if (!aborted) replyEl.querySelector('.bubble').innerHTML = md(acc);
       msgArea.scrollTop = msgArea.scrollHeight;
     });
-    if (!replyEl) { removeTyping(); replyEl = addMsg('bot', acc || '…'); }
-    // persist + wire harness chip from the done event or chat stats
+    if (!aborted && !replyEl) { removeTyping(); replyEl = addMsg('bot', acc || '…'); }
     if (done && done.session_id && !current) {
       current = { id: done.session_id, title: text.slice(0, 32) };
       document.getElementById('chat-title').textContent = current.title;
       loadSessions();
     }
   } catch (e) {
-    removeTyping(); addMsg('bot', 'error: ' + e.message);
-  } finally { awaiting = false; }
+    if (!aborted) { removeTyping(); addMsg('bot', 'error: ' + e.message); }
+  } finally {
+    awaiting = false;
+    document.getElementById('btn-stop').classList.remove('show');
+    document.getElementById('btn-send').style.display = '';
+  }
 }
+document.getElementById('btn-stop').addEventListener('click', () => {
+  aborted = true;
+  try { streamAbort && typeof streamAbort.abort === 'function' && streamAbort.abort(); } catch (_) {}
+  removeTyping();
+  awaiting = false;
+  document.getElementById('btn-stop').classList.remove('show');
+  document.getElementById('btn-send').style.display = '';
+});
 
 /* ── events ──────────────────────────────────────────────────────── */
 document.getElementById('btn-send').addEventListener('click', () => send(input.value));
@@ -316,15 +423,164 @@ document.getElementById('backdrop').addEventListener('click', closeDrawer);
 document.getElementById('session-list').addEventListener('click', (e) => {
   const el = e.target.closest('.session'); if (el) openSession(el.dataset.id);
 });
+document.getElementById('session-list').addEventListener('contextmenu', (e) => {
+  const el = e.target.closest('.session'); if (!el) return;
+  e.preventDefault();
+  const menu = document.getElementById('sheet');
+  sheetTarget = { element: null, sessionId: el.dataset.id };
+  menu.innerHTML = `
+    <button data-sheet-act="rename">Rename…</button>
+    <button data-sheet-act="pin">${(sessions.find(s => s.id === el.dataset.id) || {}).tags && sessions.find(s => s.id === el.dataset.id).tags.includes('pin') ? 'Unpin' : 'Pin to top'}</button>
+    <button data-sheet-act="delete" class="danger">Delete session</button>
+    <button data-sheet-act="close" class="close">Cancel</button>`;
+  openSheet();
+});
 msgArea.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-act]');
-  if (!btn) return;
-  const bubble = btn.closest('.bubble');
-  const text = bubble ? bubble.textContent : '';
-  if (btn.dataset.act === 'copy') { navigator.clipboard && navigator.clipboard.writeText(text); }
-  if (btn.dataset.act === 'reg') { const m = btn.closest('.msg'); if (m) { m.remove(); send(draft || prompt('Send:')); } }
-  if (btn.dataset.act === 'edit') { const m = btn.closest('.msg'); if (m) { m.remove(); } }
+  if (btn) { e.stopPropagation(); handleMsgAction(btn.dataset.act, btn.closest('.msg')); return; }
+  const cbtn = e.target.closest('.code-copy');
+  if (cbtn) {
+    const block = cbtn.closest('.code-block');
+    const raw = block.innerText.replace(/^copy\n/, '');
+    navigator.clipboard && navigator.clipboard.writeText(raw);
+    cbtn.textContent = 'copied ✓';
+    setTimeout(() => { cbtn.textContent = 'copy'; }, 1200);
+    return;
+  }
+  const chip = e.target.closest('.chip');
+  if (chip) { input.value = chip.textContent; input.focus(); send(chip.textContent); }
 });
+function handleMsgAction(act, msg) {
+  const bubble = msg.querySelector('.bubble');
+  const text = bubble ? bubble.innerText : '';
+  if (act === 'copy') { navigator.clipboard && navigator.clipboard.writeText(text); return; }
+  if (act === 'more') {
+    sheetTarget = { element: msg };
+    document.getElementById('sheet').innerHTML = `
+      <button data-sheet-act="copy">Copy text</button>
+      <button data-sheet-act="regenerate">Regenerate reply</button>
+      <button data-sheet-act="edit">Edit and resend</button>
+      <button data-sheet-act="share">Share this chat</button>
+      <button data-sheet-act="inspect">Inspect message</button>
+      <button data-sheet-act="delete" class="danger">Delete message</button>
+      <button data-sheet-act="close" class="close">Cancel</button>`;
+    openSheet();
+    return;
+  }
+  if (act === 'reg') { msg.remove(); delete messageOf(msg); send(prompt('Send:')); }
+  if (act === 'edit') {
+    const m = messageOf(msg);
+    input.value = m ? m.content : (msg.querySelector('.bubble').innerText || '');
+    input.focus();
+    msg.remove();
+  }
+}
+const messageOf = (msg) => { const m = (window._msgs || [])[Number(msg.dataset.id)]; return m; };
+function openSheet() { document.getElementById('sheet').classList.add('open'); document.getElementById('backdrop2').classList.add('show'); }
+function closeSheet() { document.getElementById('sheet').classList.remove('open'); document.getElementById('backdrop2').classList.remove('show'); }
+document.getElementById('backdrop2').addEventListener('click', closeSheet);
+document.getElementById('sheet').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-sheet-act]');
+  if (!btn) return;
+  const act = btn.dataset.sheetAct;
+  closeSheet();
+  if (act === 'close') return;
+  if (act === 'copy') {
+    if (sheetTarget.element) navigator.clipboard && navigator.clipboard.writeText(sheetTarget.element.querySelector('.bubble').innerText);
+    return;
+  }
+  if (act === 'inspect') { inspectMsg(sheetTarget.element); return; }
+  if (sheetTarget.sessionId) {
+    if (act === 'rename') {
+      const cur = sessions.find(s => s.id === sheetTarget.sessionId) || { title: '' };
+      const name = prompt('New name:', cur.title);
+      if (name && name.trim()) {
+        await api('/api/chat/action', { method: 'POST', body: JSON.stringify({ action: 'rename', session_id: sheetTarget.sessionId, title: name.trim() }) }).catch(() => {});
+        if (current && current.id === sheetTarget.sessionId) document.getElementById('chat-title').textContent = name.trim();
+        loadSessions();
+      }
+      return;
+    }
+    if (act === 'pin') {
+      const s = sessions.find(x => x.id === sheetTarget.sessionId);
+      const pinned = s && (s.tags || []).includes('pin');
+      await api('/api/chat/action', { method: 'POST', body: JSON.stringify({ action: 'pin', session_id: sheetTarget.sessionId, pinned: !pinned }) }).catch(() => {});
+      loadSessions();
+      return;
+    }
+    if (act === 'delete') {
+      await api('/api/chat/delete', { method: 'POST', body: JSON.stringify({ session_id: sheetTarget.sessionId }) }).catch(() => {});
+      if (current && current.id === sheetTarget.sessionId) newSession();
+      loadSessions();
+      return;
+    }
+    return;
+  }
+  if (act === 'share') {
+    if (!current) return;
+    const d = await api('/api/chat/share', { method: 'POST', body: JSON.stringify({ session_id: current.id }) }).catch(() => null);
+    if (d && d.link) {
+      const full = location.origin + '/chat' + d.link.url.slice(4);
+      navigator.clipboard && navigator.clipboard.writeText(full);
+      toastMsg('Share link copied (one use): ' + full);
+    } else { toastMsg('Share failed'); }
+    return;
+  }
+  if (act === 'delete') {
+    const el = sheetTarget.element;
+    if (el && el.dataset.dbId) {
+      await api('/api/chat/action', { method: 'POST', body: JSON.stringify({ action: 'delete_message', message_id: Number(el.dataset.dbId) }) }).catch(() => {});
+    }
+    if (el) el.remove();
+    return;
+  }
+  if (act === 'regenerate') {
+    const el = sheetTarget.element;
+    if (el) { el.remove(); send(prompt('Send:')); }
+  }
+});
+/* message trace inspect — same data the dashboard trace panel shows */
+function inspectMsg(msg) {
+  if (!msg) return;
+  const iv = document.getElementById('inspect');
+  const lines = [
+    ['role', msg.classList.contains('user') ? 'user' : 'assistant'],
+    ['id', msg.dataset.dbId || msg.dataset.id],
+    ['harness', msg.dataset.harness || 'auto'],
+    ['model', msg.dataset.model || '—'],
+    ['effort', msg.dataset.effort || 'medium'],
+    ['latency', msg.dataset.latency ? msg.dataset.latency + ' ms' : '—'],
+    ['tokens', msg.dataset.tokens || '—'],
+    ['ts', msg.dataset.ts || '—'],
+  ];
+  iv.innerHTML = lines.map(l => `<div><b>${l[0]}</b> — ${esc(l[1])}</div>`).join('') +
+    '<button class="code-copy" style="position:static;margin-top:10px">done</button>';
+  iv.classList.add('show');
+  iv.querySelector('.code-copy').addEventListener('click', () => iv.classList.remove('show'));
+}
+/* toast (tiny, for share feedback) */
+function toastMsg(t) {
+  let el = document.getElementById('toast-msg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast-msg';
+    el.style.cssText = 'position:fixed;bottom:calc(env(safe-area-inset-bottom) + 96px);left:50%;transform:translateX(-50%);z-index:70;background:var(--card);border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:12px;font-size:12.5px;max-width:86vw;word-break:break-all;';
+    document.body.appendChild(el);
+  }
+  el.textContent = t;
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+/* keep local message map for edit/regenerate lookup */
+addMsg = (function(orig) {
+  return function(role, text, harness) {
+    const el = orig.call(this, role, text, harness);
+    window._msgs = window._msgs || {};
+    window._msgs[el.dataset.id] = { role, content: text, harness };
+    return el;
+  };
+})(addMsg);
 
 /* voice input (graceful fallback) */
 if ('webkitSpeechRecognition' in window) {
@@ -368,6 +624,7 @@ window.addEventListener('online', () => document.getElementById('offline-tag').c
     return;
   }
   try { await loadSessions(); } catch (_) {}
+  if (!msgArea.children.length) welcome();
 })();
 
 /* ── particles (subtle) ─────────────────────────────────────────── */

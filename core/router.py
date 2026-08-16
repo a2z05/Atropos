@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
-"""Atropos router — single control for Hermes + Claude shared router config.
+"""Atropos router — the model backends: nain / omni / local.
 
-Routers are: nain (main, serves deepmo model), omni (OpenRouter),
-local (Ollama). deepmo is a MODEL served by nain, not a router.
+Routers are the sockets Atropos talks to:
+
+  nain   → 9Router     (local/remote AI gateway, OpenAI-compatible REST,
+                        ``$NINEROUTER_URL``; auto-fallback, 695+ models)
+  omni   → OmniRoute   (smart AI router with auto-fallback + skills/memory,
+                        ``$OMNIROUTE_BASE_URL`` / ``omniroute`` CLI)
+  local  → Ollama      (localhost:11434 openai-compatible)
+
+The three identifiers stay nain/omni/local — they are *slots*; what they
+point at is now real, live, manageable gateways. ``deepmo`` is a model
+served by 9Router, never a router.
 """
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -16,18 +26,20 @@ from . import config, detect
 
 ROUTERS = {
     "nain": {
-        "api_key_env": "OPENAI_API_KEY",
+        "api_key_env": "NINEROUTER_KEY",
         "model": "deepmo",
         "base_url": "",
-        "description": "Nain router (serves deepmo model)",
-        "env_keys": ["OPENAI_BASE_URL", "OPENAI_API_KEY"],
+        "description": "Nain — the 9Router OpenAI-compatible gateway (deepmo)",
+        "env_keys": ["NINEROUTER_URL", "NINEROUTER_KEY", "OPENAI_BASE_URL", "OPENAI_API_KEY"],
+        "model_kinds": ["chat", "tts", "image", "embed"],
     },
     "omni": {
         "api_key_env": "OPENAI_API_KEY",
         "model": "gpt-4o",
         "base_url": "https://openrouter.ai/api/v1",
-        "description": "OmniRouter (OpenRouter/GPT-4o)",
+        "description": "OmniRoute — multi-provider gateway (OpenRouter protocol)",
         "env_keys": ["OPENAI_BASE_URL", "OPENAI_API_KEY"],
+        "model_kinds": ["chat", "tts", "image", "embed"],
     },
     "local": {
         "api_key_env": "OLLAMA_HOST",
@@ -35,6 +47,7 @@ ROUTERS = {
         "base_url": "http://localhost:11434/v1",
         "description": "Local Ollama",
         "env_keys": ["OPENAI_BASE_URL"],
+        "model_kinds": ["chat", "embed"],
     },
 }
 
@@ -46,6 +59,32 @@ def get():
 
 def available():
     return list(ROUTERS.keys())
+
+
+def info(name: str) -> dict:
+    """Resolved runtime info for a router: backend, url, model, key-set."""
+    if name not in ROUTERS:
+        return {"error": f"unknown router: {name}"}
+    r = ROUTERS[name]
+    key = os.environ.get(r["api_key_env"], "")
+    url = r["base_url"]
+    if name == "nain" and os.environ.get("NINEROUTER_URL"):
+        url = os.environ["NINEROUTER_URL"].rstrip("/")
+    if name == "omni" and os.environ.get("OMNIROUTE_BASE_URL"):
+        url = os.environ["OMNIROUTE_BASE_URL"].rstrip("/")
+    return {"name": name, "backend": r.get("backend", name), "base_url": url,
+            "model": r["model"], "description": r["description"],
+            "api_key_set": bool(key), "model_kinds": r.get("model_kinds", ["chat"])}
+
+
+def omniroute(cmd: list) -> dict:
+    """Run the omniroute CLI (manage: memory, skills, oauth, api, configure…)."""
+    try:
+        proc = subprocess.run(["omniroute"] + cmd, capture_output=True, text=True, timeout=90)
+        return {"ok": proc.returncode == 0, "output": proc.stdout,
+                "error": proc.stderr.strip() or None}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def set_active(name: str):
@@ -130,25 +169,7 @@ def ping(name: str, timeout: float = 8.0):
     if name not in ROUTERS:
         return {"ok": False, "error": f"unknown router: {name}", "latency_ms": None}
     rinfo = ROUTERS[name]
-    base = rinfo["base_url"]
     model = rinfo["model"]
-    # Build endpoint URL
-    if name == "local" and os.environ.get("OLLAMA_HOST"):
-        # Ollama host env wins: could be host:port or full URL
-        host = os.environ["OLLAMA_HOST"].rstrip("/")
-        endpoint = (host if host.startswith("http") else "http://" + host) + "/v1/chat/completions"
-    elif base:
-        endpoint = base.rstrip("/") + "/chat/completions"
-    else:
-        # nain: use hermes env OPENAI_BASE_URL or OpenAI default
-        env_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        endpoint = env_url.rstrip("/") + "/chat/completions"
-    # Build auth header (Ollama needs none; a bare host var is not a key)
-    api_key_env = rinfo["api_key_env"]
-    api_key = os.environ.get(api_key_env, "")
-    headers = {"Content-Type": "application/json"}
-    if api_key and api_key_env != "OLLAMA_HOST":
-        headers["Authorization"] = f"Bearer {api_key}"
     payload = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": "ping"}],
@@ -157,11 +178,11 @@ def ping(name: str, timeout: float = 8.0):
     }).encode("utf-8")
     t0 = time.monotonic()
     try:
-        req = urllib.request.Request(endpoint, data=payload, headers=headers, method="POST")
+        req = urllib.request.Request(_endpoint(name, "chat/completions"),
+                                     data=payload, headers=_headers(name), method="POST")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             latency = round((time.monotonic() - t0) * 1000)
-            # Parse response to confirm model
             try:
                 data = json.loads(body)
                 returned_model = data.get("model", model)
@@ -175,6 +196,87 @@ def ping(name: str, timeout: float = 8.0):
     except Exception as e:
         latency = round((time.monotonic() - t0) * 1000)
         return {"ok": False, "latency_ms": latency, "model": model, "error": str(e)}
+
+
+def _endpoint(name: str, path: str = "chat/completions") -> str:
+    """Resolve the base URL for a router and append an API path."""
+    rinfo = ROUTERS[name]
+    base = rinfo["base_url"]
+    if name == "local" and os.environ.get("OLLAMA_HOST"):
+        host = os.environ["OLLAMA_HOST"].rstrip("/")
+        base = host if host.startswith("http") else "http://" + host
+    elif name == "nain" and os.environ.get("NINEROUTER_URL"):
+        base = os.environ["NINEROUTER_URL"].rstrip("/")
+    elif not base and os.environ.get("OPENAI_BASE_URL"):
+        base = os.environ["OPENAI_BASE_URL"].rstrip("/")
+    elif not base:
+        base = "https://api.openai.com/v1"
+    return base.rstrip("/") + "/" + path.lstrip("/")
+
+
+def _headers(name: str) -> dict:
+    rinfo = ROUTERS[name]
+    key = os.environ.get(rinfo["api_key_env"], "")
+    headers = {"Content-Type": "application/json"}
+    if key and rinfo["api_key_env"] != "OLLAMA_HOST":
+        headers["Authorization"] = f"Bearer {key}"
+    elif name == "nain" and not key:
+        # 9Router serves its model catalog to the public key too; chat needs
+        # NINEROUTER_KEY (set it in the shell env: export NINEROUTER_KEY=...).
+        headers["Authorization"] = "Bearer public"
+    return headers
+
+
+def discover_models(name: str, timeout: float = 8.0) -> dict:
+    """GET /v1/models for a router. Returns {ok, models: [...], error}."""
+    if name not in ROUTERS:
+        return {"ok": False, "error": f"unknown router: {name}"}
+    try:
+        req = urllib.request.Request(_endpoint(name, "models"), headers=_headers(name))
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(body)
+        ids = [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
+        return {"ok": True, "models": ids[:100], "count": len(ids), "error": None}
+    except Exception as e:
+        return {"ok": False, "models": [], "error": str(e)}
+
+
+def health() -> dict:
+    """Overall router health: active, all pings, model kinds available."""
+    active = get().get("active", "nain")
+    pings = {name: ping(name) for name in ROUTERS}
+    return {
+        "active": active,
+        "pings": pings,
+        "all_down": all(not p["ok"] for p in pings.values()),
+        "kinds": ROUTERS.get(active, {}).get("model_kinds", ["chat"]),
+        "models": {name: discover_models(name).get("count", 0) for name in ROUTERS},
+    }
+
+
+def chat(name: str, message: str, model: str | None = None, timeout: float = 60.0) -> dict:
+    """Send one chat message through a router. Returns {ok, text, model, error}."""
+    if name not in ROUTERS:
+        return {"ok": False, "error": f"unknown router: {name}"}
+    rinfo = ROUTERS[name]
+    payload = json.dumps({
+        "model": model or rinfo["model"],
+        "messages": [{"role": "user", "content": message}],
+        "stream": False,
+    }).encode("utf-8")
+    try:
+        req = urllib.request.Request(_endpoint(name, "chat/completions"),
+                                     data=payload, headers=_headers(name), method="POST")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(body)
+        return {"ok": True,
+                "text": (data.get("choices") or [{}])[0].get("message", {}).get("content", ""),
+                "model": data.get("model", model or rinfo["model"]),
+                "error": None}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 if __name__ == "__main__":

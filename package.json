@@ -1,7 +1,7 @@
 {
   "name": "atropos-hs",
-  "version": "1.4.0",
-  "description": "Atropos — the harness that cannot be turned. Hermes + Claude fusion control plane: self-healing, stdlib-only Python.",
+  "version": "1.4.1-beta",
+  "description": "Atropos \u00e2\u20ac\u201d the harness that cannot be turned. Hermes + Claude fusion control plane: self-healing, stdlib-only Python. (beta)",
   "license": "MIT",
   "author": "ATRA",
   "repository": {
@@ -29,7 +29,7 @@
     "package.json"
   ],
   "scripts": {
-    "postinstall": "echo \"Atropos installed — run: atropos init\""
+    "postinstall": "echo \"Atropos installed \u00e2\u20ac\u201d run: atropos init\""
   },
   "engines": {
     "node": ">=14"

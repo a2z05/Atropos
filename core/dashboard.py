@@ -124,10 +124,14 @@ def _git_sha() -> str:
         return ""
 
 
+_BUILD = _version()
+
+
 def api_version():
     return {
         "ok": True,
         "version": _version(),
+        "build": _BUILD,
         "sha": _git_sha(),
     }
 
@@ -853,14 +857,12 @@ def api_doctor(fix=False):
 
 
 def api_patches():
-    """Patch status + a bounded old/new snippet for expandable diffs."""
+    """Integration status — the code-defined customizations, no YAML hacks."""
     hacks = {h["id"]: h for h in patches.load_hacks()}
     results = patches.verify()
     for r in results:
         h = hacks.get(r["id"], {})
-        r["old"] = h.get("old", "")[:2000]
-        r["new"] = h.get("new", "")[:2000]
-        r["file"] = h.get("_file", "")
+        r["file"] = "core/patches.py"  # source of truth is code
     return {"ok": True, "patches": results}
 
 
@@ -1313,10 +1315,14 @@ def api_settings():
         })
     return {
         "ok": True,
+        "build": _BUILD,
         "groups": groups_out,
         "defaults": settings.mask_secrets({k: v.get("default") for k, v in settings.schema().items()}),
         "theme": settings.get("dashboard.theme", "auto"),
+        "global_theme": settings.get("theme", "dark"),
         "lang": settings.get("dashboard.lang", "en"),
+        "cli_lang": settings.get("cli.lang", "en"),
+        "beta_badge": settings.get("beta_badge", True),
         "accent": settings.get("dashboard.accent", "indigo"),
         "particles": settings.get("dashboard.particles", True),
         "live": settings.get("dashboard.live", True),
@@ -2051,6 +2057,44 @@ def api_chat_delete(payload):
     return {"ok": True}
 
 
+def api_chat_action(payload):
+    """POST /api/chat/action — session housekeeping from the mobile chat.
+
+    Actions: rename {session_id, title}, pin {session_id, pinned},
+    tag {session_id, tag, remove?}, delete_message {message_id}.
+    """
+    from . import chat
+    action = (payload or {}).get("action", "")
+    sid = (payload or {}).get("session_id", "")
+    if action == "rename":
+        title = chat.rename_session(sid, (payload or {}).get("title", ""))
+        return {"ok": True, "title": title}
+    if action == "pin":
+        return {"ok": bool(chat.pin_session(sid, bool((payload or {}).get("pinned", True))))}
+    if action == "tag":
+        tag = (payload or {}).get("tag", "")
+        if not tag:
+            return {"ok": False, "error": "tag required"}
+        if (payload or {}).get("remove"):
+            return {"ok": bool(chat.remove_tag(sid, tag))}
+        return {"ok": bool(chat.tag_session(sid, tag))}
+    if action == "delete_message":
+        mid = (payload or {}).get("message_id")
+        if mid is None:
+            return {"ok": False, "error": "message_id required"}
+        return {"ok": bool(chat.delete_message(mid))}
+    return {"ok": False, "error": f"unknown action: {action}"}
+
+
+def api_chat_share(payload):
+    """POST /api/chat/share {session_id} — create a one-shot share link."""
+    from . import links
+    try:
+        return {"ok": True, "link": links.create((payload or {}).get("session_id", ""))}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
+
 def api_chat_export(payload):
     """POST /api/chat/export {session_id} — JSONL."""
     from . import chat
@@ -2137,6 +2181,73 @@ def api_qr():
                 "svg": qr.qr_svg(url),
                 "ascii": qr.qr_ascii(url),
                 "version": "1-4"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _api_capabilities():
+    """GET /api/capabilities — probe all harnesses for their features."""
+    try:
+        from . import probe
+        caps = probe.probe_capabilities()
+        registry = {k: v for k, v in probe.SECTION_REQUIRES.items()}
+        shown = probe.available_sections(registry, caps)
+        return {"ok": True, "capabilities": caps, "sections": registry,
+                "shown": shown}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _api_telegram_status():
+    """GET /api/telegram/status — gateway configuration state."""
+    try:
+        from . import telegram
+        return {"ok": True, "status": telegram.status()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _api_agents_status():
+    """GET /api/agents — agent definitions + recent run count."""
+    from . import agents
+    return {"ok": True, "agents": agents.list_agents(), "runs": len(agents.recent_runs())}
+
+
+def api_agents_action(payload):
+    """POST /api/agents/run — run an agent with a task."""
+    from . import agents
+    name = (payload or {}).get("name", "")
+    task = (payload or {}).get("task", "")
+    try:
+        rec = agents.run_agent(name, task)
+        return {"ok": bool(rec.get("ok")), **rec}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_middleware_action(payload):
+    """POST /api/middleware/<action> — list/toggle Filters & Plugins."""
+    from . import middleware
+    action = (payload or {}).get("action", "list")
+    try:
+        if action == "list":
+            rows = [[k, v["description"], "on" if k in middleware.enabled_list() else "off"]
+                    for k, v in middleware.catalog().items()]
+            return {"ok": True, "filters": rows, "enabled": middleware.enabled_list()}
+        if action == "on":
+            for name in (payload or {}).get("names") or [(payload or {}).get("name") or ""]:
+                if name:
+                    middleware.set_enabled(name, True)
+            return {"ok": True, "enabled": middleware.enabled_list()}
+        if action == "off":
+            for name in (payload or {}).get("names") or [(payload or {}).get("name") or ""]:
+                if name:
+                    middleware.set_enabled(name, False)
+            return {"ok": True, "enabled": middleware.enabled_list()}
+        if action == "order":
+            middleware.set_order((payload or {}).get("names") or [])
+            return {"ok": True, "enabled": middleware.enabled_list()}
+        return {"ok": False, "error": f"unknown middleware action: {action}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -2413,6 +2524,11 @@ class Handler(BaseHTTPRequestHandler):
             "/api/backup/backends": api_backup_backends,
             "/api/update-ai": api_update_ai_status,
             "/api/wizard/status": api_wizard_status,
+            "/api/middleware": lambda: api_middleware_action({"action": "list"}),
+            "/api/middleware/list": lambda: api_middleware_action({"action": "list"}),
+            "/api/agents": lambda: _api_agents_status(),
+            "/api/capabilities": lambda: _api_capabilities(),
+            "/api/telegram/status": lambda: _api_telegram_status(),
         }
         if path == "/api/memory/search":
             return api_memory_search((q.get("q") or [""])[0])
@@ -2570,6 +2686,10 @@ class Handler(BaseHTTPRequestHandler):
             return api_chat_send(payload)
         if path == "/api/chat/delete":
             return api_chat_delete(payload)
+        if path == "/api/chat/action":
+            return api_chat_action(payload)
+        if path == "/api/chat/share":
+            return api_chat_share(payload)
         if path == "/api/chat/export":
             return api_chat_export(payload)
         if path == "/api/devices/approve" or path.startswith("/api/devices/"):
@@ -2592,6 +2712,11 @@ class Handler(BaseHTTPRequestHandler):
             return api_update_ai_action(merged)
         if path == "/api/wizard/import":
             return api_wizard_import(payload)
+        if path == "/api/middleware" or path.startswith("/api/middleware/"):
+            sub = path.split("/api/middleware/", 1)[1] if path.startswith("/api/middleware/") else "list"
+            return api_middleware_action({**(payload or {}), "action": sub})
+        if path == "/api/agents/run":
+            return api_agents_action(payload)
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def do_GET(self):

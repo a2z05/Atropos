@@ -53,15 +53,17 @@ class ChatBase(unittest.TestCase):
         self._a = os.environ.get("ATROPOS_HOME")
         self._h = os.environ.get("HERMES_HOME")
         self._key = os.environ.get("OPENAI_API_KEY")
+        self._nkey = os.environ.get("NINEROUTER_KEY")
         self.tmp = tempfile.mkdtemp(prefix="atropos_chat_")
         os.environ["ATROPOS_HOME"] = self.tmp
         os.environ["HERMES_HOME"] = str(Path(self.tmp) / ".hermes")
         os.environ["OPENAI_API_KEY"] = "fake-key"
+        os.environ["NINEROUTER_KEY"] = "fake-key"  # nain now reads the 9Router key
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
         for k, orig in (("ATROPOS_HOME", self._a), ("HERMES_HOME", self._h),
-                        ("OPENAI_API_KEY", self._key)):
+                        ("OPENAI_API_KEY", self._key), ("NINEROUTER_KEY", self._nkey)):
             if orig is not None:
                 os.environ[k] = orig
             else:
@@ -291,6 +293,54 @@ class StreamExportTests(ChatBase):
         for r in rows:
             for key in ("id", "session_id", "role", "content", "ts"):
                 self.assertIn(key, r)
+
+
+class SessionManagementTests(ChatBase):
+    """Round-2 chat: rename / pin / tags / single-message delete."""
+
+    def _session_with_messages(self):
+        sid = chat.create_session("before")
+        with mock.patch("urllib.request.urlopen", _fake_urlopen):
+            chat.send(sid, "hello")
+        return sid
+
+    def test_rename(self):
+        sid = chat.create_session("before")
+        self.assertEqual(chat.rename_session(sid, "  after  "), "after")
+        listed = [s for s in chat.session_list() if s["id"] == sid][0]
+        self.assertEqual(listed["title"], "after")
+
+    def test_rename_trims_and_defaults(self):
+        sid = chat.create_session("x")
+        self.assertEqual(chat.rename_session(sid, ""), "Chat")
+        self.assertEqual(chat.rename_session(sid, "y" * 300), "y" * 120)
+        self.assertEqual(len(chat.rename_session(sid, "z" * 300)), 120)
+
+    def test_pin_roundtrip(self):
+        sid = self._session_with_messages()
+        self.assertTrue(chat.pin_session(sid, True))
+        listed = [s for s in chat.session_list() if s["id"] == sid][0]
+        self.assertIn("pin", listed["tags"])
+        self.assertTrue(chat.pin_session(sid, False))
+        listed = [s for s in chat.session_list() if s["id"] == sid][0]
+        self.assertNotIn("pin", listed["tags"])
+
+    def test_tag_remove(self):
+        sid = chat.create_session("tagged")
+        self.assertTrue(chat.tag_session(sid, "project-x"))
+        self.assertTrue(chat.remove_tag(sid, "project-x"))
+        listed = [s for s in chat.session_list() if s["id"] == sid][0]
+        self.assertEqual(listed["tags"], [])
+
+    def test_delete_message(self):
+        sid = self._session_with_messages()
+        msgs = chat.session_messages(sid)
+        self.assertEqual(len(msgs), 2)
+        self.assertTrue(chat.delete_message(msgs[0]["id"]))
+        self.assertFalse(chat.delete_message(999999))
+        remaining = chat.session_messages(sid)
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["role"], "assistant")
 
 
 if __name__ == "__main__":

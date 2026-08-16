@@ -182,39 +182,38 @@ def _symbol_rename(sym: str, up_syms) -> str:
     return best if best_score >= 0.5 else ""
 
 
-# ── patch file access ───────────────────────────────────────────────────────
-def _patch_file(patch_id: str):
-    """Return (path, data) for the hack YAML with this id, or (None, None)."""
+# ── patch file access (code registry, no YAML hacks) ────────────────────────
+def _patch_descriptor(patch_id: str):
+    """Return the code-registry descriptor for this hack id, or None."""
     if not patch_id:
-        return None, None
-    for f in sorted(patches.HACKS_DIR.glob("*.yml")):
-        try:
-            data = config.parse_yaml(f.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if data.get("id") == patch_id:
-            return f, data
-    return None, None
+        return None
+    for h in patches.load_hacks():
+        if h.get("id") == patch_id:
+            return h
+    return None
 
 
 def _patch_text(patch_id: str) -> str:
-    f, data = _patch_file(patch_id)
-    return f.read_text(encoding="utf-8") if f else ""
+    h = _patch_descriptor(patch_id)
+    if not h:
+        return ""
+    return json.dumps({"id": h["id"], "verify": h.get("verify", [])}, indent=2)
 
 
 def _hack_path(patch_id: str) -> Path:
-    f, _ = _patch_file(patch_id)
-    return f if f else patches.HACKS_DIR / "update-ai-rewritten.yml"
+    h = _patch_descriptor(patch_id)
+    return (Path(patches.__file__).resolve().parent / "patches.py") if h else \
+        Path(patches.__file__).resolve().parent / "patches.py"
 
 
 def _target_rel(patch_id: str) -> str:
-    _, data = _patch_file(patch_id)
-    return data.get("target", "plugins/platforms/telegram/adapter.py") if data else \
+    h = _patch_descriptor(patch_id)
+    return h.get("target", "plugins/platforms/telegram/adapter.py") if h else \
         "plugins/platforms/telegram/adapter.py"
 
 
 def _repo_root() -> Path:
-    return Path(patches.HACKS_DIR).resolve().parent
+    return Path(patches.__file__).resolve().parent.parent
 
 
 def _detect_repo() -> Path:
@@ -223,13 +222,11 @@ def _detect_repo() -> Path:
 
 # ── diagnosis (deterministic, rule-based, no LLM) ───────────────────────────
 def _patch_anchors(patch_id):
-    """(anchors, target, patch_text) from the hack file for patch_id."""
-    f, data = _patch_file(patch_id)
-    if not f:
+    """(anchors, target, patch_text) from the code registry for patch_id."""
+    h = _patch_descriptor(patch_id)
+    if not h:
         return None, None, ""
-    old = data.get("old") or ""
-    anchors = [line for line in old.splitlines() if line.strip()]
-    return anchors, data.get("target"), f.read_text(encoding="utf-8")
+    return [], h.get("target"), _patch_text(patch_id)
 
 
 def _differential_anchors(current: str, upstream: str) -> list:
@@ -527,7 +524,7 @@ def _run_tests(repo: Path, timeout=180):
     """
     if not repo.exists():
         return _fake_result(fail=False, stderr="no repo")
-    marker = (repo / "core" / "patches.py").exists() and (repo / "hacks").exists()
+    marker = (repo / "core" / "patches.py").exists()
     if not marker:
         return _fake_result(fail=False, stderr="not an Atropos repo — tests skipped")
     try:

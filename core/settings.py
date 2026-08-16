@@ -32,9 +32,10 @@ from . import config, detect
 # ── constants shared with the CLI / dashboard ─────────────────────────────
 EFFORT_TIERS = ["minimal", "low", "medium", "high", "xhigh", "ultracode", "tryhard"]
 ROUTER_NAMES = ["nain", "omni", "local"]
-THEMES = ["dark", "light", "auto"]
+THEMES = ["black", "dark", "light", "sepia", "midnight", "matrix", "ink", "embers", "glass", "auto"]
 ACCENTS = ["indigo", "cyan", "green", "amber", "violet"]
-LANGS = ["en", "fa"]
+LANGS = ["en", "fa", "de", "fr", "es", "ru", "ar", "tr", "zh", "hi", "it"]
+RTL_LANGS = ["fa", "ar", "he", "ur"]
 SECRET_MASK = "***"
 
 # Keep in sync with core/skills.py DEFAULT_ROUTING.
@@ -87,8 +88,15 @@ SETTINGS_SCHEMA = {
                        "description": "Let the AI update engine fix conflict updates when update.auto=apply"},
     # ---- cli ----
     "cli.default_action": {"type": "choice", "default": "cli",
-                           "choices": ["cli", "dashboard", "both"], "group": "cli",
-                           "description": "What a bare `atropos` (no subcommand) invokes: cli|dashboard|both"},
+                           "choices": ["cli", "dashboard", "both", "menu", "repl"], "group": "cli",
+                           "description": "What a bare `atropos` (no subcommand) invokes: cli|dashboard|both|menu|repl"},
+    "cli.theme": {"type": "choice", "default": "dark",
+                  "choices": ["dark", "light", "black"], "group": "cli",
+                  "description": "Terminal theme for the CLI banner/status (light|dark|black)"},
+    "cli.lang": {"type": "choice", "default": "en",
+                 "choices": ["en", "fa", "de", "fr", "es", "ru", "ar", "tr", "zh", "hi", "it"],
+                 "group": "cli",
+                 "description": "Language for CLI output (missing keys fall back to English)"},
     # computed/legacy — present in DEFAULTS, never user-writable
     "version": {"type": "string", "default": "1.0.0", "group": "core", "readonly": True,
                 "description": "Legacy config version key (actual version = VERSION file)"},
@@ -284,14 +292,34 @@ SETTINGS_SCHEMA = {
     "permissions.preset": {"type": "choice", "default": "default",
                            "choices": ["default", "acceptEdits", "plan", "bypassPermissions"], "group": "permissions",
                            "description": "Claude permission preset projected via settings"},
+    # ---- middleware (Filters & Plugins) ----
+    "middleware.enabled": {"type": "list", "default": [],
+                           "group": "middleware",
+                           "description": "Ordered list of enabled filters (human names, e.g. pii, retry)"},
+    # ---- telegram gateway ----
+    "telegram.token": {"type": "string", "default": "", "secret": True, "group": "telegram",
+                       "description": "Bot token for the built-in Telegram gateway"},
+    "telegram.owner_ids": {"type": "list", "default": [], "group": "telegram",
+                           "description": "Telegram user ids allowed full access"},
+    "telegram.guests": {"type": "choice", "default": "allow",
+                        "choices": ["allow", "readonly", "deny"], "group": "telegram",
+                        "description": "What strangers can do: allow | readonly | deny"},
+    # ---- appearance (dashboard + CLI/TUI themes) ----
+    "theme": {"type": "choice", "default": "dark",
+              "choices": ["black", "dark", "light", "sepia", "midnight", "matrix",
+                          "ink", "embers", "glass"],
+              "group": "dashboard",
+              "description": "Global theme: black|dark|light|sepia|midnight|matrix|ink|embers|glass"},
+    "beta_badge": {"type": "bool", "default": True, "group": "dashboard",
+                   "description": "Show the BETA badge in the dashboard/TUI/CLI"},
 }
 
 GROUPS = [
-    "core", "cli", "watch", "alerts", "dashboard", "backup",
+    "core", "cli", "dashboard", "watch", "alerts", "backup",
     "guest", "skills", "jailbreak", "failover", "extensions",
     "routing", "mcp", "identity", "configs", "lan", "chat",
     "fleet", "memory", "budget", "links", "activity", "snapshots",
-    "sync", "update-ai", "webhooks", "permissions",
+    "sync", "update-ai", "webhooks", "permissions", "middleware", "telegram",
 ]
 
 

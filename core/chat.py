@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     harness       TEXT NOT NULL DEFAULT 'auto',
     model         TEXT NOT NULL DEFAULT '',
     effort        TEXT NOT NULL DEFAULT 'medium',
-    message_count INTEGER NOT NULL DEFAULT 0
+    message_count INTEGER NOT NULL DEFAULT 0,
+    tags          TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS messages (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,9 +81,70 @@ def _init_db():
     conn = _connect()
     try:
         conn.executescript(_SCHEMA)
+        # migrate older chat.db files: add the tags column when absent
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()]
+        if "tags" not in cols:
+            conn.execute("ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
+
+
+def tag_session(session_id: str, tag: str) -> bool:
+    """Add a tag to a session (comma-joined). Returns True when changed."""
+    _init_db()
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT tags FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not row:
+            return False
+        tags = [t for t in (row["tags"] or "").split(",") if t]
+        if tag not in tags:
+            tags.append(tag)
+            conn.execute("UPDATE sessions SET tags = ? WHERE id = ?",
+                         (",".join(tags), session_id))
+            conn.commit()
+            return True
+        return False
+    finally:
+        conn.close()
+
+
+def remove_tag(session_id: str, tag: str) -> bool:
+    """Remove a tag from a session. Returns True when changed."""
+    _init_db()
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT tags FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not row:
+            return False
+        tags = [t for t in (row["tags"] or "").split(",") if t and t != tag]
+        conn.execute("UPDATE sessions SET tags = ? WHERE id = ?",
+                     (",".join(tags), session_id))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def rename_session(session_id: str, title: str) -> str:
+    """Rename a session. Returns the stored title (trimmed to 120 chars)."""
+    title = (title or "").strip()[:120] or "Chat"
+    _init_db()
+    conn = _connect()
+    try:
+        conn.execute("UPDATE sessions SET title = ? WHERE id = ?", (title, session_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return title
+
+
+def pin_session(session_id: str, pinned: bool = True) -> bool:
+    """Pin or unpin a session (pin tag). Returns True when changed."""
+    if pinned:
+        return tag_session(session_id, "pin")
+    return remove_tag(session_id, "pin")
 
 
 def _now() -> str:
@@ -110,23 +172,47 @@ def create_session(title: str = "Chat") -> str:
     return sid
 
 
+def search_messages(query: str, k: int = 10) -> list:
+    """Full-text search across message content (LIKE, bounded)."""
+    _init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT m.session_id, s.title, m.role, m.content, m.ts"
+            " FROM messages m JOIN sessions s ON s.id = m.session_id"
+            " WHERE m.content LIKE ? AND m.content != ''"
+            " ORDER BY m.id DESC LIMIT ?",
+            (f"%{query}%", k),
+        ).fetchall()
+        return [{"session_id": r["session_id"], "title": r["title"],
+                 "role": r["role"], "content": r["content"][:300], "ts": r["ts"]}
+                for r in rows]
+    finally:
+        conn.close()
+
+
 def session_list(limit: int = 50) -> list:
     """Recent sessions, newest update first.
 
     Each entry: ``{id, title, created, updated, message_count, harness,
-    model, effort}``.
+    model, effort, tags}``.
     """
     _init_db()
     conn = _connect()
     try:
         rows = conn.execute(
             "SELECT id, title, created, updated, harness, model, effort,"
-            " message_count FROM sessions ORDER BY updated DESC LIMIT ?",
+            " message_count, tags FROM sessions ORDER BY updated DESC LIMIT ?",
             (limit,),
         ).fetchall()
     finally:
         conn.close()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["tags"] = [t for t in (d.get("tags") or "").split(",") if t]
+        out.append(d)
+    return out
 
 
 def session_messages(session_id: str, limit: int = 200) -> list:
@@ -156,6 +242,18 @@ def delete_session(session_id: str) -> bool:
     try:
         conn.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
         cur = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_message(message_id: int) -> bool:
+    """Delete a single message. Returns True when a message existed."""
+    _init_db()
+    conn = _connect()
+    try:
+        cur = conn.execute("DELETE FROM messages WHERE id = ?", (int(message_id),))
         conn.commit()
         return cur.rowcount > 0
     finally:
@@ -382,15 +480,7 @@ def send_llm(messages, router_name=None) -> dict:
 
 def _endpoint(router_name: str) -> str:
     """``/chat/completions`` URL for a router (mirrors ``core.router.ping``)."""
-    rinfo = router.ROUTERS[router_name]
-    base = rinfo["base_url"]
-    if router_name == "local" and os.environ.get("OLLAMA_HOST"):
-        host = os.environ["OLLAMA_HOST"].rstrip("/")
-        return (host if host.startswith("http") else "http://" + host) + "/v1/chat/completions"
-    if base:
-        return base.rstrip("/") + "/chat/completions"
-    env_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    return env_url.rstrip("/") + "/chat/completions"
+    return router._endpoint(router_name, "chat/completions")
 
 
 # ── streaming / export / stats ────────────────────────────────────────────
