@@ -46,7 +46,10 @@ body {
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 800; color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-l));
+  overflow: hidden;
 }
+.avatar img { width: 28px; height: 28px; object-fit: cover; display: block; border-radius: 7px; }
+.avatar i { display: none; font-style: normal; }
 
 /* ── sidebar / session list ───────────────────────────── */
 #drawer {
@@ -129,7 +132,8 @@ body {
 
 <div class="topbar">
   <button class="btn" id="btn-menu" title="Sessions">☰</button>
-  <span class="avatar" id="top-avatar">✂</span>
+  <span class="avatar" id="top-avatar"><img src="icon-256.png" alt=""
+    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><i>✂</i></span>
   <div>
     <div class="title" id="chat-title">Atropos Chat</div>
     <div class="badge" id="chat-sub">Clotho · Lachesis · Atropos</div>
@@ -219,7 +223,7 @@ function addMsg(role, text, harness) {
   const div = document.createElement('div');
   div.className = 'msg ' + role;
   const chip = harness ? `<div class="harness-chip">✂ ${esc(harness)}</div>` : '';
-  div.innerHTML = `<span class="avatar">${role === 'user' ? '🧑' : '✂'}</span>
+  div.innerHTML = `<span class="avatar">${role === 'user' ? '🧑' : '<img src="icon-256.png" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><i>✂</i>'}</span>
     <div><div class="bubble">${md(text)}</div>${chip}
     <div class="bar">
       <button data-act="copy">copy</button>

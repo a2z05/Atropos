@@ -1,0 +1,47 @@
+{
+  "name": "atropos-hs",
+  "version": "1.4.0",
+  "description": "Atropos — the harness that cannot be turned. Hermes + Claude fusion control plane: self-healing, stdlib-only Python.",
+  "license": "MIT",
+  "author": "ATRA",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arophin/Atropos.git"
+  },
+  "bin": {
+    "atropos": "./atropos",
+    "atropos-dashboard": "./bin/atropos-dashboard"
+  },
+  "files": [
+    "core/",
+    "dashboard/",
+    "templates/",
+    "hacks/",
+    "patches/",
+    "scripts/",
+    "bin/",
+    "atropos",
+    "icon.png",
+    "VERSION",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "scripts": {
+    "postinstall": "echo \"Atropos installed — run: atropos init\""
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "keywords": [
+    "atropos",
+    "hermes",
+    "claude",
+    "ai",
+    "control-plane",
+    "harness",
+    "self-healing",
+    "moirai"
+  ]
+}

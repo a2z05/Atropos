@@ -247,6 +247,203 @@ def _configure_first_time():
 
 # ── Wizard UI ──────────────────────────────────────────────────────────────
 
+# ── v1.4: discover / import / tour (shared by wizard + dashboard) ───────────
+
+# resource groups: (group name, list of relative paths under the atropos home)
+_GROUPS = {
+    "mcp": ["mcp"],
+    "models": ["models"],
+    "webhooks": ["webhooks"],
+    "routing": ["routing", "routing.yaml"],
+    "identity": ["identity"],
+    "memory": ["memory"],
+    "links": ["links"],
+    "commands": ["commands"],
+    "files": ["files"],
+}
+_GROUP_NAMES = ("mcp", "models", "webhooks", "routing", "identity",
+                "memory", "links", "commands", "files")
+
+
+def _target_for(group: str) -> Path:
+    """Atropos-side dir for a group (files/ go to ~/files-atropos)."""
+    if group == "files":
+        return Path(os.path.expanduser("~")) / "files-atropos"
+    return detect.atropos_home() / group
+
+
+def _harness_bins() -> dict:
+    """{key: binary path or None} for claude + hermes."""
+    return {
+        "claude": detect._find_claude() or
+                  (shutil.which("claude") or shutil.which("claude.exe") or None),
+        "hermes": detect.hermes_agent() or None,
+    }
+
+
+def _claude_home_files() -> dict:
+    """Claude-side placement: ~/files-claude exists -> that, else ~/Files dirs."""
+    fh = Path(os.path.expanduser("~")) / "files-claude"
+    if fh.is_dir():
+        return {"dir": fh}
+    return {"dir": None, "existing": [str(p) for p in
+            Path(os.path.expanduser("~")).glob("Files*")][:5]}
+
+
+def _hermes_files() -> list:
+    """Hermes-side placement candidates that already exist."""
+    return [str(d) for d in (Path(os.path.expanduser("~")) / "Files",
+                             Path(os.path.expanduser("~")) / "files-hermes")
+            if d.is_dir()]
+
+
+def _monitor_recs(group: str) -> dict:
+    """Per-resource monitors (probe-style guesses based on runtime files)."""
+    out = {}
+    if group == "mcp":
+        for src in ("claude", "hermes"):
+            outs = _run(f"ls {detect._home()}/.claude/mcp.json {detect.hermes_home()}/config.yaml 2>/dev/null")
+            if outs[1]:
+                out[src] = {"mode": "watch", "hint": f"{src} config file change"}
+    if group == "models":
+        out["status"] = {"mode": "probe",
+                         "hint": "model env/ key drift across harnesses"}
+    if group == "identity":
+        out["status"] = {"mode": "probe", "hint": "persona identity files"}
+    return out
+
+
+def _group_names(group: str):
+    """Candidate file names for a group + which harness owns them."""
+    if group == "mcp":
+        return ("mcp.json", "mcp/")   # hermes variant is content-based
+    return (f"{group}.json", f"{group}.yaml", group)
+
+
+def _hermes_has_mcp() -> bool:
+    """Hermes mcp presence = config.yaml with an mcp/mcp_servers/plugins key."""
+    p = detect.hermes_home() / "config.yaml"
+    if not p.exists():
+        return False
+    try:
+        data = config.parse_yaml(p.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    return isinstance(data, dict) and any(k in data for k in
+                                          ("mcp", "mcp_servers", "plugins"))
+
+
+def _has_group(group: str, harness: str) -> bool:
+    """True when `harness` (claude|hermes) already carries `group`."""
+    if group == "files":
+        if harness == "claude":
+            return (Path(os.path.expanduser("~")) / "files-claude").is_dir()
+        return bool(list(Path(os.path.expanduser("~")).glob("Files*")))
+    path = detect._home() / ".claude" if harness == "claude" \
+        else detect.hermes_home()
+    if group == "mcp" and harness == "hermes":
+        return _hermes_has_mcp()
+    return path.exists() and any((path / n).exists()
+                                 for n in _group_names(group))
+
+
+def _diff_group(group: str) -> list:
+    """Per-target {target, marker_type, marker_val, mtime, size} for a group."""
+    rows = []
+    tg = _target_for(group)
+    if tg.is_dir():
+        for f in sorted(tg.rglob("*")):
+            if f.name in ("secrets.json", "auth_token") or \
+               f.name.endswith((".env", ".pyc")) or "__pycache__" in f.parts:
+                continue
+            st = f.stat()
+            rows.append({"target": str(f), "marker_type": "file", "marker_val": "",
+                         "mtime": int(st.st_mtime), "size": st.st_size})
+    return rows
+
+
+def discover_summary() -> dict:
+    """What the wizard can see: harnesses, groups, and messages."""
+    bins = _harness_bins()
+    out = {
+        "ok": True,
+        "harnesses": {
+            "claude": {"present": bool(bins["claude"])},
+            "hermes": {"present": bool(bins["hermes"])},
+        },
+        "groups": {},
+        "total": {"claude": 0, "hermes": 0},
+    }
+    for s in _GROUP_NAMES:
+        rec = {"name": s, "target_exists": _target_for(s).exists()}
+        for h in ("claude", "hermes"):
+            rec[h] = _has_group(s, h)
+        rec["diff"] = _diff_group(s)
+        out["groups"][s] = rec
+    return out
+
+
+def _import_group(group: str, harnesses: list, mode: str = "shared") -> dict:
+    """Copy a resource group into atropos (mode: shared|per|monitor).
+
+    Copies target files to the atropos side (notes only; later sync/pair steps
+    handle live propagation). Returns a summary dict for CLI/dashboard.
+    """
+    tg = _target_for(group)
+    if mode == "monitor":
+        print(f"  [monitor] {group}: watching {', '.join(harnesses)} configs")
+        return {"ok": True, "group": group, "mode": "monitor", "sources": harnesses}
+
+    if group != "files":
+        tg.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for h in harnesses:
+        src = (detect._home() / ".claude" if h == "claude" else detect.hermes_home())
+        for n in ((f"{group}.json", f"{group}.yaml", group)
+                  if group != "files" else ("Files*",)):
+            p = None
+            if n.endswith("*"):
+                cands = sorted(Path(os.path.expanduser("~")).glob(n))
+                p = cands[0] if cands else None
+            else:
+                p = src / n
+            if p and p.exists():
+                p2 = tg / (f"{h}-{p.name}" if mode == "per" else p.name)
+                p2.parent.mkdir(parents=True, exist_ok=True)
+                if p.is_dir():
+                    shutil.copytree(p, p2, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(p, p2)
+                copied.append(str(p2))
+    return {"ok": True, "group": group, "mode": mode, "sources": harnesses,
+            "copied": copied}
+
+
+def which_wins(group: str) -> str:
+    """Which harness owns a group: 'claude' | 'hermes' | 'tie' | 'none'."""
+    has = [h for h in ("claude", "hermes") if _has_group(group, h)]
+    if not has:
+        return "none"
+    return has[0] if len(has) == 1 else "tie"
+
+
+def _tour_seen() -> bool:
+    t = detect.atropos_home() / "wizard_tour_seen"
+    return t.exists()
+
+
+def mark_tour_seen():
+    t = detect.atropos_home() / "wizard_tour_seen"
+    t.parent.mkdir(parents=True, exist_ok=True)
+    t.write_text("1", encoding="utf-8")
+
+
+def tour(groups=("mcp", "models", "files"), steps=4) -> dict:
+    """Dismissible onboarding tour. Argures: which groups + how many steps."""
+    return {"ok": True, "steps": steps, "groups": list(groups),
+            "seen": _tour_seen()}
+
+
 def run_wizard(check_only=False):
     """Main setup wizard."""
     if not sys.stdout.isatty():

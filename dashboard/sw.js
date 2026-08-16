@@ -5,7 +5,7 @@
 'use strict';
 
 const CACHE = 'atropos-v1.4';
-const SHELL = ['./', './index.html', './chat.html'];
+const SHELL = ['./', './index.html', './chat.html', './icon-256.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

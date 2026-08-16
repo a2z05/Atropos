@@ -130,10 +130,10 @@ def doctor(fix=False):
 
 
 def status_line():
-    """One-liner: doctor check without fix."""
-    for name, check_fn, _ in _checks:
+    """One-liner: doctor check without fix (ASCII-safe on Windows)."""
+    for name, check_fn, _ in _checks():
         ok, msg = check_fn()
-        yield f"{'✅' if ok else '❌'} {name}: {msg}"
+        yield f"{'[OK]' if ok else '[FAIL]'} {name}: {msg}"
 
 
 if __name__ == "__main__":

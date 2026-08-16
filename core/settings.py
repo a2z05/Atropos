@@ -80,6 +80,15 @@ SETTINGS_SCHEMA = {
                        "group": "core", "description": "Update channel"},
     "update.changelog_bump": {"type": "bool", "default": True, "group": "core",
                               "description": "Auto-prepend a changelog entry after apply"},
+    "update.auto": {"type": "choice", "default": "off", "choices": ["off", "check", "apply"],
+                    "group": "core",
+                    "description": "Auto-update mode: off = manual, check = alert only, apply = auto-apply clean updates"},
+    "update.auto_ai": {"type": "bool", "default": False, "group": "core",
+                       "description": "Let the AI update engine fix conflict updates when update.auto=apply"},
+    # ---- cli ----
+    "cli.default_action": {"type": "choice", "default": "cli",
+                           "choices": ["cli", "dashboard", "both"], "group": "cli",
+                           "description": "What a bare `atropos` (no subcommand) invokes: cli|dashboard|both"},
     # computed/legacy — present in DEFAULTS, never user-writable
     "version": {"type": "string", "default": "1.0.0", "group": "core", "readonly": True,
                 "description": "Legacy config version key (actual version = VERSION file)"},
@@ -146,7 +155,26 @@ SETTINGS_SCHEMA = {
     "backup.period": {"type": "choice", "default": "off", "choices": ["daily", "off"], "group": "backup",
                       "description": "daily | off — watch daemon auto-creates when daily"},
     "backup.retention": {"type": "int", "default": 5, "min": 1, "max": 30, "group": "backup",
-                         "description": "Number of backups to keep"},
+                         "description": "Number of recent backups to keep"},
+    "backup.retention_weekly": {"type": "int", "default": 4, "min": 0, "max": 26, "group": "backup",
+                                "description": "Extra weekly backups to keep (keep-N + weekly-M)"},
+    "backup.backend": {"type": "choice", "default": "file", "group": "backup",
+                       "choices": ["file", "s3", "server", "github", "pair"],
+                       "description": "Default backup backend"},
+    "backup.server.url": {"type": "string", "default": "", "group": "backup",
+                          "description": "Self-hosted backup server base URL"},
+    "backup.server.token": {"type": "string", "default": "", "secret": True, "group": "backup",
+                            "description": "Self-hosted backup server token"},
+    "backup.s3.endpoint": {"type": "string", "default": "", "group": "backup",
+                           "description": "S3-compatible endpoint (AWS/MinIO/B2/Wasabi)"},
+    "backup.s3.bucket": {"type": "string", "default": "", "group": "backup",
+                         "description": "S3 bucket name"},
+    "backup.s3.region": {"type": "string", "default": "us-east-1", "group": "backup",
+                         "description": "S3 region"},
+    "backup.s3.access_key": {"type": "string", "default": "", "secret": True, "group": "backup",
+                             "description": "S3 access key id"},
+    "backup.s3.secret_key": {"type": "string", "default": "", "secret": True, "group": "backup",
+                             "description": "S3 secret access key"},
     # ---- guest ----
     "guest.enabled": {"type": "bool", "default": False, "group": "guest",
                       "description": "Guest mode on/off"},
@@ -229,6 +257,27 @@ SETTINGS_SCHEMA = {
     # ---- snapshot gallery ----
     "snapshots.enabled": {"type": "bool", "default": True, "group": "snapshots",
                           "description": "Auto-snapshot before every update/apply"},
+    # ---- multi-backend sync ----
+    "sync.enabled": {"type": "bool", "default": True, "group": "sync",
+                     "description": "Multi-backend sync master switch"},
+    "sync.interval": {"type": "int", "default": 900, "min": 300, "max": 1800, "group": "sync",
+                      "description": "Sync interval seconds (300-1800; manual-only when 0)"},
+    "sync.manual_only": {"type": "bool", "default": False, "group": "sync",
+                         "description": "Never auto-sync; only on explicit push/pull"},
+    "sync.server.url": {"type": "string", "default": "", "group": "sync",
+                        "description": "Self-hosted sync server base URL"},
+    "sync.server.token": {"type": "string", "default": "", "secret": True, "group": "sync",
+                          "description": "Self-hosted sync server token"},
+    "sync.pair_ttl_hours": {"type": "int", "default": 1, "min": 1, "max": 24, "group": "sync",
+                            "description": "Direct-pair code lifetime hours"},
+    # ---- AI update engine ----
+    "update-ai.model": {"type": "string", "default": "deepmo", "group": "update-ai",
+                        "description": "Model used by the AI update engine"},
+    "update-ai.effort": {"type": "choice", "default": "medium", "choices": EFFORT_TIERS,
+                         "group": "update-ai", "description": "Effort tier for the AI update engine"},
+    "update-ai.mode": {"type": "choice", "default": "manual",
+                       "choices": ["auto", "manual", "off"], "group": "update-ai",
+                       "description": "auto = apply on confirm, manual = preview only, off = never invoked"},
     # ---- logs / webhooks / permissions (monitored resources) ----
     "webhooks.enabled": {"type": "bool", "default": True, "group": "webhooks",
                          "description": "Universal webhook registry"},
@@ -238,11 +287,11 @@ SETTINGS_SCHEMA = {
 }
 
 GROUPS = [
-    "core", "watch", "alerts", "dashboard", "backup",
+    "core", "cli", "watch", "alerts", "dashboard", "backup",
     "guest", "skills", "jailbreak", "failover", "extensions",
     "routing", "mcp", "identity", "configs", "lan", "chat",
     "fleet", "memory", "budget", "links", "activity", "snapshots",
-    "webhooks", "permissions",
+    "sync", "update-ai", "webhooks", "permissions",
 ]
 
 
