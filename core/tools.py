@@ -42,48 +42,74 @@ def search(query: str, k: int = 10) -> dict:
 
 # ── cron mgmt ────────────────────────────────────────────────────────────
 def cron_list() -> dict:
-    from . import config as _cfg
-    p = detect.hermes_home() / "cron"
-    jobs = []
-    if p.is_dir():
-        for f in sorted(p.glob("*.yaml")):
-            try:
-                d = _cfg.parse_yaml(f.read_text(encoding="utf-8"))
-                jobs.append({"file": f.name, **d})
-            except Exception:
-                jobs.append({"file": f.name, "error": "unparsable"})
+    """List cron jobs: Hermes JSON store first, legacy yaml sidecar second."""
+    from . import cron as _cron
+    try:
+        jobs = _cron.list_jobs()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    legacy = _cron._yaml_jobs() if hasattr(_cron, "_yaml_jobs") else []
+    for j in legacy:
+        if j.get("job_id") not in {x.get("id") for x in jobs}:
+            jobs.append({
+                "file": f"{j.get('job_id')}.yaml", "schedule": j.get("schedule"),
+                "command": j.get("command"), "enabled": j.get("enabled", True),
+            })
     return {"ok": True, "jobs": jobs}
 
 
 # ── web search / fetch (9Router /v1/search + /v1/web/fetch) ──────────────
-def web_search(query: str) -> dict:
+def _gateway_ready() -> bool:
+    """Return True when the 9Router gateway env vars are both set."""
+    return bool(
+        os.environ.get("NINEROUTER_URL", "").rstrip("/")
+        and os.environ.get("NINEROUTER_KEY")
+    )
+
+
+def web_search(query: str, k: int = 5) -> dict:
+    """Web search: 9Router gateway first, Hermes-style providers as fallback.
+
+    The gateway is the first provider (unchanged behavior); when it is
+    unconfigured or errors, core.web.web_search (ported from
+    hermes-agent/tools/web_tools.py) takes over with its own backend chain
+    and the same {ok, results} shape.
+    """
+    from . import web as _web
     url = os.environ.get("NINEROUTER_URL", "").rstrip("/") + "/v1/search"
     key = os.environ.get("NINEROUTER_KEY", "")
-    if not url or not key:
-        return {"ok": False, "error": "NINEROUTER_URL/NINEROUTER_KEY not set"}
-    try:
-        req = urllib.request.Request(url, data=json.dumps({"query": query}).encode(),
-                                     headers={"Content-Type": "application/json",
-                                              "Authorization": f"Bearer {key}"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return {"ok": True, "results": json.loads(r.read().decode("utf-8"))}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    if _gateway_ready():
+        try:
+            req = urllib.request.Request(url, data=json.dumps({"query": query}).encode(),
+                                         headers={"Content-Type": "application/json",
+                                                  "Authorization": f"Bearer {key}"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return {"ok": True, "results": json.loads(r.read().decode("utf-8"))}
+        except Exception:
+            pass  # gateway error -> hermes provider chain below
+    return _web.web_search(query, k=k)
 
 
 def web_fetch(target: str) -> dict:
+    """Web fetch: 9Router gateway first, Hermes-style extraction as fallback.
+
+    Fallback (core.web.web_fetch, ported from web_tools.py) returns the
+    clean page text in the same {ok, content} shape, including SSRF and
+    embedded-secret URL checks.
+    """
+    from . import web as _web
     url = os.environ.get("NINEROUTER_URL", "").rstrip("/") + "/v1/web/fetch"
     key = os.environ.get("NINEROUTER_KEY", "")
-    if not url or not key:
-        return {"ok": False, "error": "NINEROUTER_URL/NINEROUTER_KEY not set"}
-    try:
-        req = urllib.request.Request(url, data=json.dumps({"url": target}).encode(),
-                                     headers={"Content-Type": "application/json",
-                                              "Authorization": f"Bearer {key}"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return {"ok": True, "content": json.loads(r.read().decode("utf-8"))}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    if _gateway_ready():
+        try:
+            req = urllib.request.Request(url, data=json.dumps({"url": target}).encode(),
+                                         headers={"Content-Type": "application/json",
+                                                  "Authorization": f"Bearer {key}"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return {"ok": True, "content": json.loads(r.read().decode("utf-8"))}
+        except Exception:
+            pass  # gateway error -> hermes fetch chain below
+    return _web.web_fetch(target)
 
 
 # ── kanban (JSON board in ~/.atropos/kanban.json) ────────────────────────
@@ -181,9 +207,10 @@ def youtube(url: str) -> dict:
 
 # ── X / Twitter ──────────────────────────────────────────────────────────
 def x_post(text: str) -> dict:
-    if not _have("xurl"):
-        return {"ok": False, "error": "xurl CLI not found (Hermes skill xurl)"}
-    return _run(["xurl", "post", text])
+    """Post a tweet via core/x.py (xurl CLI wrapper, ported from the xurl
+    skill). Return shape unchanged: {ok, output/error}."""
+    from . import x as _x
+    return _x.x_post(text)
 
 
 # ── office docs (python-docx etc unavailable — dry-run manifest) ─────────

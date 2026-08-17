@@ -193,6 +193,10 @@ SETTINGS_SCHEMA = {
                        "description": "Category → harness (hermes|claude) routing"},
     "skills.auto_sync": {"type": "bool", "default": True, "group": "skills",
                          "description": "Auto-sync universal skills into Hermes"},
+    "skills.auto_skill": {"type": "bool", "default": False, "group": "skills",
+                          "description": "Offer to save a skill after a complex task (v18 F)"},
+    "skills.auto_memory": {"type": "bool", "default": False, "group": "skills",
+                           "description": "Offer [Save to memory] after sessions (v18 F)"},
     # ---- jailbreak ----
     "jailbreak.auto_apply": {"type": "bool", "default": False, "group": "jailbreak",
                              "description": "Re-apply all jailbreak bypasses on doctor --fix"},

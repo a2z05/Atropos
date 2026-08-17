@@ -658,7 +658,32 @@ def api_skills():
                 seen.add(s["name"])
     except Exception:
         pass
+    # enrich with usage lifecycle telemetry (v18 F)
+    try:
+        from . import autoskill
+        stats = autoskill.usage_stats()
+        for s in skills:
+            rec = stats.get(s["name"])
+            if rec:
+                s["usage"] = {k: rec.get(k) for k in ("view", "run", "last_used")}
+                s["lifecycle"] = rec.get("lifecycle", "active")
+    except Exception:
+        pass
     return {"ok": True, "skills": skills}
+
+
+def api_autoskill_usage():
+    """Usage lifecycle telemetry for the Skills panel (v18 F)."""
+    from . import autoskill
+    return {"ok": True, "usage": autoskill.usage_stats(),
+            "curator": autoskill.curator_status()}
+
+
+def api_curator_run(consolidate: bool = False):
+    """Run the skill curator on demand."""
+    from . import autoskill
+    report = autoskill.curator_run(consolidate=consolidate)
+    return {"ok": True, **report}
 
 
 def api_plugins():
@@ -2472,6 +2497,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/models": api_models,
             "/api/cron": api_cron,
             "/api/skills": api_skills,
+            "/api/skills/usage": api_autoskill_usage,
             "/api/hermes/skills": api_hermes_skills,
             "/api/plugins": api_plugins,
             "/api/channels": api_channels,
