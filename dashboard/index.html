@@ -132,6 +132,11 @@
     *::-webkit-scrollbar-thumb { opacity: 0; }
     *:hover::-webkit-scrollbar-thumb, *:focus-within::-webkit-scrollbar-thumb { opacity: 1; }
   }
+  /* keyboard focus always visible; clicking never shows the ring */
+  :focus-visible { outline: 2px solid var(--accent, #818cf8); outline-offset: 2px; border-radius: 4px; }
+  :focus:not(:focus-visible) { outline: none; }
+  button:not(:disabled), a, [role="button"], label.sw, .nav-item, .rbtn, .session,
+  .share-card, .mk-item, .cmd-item, .set-row, .panel-tab, select, input, textarea { cursor: pointer; }
   body {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: radial-gradient(1200px 600px at 20% -10%, #1e1b4b 0%, var(--bg0) 55%) no-repeat fixed,
@@ -196,10 +201,36 @@
     background: linear-gradient(135deg, rgba(30,41,59,.55), rgba(39,52,77,.35));
     backdrop-filter: blur(14px); border: var(--card-border); box-shadow: var(--glow);
     animation: fadeDown .6s ease both; margin-bottom: 20px;
+    position: relative; overflow: hidden;
+  }
+  /* the dyed thread — three sisters, three stops — runs the topbar top edge */
+  .topbar::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--thread-1, #818cf8), var(--thread-2, #c084fc) 55%, var(--thread-3, #fbbf24));
+    opacity: .85;
+  }
+  /* the cut: scissor travels the thread, snips, the line re-weaves */
+  .topbar.cutting::before { animation: cut-weave 1.4s ease-in-out; }
+  .topbar.cutting::after {
+    content: "✦"; position: absolute; top: -7px; left: -20px; z-index: 2;
+    font-size: 14px; color: var(--text); animation: cut-travel 1.4s ease-in-out;
+  }
+  @keyframes cut-travel { 0% { left: -20px; } 55% { left: calc(100% + 6px); } 60% { left: -20px; } 100% { left: -20px; } }
+  @keyframes cut-weave {
+    0% { opacity: .85; } 50% { opacity: 0; } 52% { opacity: 0; transform: scaleY(1.4); }
+    100% { opacity: .85; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .topbar.cutting::before, .topbar.cutting::after,
+    .beta-badge, .particle-dot { animation: none !important; }
+    * { transition-duration: .01ms !important; }
   }
   .topbar .title { font-size: 16px; font-weight: 800; letter-spacing: .5px; }
   .topbar .title span { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 6px; }
   .topbar .spacer { flex: 1; }
+  /* oracle voice — the Fates speak in an old serif, the machine in mono */
+  .oracle { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+  .oracle small { display: block; font-variant: small-caps; font-style: normal; letter-spacing: 1.5px; font-size: 9px; color: var(--muted); }
   .version-chip {
     font-size: 12px; font-weight: 700; color: var(--indigo-l);
     background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.3);

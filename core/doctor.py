@@ -110,6 +110,18 @@ def _checks():
 
     yield ("timezone Asia/Tehran", tz_check, None)
 
+    # ── v18 B.8: Railway volume + stale PIDs (only when running on Railway) ──
+    def railway_check():
+        from . import detect
+        if detect.detect_cloud() != "railway":
+            return (True, "not on railway (skipped)")
+        from . import railway
+        return ("ok" if all(c["ok"] for c in railway.doctor_extra())
+                else "issue", "; ".join(
+                    f"{c['name']}: {c['detail']}" for c in railway.doctor_extra()))
+
+    yield ("railway volume/stale-pids", railway_check, None)
+
 
 def doctor(fix=False):
     results = []

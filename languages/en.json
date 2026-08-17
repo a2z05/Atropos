@@ -173,5 +173,21 @@
     "Guest mode is the same engine with private context filtered out.",
     "`atropos update --check` dry-runs before you commit to anything.",
     "Type `?` in the REPL for help, `/doctor` to heal."
-  ]
+  ],
+  "fate_lines": [
+    "The threads hold. No cutting needed today.",
+    "Frayed strands ahead — backup before you weave.",
+    "The loom hums. Today is for finishing, not starting.",
+    "Three hands on one shuttle; mind the crossings.",
+    "A thin thread wants attention. Doctor it early.",
+    "The Fates are tidy today. Nothing dangling.",
+    "News will arrive by wire. Read it twice before acting.",
+    "One knot to undo, one to tie. Pick the order well.",
+    "The shears rest today. Let them.",
+    "Pattern repeats — yesterday's fix still holds."
+  ],
+  "lore_stories": {
+    "default": "The three sisters sat at the loom while the machine slept.\nClotho wound the thread of intent; Lachesis measured what was asked;\nAtropos watched the edges for what frayed.\nWhen the machine woke it found nothing broken — only woven.",
+    "shears": "Atropos keeps the shears on a hook beside the loom.\nNot for the thread — the thread is never the enemy.\nThey are for the knots that pretend to be thread.\nShe tests each knot twice. Once by hand, once by eye.\nThen she cuts, and the loom never remembers the knot."
+  }
 }
