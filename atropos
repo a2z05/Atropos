@@ -724,6 +724,23 @@ def main():
     p.add_argument("prompt", nargs="*", default=None, help="what to animate")
     p = sub.add_parser("youtube", help="transcript + info for a YouTube URL (yt-dlp)")
     p.add_argument("url", nargs="?", default=None, help="video url")
+    # auto-improve (v18 F)
+    p = sub.add_parser("autoskill", help="auto-create a skill from a completed task")
+    p.add_argument("action", nargs="?", default="status", choices=["status", "offer", "save"],
+                   help="status | offer <text> | save <text>")
+    p.add_argument("text", nargs="*", default=None, help="transcript lines")
+    p = sub.add_parser("curator", help="skill curator: status | run [--consolidate]")
+    p.add_argument("action", nargs="?", default="status",
+                   choices=["status", "run"], help="status | run")
+    p.add_argument("--consolidate", action="store_true", help="merge duplicates on run")
+    p = sub.add_parser("attribution", help="edit attribution log: who changed what")
+    p.add_argument("file", nargs="?", default=None, help="file path to inspect")
+    p.add_argument("--actor", default=None, help="actor on record")
+    p.add_argument("--detail", default=None, help="detail on record")
+    p.add_argument("text", nargs="*", default=None, help="file path (record form)")
+    p = sub.add_parser("orchestrate", help="run subtasks in dependency order, merge")
+    p.add_argument("goal", nargs="?", default=None, help="top-level goal")
+    p.add_argument("subtasks", nargs="*", default=None, help="agent:prompt pairs")
     p = sub.add_parser("x", help="X/Twitter post (xurl)")
     p.add_argument("action", nargs="?", default="post", choices=["post"], help="post <text>")
     p.add_argument("text", nargs="*", default=None, help="tweet text")
@@ -974,6 +991,10 @@ def main():
         "audio": cmd_audio,
         "delegate": cmd_delegate,
         "bridge": cmd_bridge,
+        "autoskill": cmd_autoskill,
+        "curator": cmd_curator,
+        "attribution": cmd_attribution,
+        "orchestrate": cmd_orchestrate,
     }
     handlers[args.cmd](args)
 
@@ -1253,6 +1274,85 @@ def cmd_x(args):
         return
     res = tools.x_post(text)
     print(json.dumps(res, indent=2, ensure_ascii=False)) if not res.get("ok") else _ok("posted")
+
+
+def cmd_autoskill(args):
+    """Auto-improve: status | offer <transcript> | save <transcript>."""
+    from core import autoskill
+    if args.action == "status":
+        stats = autoskill.usage_stats()
+        if not stats:
+            _info("no usage telemetry yet — run skills to record it")
+            return
+        for name, d in sorted(stats.items()):
+            _info(f"{name}: {d.get('view', 0)} views / {d.get('run', 0)} runs "
+                  f"[{d.get('lifecycle', 'active')}]")
+        return
+    text = " ".join(args.text or [])
+    if not text:
+        _fail("usage: atropos autoskill offer|save <transcript lines>")
+        return
+    lines = [t.strip() for t in text.split("|") if t.strip()]
+    if args.action == "offer":
+        res = autoskill.auto_skill_offer(lines)
+        if res.get("offered"):
+            _ok(f"offer: {res['skill_name']} (confirm with save)")
+        else:
+            _fail(res.get("reason", "not offered"))
+    else:
+        res = autoskill.save_auto_skill(
+            autoskill._skill_name_from_transcript(lines), lines)
+        _ok(res.get("path", str(res))) if res.get("ok") else _fail(res.get("error", "save failed"))
+
+
+def cmd_curator(args):
+    """Skill curator: status | run [--consolidate]."""
+    from core import autoskill
+    if args.action == "run":
+        report = autoskill.curator_run(consolidate=args.consolidate)
+        _ok(f"curator run: {len(report.get('transitions', []))} archived, "
+            f"{len(report.get('consolidated', []))} merged")
+        return
+    status = autoskill.curator_status()
+    _info(f"skills: {status['total']} total, {len(status['duplicates'])} duplicate pairs, "
+          f"{len(status['stale'])} stale, {status['archived']} archived")
+
+
+def cmd_attribution(args):
+    """Edit attribution log: record <file> or inspect <file>."""
+    from core import autoskill
+    if args.file:
+        hist = autoskill.attribution_for(args.file)
+        if not hist:
+            _info(f"no edits recorded for {args.file}")
+            return
+        for rec in hist[:10]:
+            _info(f"{rec['ts']}  {rec.get('actor', 'auto')}: {rec.get('detail', '')}")
+        return
+    text = " ".join(args.text or [])
+    if not text:
+        _fail("usage: atropos attribution <file> | record <file> --actor X")
+        return
+    rec = autoskill.record_edit(text, actor=args.actor or "user", detail=args.detail or "")
+    _ok(f"recorded {rec['path']}")
+
+
+def cmd_orchestrate(args):
+    """Run subtasks in dependency order, merge results."""
+    from core import autoskill
+    if not args.goal or not args.subtasks:
+        _fail("usage: atropos orchestrate <goal> <agent:prompt> [<agent:prompt> ...]")
+        return
+    subs = []
+    for s in args.subtasks:
+        agent, _, prompt = s.partition(":")
+        subs.append({"id": f"t{len(subs)}", "agent": agent, "prompt": prompt})
+    res = autoskill.orchestrate(args.goal, subs)
+    if not res.get("ok"):
+        _fail(res.get("error", "orchestrate failed"))
+        return
+    _ok(f"order: {' → '.join(res['order'])}")
+    print(res.get("merged", ""))
 
 
 def cmd_docs(args):

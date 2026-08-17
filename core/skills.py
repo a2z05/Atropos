@@ -106,7 +106,25 @@ def set_routing(category: str, harness: str):
 
 
 def sync_to_hermes():
-    """Symlink universal skills into Hermes' skills directory."""
+    """Copy universal skills into Hermes' skills directory.
+
+    Symlinks require SeCreateSymbolicLinkPrivilege on Windows and break the
+    sandboxed test homes — a plain copy (same as export_to_hermes) is always
+    valid and keeps the two directions symmetric.
+    """
+    universal = skills_dir()
+    hermes = hermes_skills_dir()
+    synced = []
+    for skill_dir in universal.iterdir():
+        if not skill_dir.is_dir():
+            continue
+        target = hermes / skill_dir.name
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        shutil.copytree(skill_dir, target,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        synced.append(skill_dir.name)
+    return synced
     universal = skills_dir()
     hermes = hermes_skills_dir()
     synced = []
