@@ -691,7 +691,13 @@ def main():
     # lore
     p = sub.add_parser("lore", help="the Moirai story — one oracle line, or the whole myth")
     p.add_argument("--all", action="store_true", help="print the full MOIRAI.md story")
+    p.add_argument("--fate", nargs="?", const="today", default=None,
+                   choices=["today", "story", "shears"],
+                   help="today's fate | a short Moirai story (lore easter egg)")
     # tools — Hermes/Claude parity
+    p = sub.add_parser("railway", help="Railway cloud status/volume/deploy (env-driven)")
+    p.add_argument("action", nargs="?", default="status", choices=["status", "volume", "deploy", "health"],
+                   help="status | volume | deploy | health")
     p = sub.add_parser("search", help="full-text search across chat history")
     p.add_argument("query", nargs="?", default=None, help="search terms")
     p = sub.add_parser("cron", help="list hermes cron jobs")
@@ -951,6 +957,7 @@ def main():
         "middleware": cmd_middleware,
         "agent": cmd_agent,
         "telegram": cmd_telegram,
+        "railway": cmd_railway,
         "search": cmd_search,
         "cron": cmd_cron,
         "web": cmd_web,
@@ -1073,6 +1080,33 @@ def cmd_telegram(args):
             _fail(r.get("error", "send failed"))
     else:
         _fail("usage: atropos telegram status | start | test | send <chat_id> <text>")
+
+
+def cmd_railway(args):
+    """Railway cloud integration: status | volume | deploy | health."""
+    from core import railway, detect, cliui
+    cloud = detect.detect_cloud()
+    if args.action == "status":
+        s = railway.status()
+        rows = [[k, str(v)] for k, v in s.items()]
+        rows.append(["cloud", cloud])
+        print(cliui.table(rows, headers=["key", "value"]))
+    elif args.action == "volume":
+        v = railway.volume_usage()
+        if v.get("ok"):
+            mark = "WARN" if v.get("warn") else "ok"
+            print(cliui.table([[k, str(v[k])] for k in ("mount", "used_pct", "used", "total")] +
+                              [["status", mark]], headers=["key", "value"]))
+        else:
+            _fail(v.get("error", "volume unavailable"))
+    elif args.action == "deploy":
+        r = railway.check_deploy()
+        print(cliui.table([[k, str(v)] for k, v in r.items()], headers=["key", "value"]))
+    elif args.action == "health":
+        h = railway.status()
+        print(f"cloud={h.get('cloud')} commit={h.get('git_commit') or '—'}")
+    else:
+        _fail("usage: atropos railway status | volume | deploy | health")
 
 
 def cmd_search(args):
@@ -1262,7 +1296,17 @@ def cmd_bridge(args):
 
 def cmd_lore(args):
     """One oracle line, or the full Moirai story."""
-    from core import cliui
+    from core import cliui, fate
+    mode = getattr(args, "fate", None)
+    if mode == "today":
+        print(f"  {_C_DIM}{fate.fate_today()}{_C_RESET}")
+        return
+    if mode == "story":
+        print(fate.story("default"))
+        return
+    if mode == "shears":
+        print(fate.story("shears"))
+        return
     if getattr(args, "all", False):
         md = Path(_REPO_DIR) / "docs" / "MOIRAI.md"
         try:
@@ -1271,7 +1315,8 @@ def cmd_lore(args):
             _fail("MOIRAI.md not found")
         return
     print(f"  {_C_DIM}{cliui.oracle_line()}{_C_RESET}")
-    print("  (add --all for the whole story)")
+    print(f"  {_C_DIM}{fate.fate_today()}{_C_RESET}")
+    print("  (add --all for the whole story, --fate today / story / shears)")
 
 
 def cmd_repl(args):

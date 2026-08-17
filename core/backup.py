@@ -12,6 +12,8 @@ Usage:
 """
 import argparse
 import gzip
+import hashlib
+import io
 import json
 import os
 import shutil
@@ -20,6 +22,61 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config, detect, settings
+
+# ── v18 H.2 manifest helpers ───────────────────────────────────────────────
+_SECRET_NAMES = ("auth_token", "telegram.token", "token", "secret", "key",
+                 "password", "credential", ".env")
+
+
+class _MemFile:
+    """In-memory tar member (used for the manifest)."""
+
+    def __init__(self, data: bytes):
+        self.data = data
+
+
+def _memfile(obj: dict) -> _MemFile:
+    return _MemFile(json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8"))
+
+
+def _version() -> str:
+    try:
+        repo = Path(__file__).resolve().parent.parent
+        return (repo / "VERSION").read_text().strip()
+    except Exception:
+        return "unknown"
+
+
+def _size_of(src) -> int:
+    if isinstance(src, _MemFile):
+        return len(src.data)
+    if src.is_dir():
+        return sum(p.stat().st_size for p in src.rglob("*") if p.is_file())
+    try:
+        return src.stat().st_size
+    except OSError:
+        return 0
+
+
+def _sha1(src) -> str:
+    if isinstance(src, _MemFile):
+        return hashlib.sha1(src.data).hexdigest()  # noqa: S324 — checksum only
+    h = hashlib.sha1()  # noqa: S324 — checksum only, not security
+    try:
+        if src.is_dir():
+            for p in sorted(src.rglob("*")):
+                if p.is_file():
+                    h.update(p.read_bytes())
+        else:
+            h.update(src.read_bytes())
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+def _secret_name(name: str) -> bool:
+    low = name.lower()
+    return any(s in low for s in _SECRET_NAMES)
 
 MAX_BACKUPS = 5  # legacy constant; retention now reads settings.backup.retention
 
@@ -85,17 +142,60 @@ def create(include_state_db=True) -> dict:
     if scripts_dir.exists():
         items["scripts"] = scripts_dir
 
+    # v18 H.2 complete scope — everything Atropos owns (secrets masked)
+    ahome = detect.atropos_home()
+    for sub in ("memory", "skills", "agents", "custom_filters", "slash",
+                "bot_config.yaml", "activity.jsonl", "audit.jsonl",
+                "router_history.json", "fate.json", "chat.db"):
+        p = ahome / sub
+        if p.exists():
+            items[f"atropos/{sub}"] = p
+    # hermes memories + skills (read-only copy, masked)
+    for sub in ("memories", "skills"):
+        p = detect.hermes_home() / sub
+        if p.exists():
+            items[f"hermes/{sub}"] = p
+    # cron jobs from hermes
+    cron_dir = detect.hermes_home() / "cron"
+    if cron_dir.exists():
+        items["hermes/cron"] = cron_dir
+
+    # manifest written BEFORE the tar so it rides inside the backup
+    manifest = {
+        "version": _version(),
+        "ts": ts,
+        "files": {k: _size_of(v) for k, v in items.items()},
+        "checksums": {k: _sha1(v) for k, v in items.items()},
+        "secrets_masked": True,
+    }
+    items["MANIFEST.json"] = _memfile(manifest)
+
     with tarfile.open(dest, "w:gz") as tar:
         for arcname, src in items.items():
+            if isinstance(src, _MemFile):
+                info = tarfile.TarInfo(arcname)
+                info.size = len(src.data)
+                tar.addfile(info, io.BytesIO(src.data))
+                continue
             if src.is_dir():
                 tar.add(src, arcname=arcname, recursive=True, filter=lambda t: (
-                    None if "__pycache__" in t.name or t.name.endswith(".pyc") else t
+                    None if "__pycache__" in t.name or t.name.endswith(".pyc")
+                    or _secret_name(t.name) else t
                 ))
             else:
-                tar.add(src, arcname=arcname)
+                tar.add(src, arcname=arcname, filter=lambda t: (
+                    None if _secret_name(t.name) else t
+                ))
 
     # prune to retention
     pruned = prune(_retention())
+
+    # v18 E: one more thread woven — the weave counter
+    try:
+        from . import fate
+        fate.weave(1)
+    except Exception:
+        pass
 
     return {
         "ok": True,
@@ -184,6 +284,20 @@ def restore(name: str) -> dict:
                     dest = detect.hermes_home() / "scripts"
                     tar.extract(member, path=str(dest.parent), filter="data")
                     restores.append("scripts")
+                elif member.name.startswith("atropos/"):
+                    # v18 H.2: restore Atropos-side content into ~/.atropos
+                    rel = member.name[len("atropos/"):]
+                    dest = detect.atropos_home() / rel
+                    if member.isdir():
+                        dest.mkdir(parents=True, exist_ok=True)
+                        continue
+                    extract = tar.extractfile(member)
+                    if extract:
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        dest.write_bytes(extract.read())
+                        restores.append(f"atropos/{rel}")
+                elif member.name == "MANIFEST.json":
+                    continue  # metadata, not content
     except Exception as e:
         return {"ok": False, "error": str(e)}
     return {"ok": True, "restored": restores, "from": str(src)}

@@ -240,14 +240,14 @@ def route_command(cmd: str, chat_id, user_id) -> list:
     elif cmdc == "/new":
         from . import chat
         chat.create_session(f"tg:{user_id}")
-        out.append((chat_id, "Fresh thread spun. ✂️", None))
+        out.append((chat_id, "Fresh thread spun. ✦", None))
     elif cmdc == "/sessions":
         from . import chat
         rows = chat.session_list(5)
         text = "\n".join(f"· {s['title'][:40]}" for s in rows) or "No sessions yet."
         out.append((chat_id, "🧵 Sessions:\n" + text, None))
     elif cmdc == "/stop":
-        out.append((chat_id, "Gateway stopping. Goodbye ✂️", None))
+        out.append((chat_id, "Gateway stopping. Goodbye ✦", None))
     else:
         out.append((chat_id, f"Unknown command: {cmd}. Try /doctor, /backup, /status, /lore.", None))
     return out
@@ -279,7 +279,7 @@ def _handle_update(upd: dict) -> None:
         return
     mode = guest_mode_for(user_id)
     if mode == "deny":
-        send_message(chat_id, "This gateway is private. ✂️")
+        send_message(chat_id, "This gateway is private. ✦")
         return
     _LOGGER.info("from=%s mode=%s msg=%s", user_id, mode, text[:80])
     if text.startswith("/"):

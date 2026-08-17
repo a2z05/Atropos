@@ -136,6 +136,19 @@ def api_version():
     }
 
 
+def api_health():
+    """v18 B.4 — GET /health: status, version, cloud, uptime (unauthenticated)."""
+    from . import detect
+    cloud = detect.detect_cloud()
+    return {
+        "status": "ok",
+        "version": _version(),
+        "cloud": cloud,
+        "uptime": f"{_uptime() // 3600}h {(_uptime() % 3600) // 60}m",
+        "railway": cloud == "railway",
+    }
+
+
 # ── disk ─────────────────────────────────────────────────────────────────
 def _disk():
     try:
@@ -2735,6 +2748,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/events":
             self.do_GET_events(path, q)
             return
+        if path == "/health":
+            # v18 B.4 — unauthenticated liveness probe (Railway healthcheck)
+            data = api_health()
+            body, ctype, status = _body(200, data)
+            self._send(status, body, ctype)
+            return
         if path.startswith("/api/"):
             if not self._auth():
                 self._send(401, b'{"error":"unauthorized"}')
@@ -2922,6 +2941,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(host="127.0.0.1", port=8787):
+    # v18 B.3: on Railway, a deploy means new code — snapshot + backup first
+    try:
+        from . import railway
+        res = railway.check_deploy()
+        if res.get("changed"):
+            history_log("railway", "deploy detected — snapshot+backup taken")
+    except Exception:
+        pass
     # kick off the periodic SSE status broadcaster (once, daemon thread)
     try:
         from .sse import start_status_broadcaster

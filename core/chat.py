@@ -85,6 +85,9 @@ def _init_db():
         cols = [r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()]
         if "tags" not in cols:
             conn.execute("ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+        # FTS5 index over messages (best-effort; falls back to LIKE at search time)
+        from . import search
+        search.init_fts(conn)
         conn.commit()
     finally:
         conn.close()
@@ -173,19 +176,19 @@ def create_session(title: str = "Chat") -> str:
 
 
 def search_messages(query: str, k: int = 10) -> list:
-    """Full-text search across message content (LIKE, bounded)."""
+    """Full-text search across message content — FTS5, LIKE fallback.
+
+    Ported from Hermes session_search_tool.py / hermes_state_search.py:
+    BM25 ranking, snippet rendering, quoted-phrase support, CJK routing.
+    """
     _init_db()
     conn = _connect()
     try:
-        rows = conn.execute(
-            "SELECT m.session_id, s.title, m.role, m.content, m.ts"
-            " FROM messages m JOIN sessions s ON s.id = m.session_id"
-            " WHERE m.content LIKE ? AND m.content != ''"
-            " ORDER BY m.id DESC LIMIT ?",
-            (f"%{query}%", k),
-        ).fetchall()
+        from . import search
+        rows = search.search(conn, query, k=k)
         return [{"session_id": r["session_id"], "title": r["title"],
-                 "role": r["role"], "content": r["content"][:300], "ts": r["ts"]}
+                 "role": r["role"], "content": r["content"][:300],
+                 "snippet": r.get("snippet", ""), "ts": r["ts"]}
                 for r in rows]
     finally:
         conn.close()
