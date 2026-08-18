@@ -1058,7 +1058,12 @@ def api_config_set(key=None, value=None):
 
 
 def api_guest():
-    return {"ok": True, **guest.status()}
+    st = guest.status()
+    try:
+        st["sealed"] = guest.sealed_owner_view()  # counts only (v18 K)
+    except Exception:
+        st["sealed"] = []
+    return {"ok": True, **st}
 
 
 def api_guest_toggle():
