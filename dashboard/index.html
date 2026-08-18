@@ -274,6 +274,16 @@
   }
   .card h3 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--indigo); box-shadow: 0 0 8px var(--indigo); flex: 0 0 auto; }
   .card h3 .right { margin-left: auto; font-size: 11px; letter-spacing: 0; color: var(--muted); text-transform: none; font-weight: 600; }
+  /* command center hero (v18 L) */
+  .cmd-hero { border-color: rgba(129,140,248,.45); background: linear-gradient(160deg, rgba(49,46,129,.38), rgba(19,26,46,.7)); }
+  .cmd-greeting h2 { font-size: 26px; font-weight: 800; letter-spacing: -.5px; margin: 0 0 4px;
+    background: linear-gradient(120deg, #a5b4fc, #34d399); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .cmd-sub { font-size: 12.5px; color: var(--muted); }
+  .cmd-actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 16px 0 10px; }
+  .cmd-actions .btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; font-size: 13px; font-weight: 600; border-radius: 10px; }
+  .cmd-ico { font-size: 14px; }
+  .cmd-status { font-size: 12px; color: var(--muted); min-height: 16px; }
+  .cmd-status:not(:empty)::before { content: '◈ '; color: var(--indigo); }
   .span-4 { grid-column: span 4; } .span-5 { grid-column: span 5; } .span-6 { grid-column: span 6; }
   .span-7 { grid-column: span 7; } .span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
 
@@ -956,9 +966,25 @@
       <button class="btn warn" id="btn-dismiss-update">Dismiss</button>
     </div>
 
-    <!-- ════════ OVERVIEW ════════ -->
+    <!-- ════════ COMMAND CENTER (v18 L) ════════ -->
     <section class="panel active" id="panel-overview">
       <div class="grid">
+        <section class="card span-12 cmd-hero">
+          <div class="cmd-greeting">
+            <h2>Command Center</h2>
+            <div class="cmd-sub">the harness cannot be turned — one surface, every tool</div>
+          </div>
+          <div class="cmd-actions">
+            <button class="btn" data-go="doctor" data-label="Doctor"><span class="cmd-ico">✚</span>Doctor</button>
+            <button class="btn" data-go="backup" data-label="Backup now"><span class="cmd-ico">⬇</span>Backup now</button>
+            <button class="btn" data-go="update" data-label="Update check"><span class="cmd-ico">↻</span>Update check</button>
+            <button class="btn" data-go="chat" data-label="Open chat"><span class="cmd-ico">✉</span>Open chat</button>
+            <button class="btn" data-go="ops" data-label="Ops"><span class="cmd-ico">✂</span>Ops</button>
+            <button class="btn" data-go="skills" data-label="Skills lint"><span class="cmd-ico">✦</span>Skills lint</button>
+            <button class="btn" data-go="migrate" data-label="Migration undo"><span class="cmd-ico">↩</span>Migration undo</button>
+          </div>
+          <div class="cmd-status" id="cmd-status-line">—</div>
+        </section>
         <section class="card span-5">
           <h3><span class="dot"></span>Runtime</h3>
           <div class="kv"><span class="k">OS</span><span class="v" id="ov-os">—</span></div>
@@ -2238,7 +2264,7 @@ function showPanel(name) {
   if (el) el.classList.add('active');
   renderCurrentPanelTitle();
   const loaders = {
-    overview: [loadStatus, loadRouter, loadOverviewStats, loadOverviewMoirai],
+    overview: [loadCmdStatus, loadStatus, loadRouter, loadOverviewStats, loadOverviewMoirai],
     doctor: [loadDoctor],
     patches: [loadPatches],
     routers: [loadRouter, loadRouteTest, loadRouterModels, loadRouterSparklines],
@@ -2287,6 +2313,67 @@ window.addEventListener('hashchange', () => showPanel(currentPanel()));
 document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => {
   location.hash = n.dataset.panel;
 }));
+
+/* ── command center quick actions (v18 L) ────────────────────────────── */
+function cmdAction(el) {
+  const label = el.dataset.label || '';
+  const line = document.getElementById('cmd-status-line');
+  const say = t => { if (line) line.textContent = t; };
+  const go = el.dataset.go;
+  if (go === 'chat') { location.hash = 'chat'; return; }
+  if (go === 'migrate') {
+    say('Migration: run `atropos migrate undo --yes` in a terminal.');
+    return;
+  }
+  if (go === 'skills') {
+    say('Running skill lint…');
+    api('/api/skills').then(d => {
+      const bad = (d.skills || []).filter(s => (s.lint && s.lint.length));
+      say(bad.length ? `Skill lint: ${bad.length} issue(s) — ` + bad.map(s => s.name).join(', ') : 'Skill lint: all clean ✓');
+    }).catch(() => say('Skill lint failed.'));
+    return;
+  }
+  if (go === 'backup') {
+    say('Creating backup…');
+    api('/api/backup/create', {}, 'POST').then(d => {
+      say(d.ok ? `Backup created ✓ ${d.name || ''}` : 'Backup failed: ' + (d.error || '?'));
+    }).catch(() => say('Backup failed.'));
+    return;
+  }
+  if (go === 'update') {
+    say('Checking for updates…');
+    api('/api/update/check').then(d => {
+      say(d.up_to_date ? 'Up to date ✓' : `Update available (${d.behind || '?'} commits behind)`);
+    }).catch(() => say('Update check failed.'));
+    return;
+  }
+  if (go === 'doctor') {
+    say('Running doctor…');
+    api('/api/doctor', { fix: false }, 'POST').then(d => {
+      const fails = (d.results || []).filter(r => !r.ok);
+      say(fails.length ? `Doctor: ${fails.length} issue(s) — ` + fails.map(r => r.name).join(', ') : 'Doctor: all 7 checks pass ✓');
+    }).catch(() => say('Doctor failed.'));
+    return;
+  }
+  if (go === 'ops') {
+    say('Ops: manage the gateway via Telegram /ops or the ops panel.');
+    return;
+  }
+}
+document.querySelectorAll('.cmd-actions [data-go]').forEach(btn => {
+  btn.addEventListener('click', () => cmdAction(btn));
+});
+function loadCmdStatus() {
+  const line = document.getElementById('cmd-status-line');
+  if (!line) return;
+  api('/api/status').then(d => {
+    const parts = [];
+    if (d.cloud) parts.push('cloud: ' + d.cloud);
+    if (d.router && d.router.active) parts.push('router: ' + d.router.active);
+    if (d.test_count !== undefined) parts.push('tests: ' + d.test_count);
+    line.textContent = parts.length ? parts.join(' · ') : 'ready';
+  }).catch(() => {});
+}
 
 /* ── particle background ──────────────────────────────────────────────── */
 (function () {
