@@ -4,7 +4,7 @@ Atropos — self-healing control plane fusing Hermes + Claude Code. Pure-stdlib 
 
 ## Status (2026-08-18)
 - v1.4.1-beta shipped (round 2). Commit `aa55254`.
-- **v18 complete, 1.4.2-beta shipped** — head `7bcebec` (pushed, repo moved to `github.com/a2z05/Atropos`): phases 1+2 (A ports, B, E, H, cron, F, G, I, J+K, L), approve port, release #43. **861 tests green.**
+- **v18 complete, 1.4.2-beta shipped** — head `cbc19f7` (pushed, repo moved to `github.com/a2z05/Atropos`): phases 1+2 (A ports, B, E, H, cron, F, G, I, J+K, L), approve port, release #43. **861 tests green.**
 - Remaining: G tail (rich `telegram.*` settings, per-chat ops confirm), Skills panel, chat rebuild depth — see `docs/FUTURE.md`.
 
 ## Key Decisions (v18)
@@ -47,6 +47,9 @@ Tests: `test_copy_parity.py` (78: docs/safety/kanban/approve hermetic parity), `
 - Background agents hit 429 rate limits → resume via SendMessage; keep port batches small.
 - Hermes source: `C:\Users\a2z\AppData\Local\hermes\hermes-agent\tools` (111 files). HERMES_HOME = `%LOCALAPPDATA%\hermes` on this box.
 - Owner handle: `a2z05` / repo `github.com/a2z05/Atropos` — never the owner's real name in code/tests/docs.
+- **`DANGEROUS_PATTERNS_COMPILED` must be built AFTER the pattern table extends** — build-before-extend → empty compiled list → detection silently dead (approve.py builds aliases+compiled at module bottom).
+- **Headless middleware filters fail closed** — `check_all_command_guards` auto-approves in non-interactive contexts (terminal parity); the `_approval` filter runs detection directly and rejects flagged actions.
+- **argparse `nargs="*"` swallows later positionals** — `approve mode smart` puts `smart` in `command`, not `value`; use a `command[0]` fallback.
 
 ## Blockers / Warnings
 - 429 FreeUsageLimitError on background agents — retry with delay or resume.
