@@ -658,7 +658,7 @@ def api_skills():
                 seen.add(s["name"])
     except Exception:
         pass
-    # enrich with usage lifecycle telemetry (v18 F)
+    # enrich with usage lifecycle telemetry (v18 F) + lint status (v18 I)
     try:
         from . import autoskill
         stats = autoskill.usage_stats()
@@ -667,6 +667,23 @@ def api_skills():
             if rec:
                 s["usage"] = {k: rec.get(k) for k in ("view", "run", "last_used")}
                 s["lifecycle"] = rec.get("lifecycle", "active")
+    except Exception:
+        pass
+    try:
+        from . import skills as _sk
+        lint = _sk.skill_lint()
+        lint_by = {it["skill"]: it["errors"] for it in lint.get("issues", [])}
+        sdir = _sk.skills_dir()
+        for s in skills:
+            # only universal-store entries get lint status (hermes/claude
+            # stores are scanned read-only
+            rel = None
+            try:
+                rel = Path(s["path"]).resolve().relative_to(sdir.resolve())
+            except Exception:
+                rel = None
+            if rel is not None:
+                s["lint"] = lint_by.get(s["name"]) or []
     except Exception:
         pass
     return {"ok": True, "skills": skills}

@@ -662,6 +662,10 @@ def main():
     p.add_argument("--enable", type=str, default=None, help="enable a skill by name")
     p.add_argument("--disable", type=str, default=None, help="disable a skill by name")
     p.add_argument("--remove", type=str, default=None, help="remove a skill by name (to trash)")
+    p.add_argument("--lint", nargs="?", const="*", default=None,
+                   help="lint SKILL.md frontmatter (all, or one skill name)")
+    p.add_argument("--view", type=str, default=None,
+                   help="show one skill: frontmatter + body + match flags")
     # effort
     p = sub.add_parser("effort", help="effort tiers (hermes/claude/atropos)")
     p.add_argument("effort_action", nargs="?", default=None, choices=["set", "get"], help="set or get")
@@ -1611,9 +1615,34 @@ def cmd_backup(args):
 
 
 def cmd_skills(args):
-    from core.skills import list_skills, sync_to_hermes, export_to_hermes, import_from_hermes
+    from core.skills import (list_skills, sync_to_hermes, export_to_hermes,
+                             import_from_hermes, skill_lint, skill_view)
     from core import extensions
-    if args.list:
+    if args.lint is not None:
+        r = skill_lint(None if args.lint == "*" else args.lint)
+        print(f"Lint: {r['ok']}/{r['total']} skills ok")
+        for it in r["issues"]:
+            print(f"  ✗ {it['skill']}:")
+            for e in it["errors"]:
+                print(f"      - {e}")
+        if r["issues"]:
+            sys.exit(1)
+    elif args.view:
+        v = skill_view(args.view)
+        if not v.get("ok"):
+            _fail(v.get("error", "not found"))
+            sys.exit(1)
+        flags = " ✓" if v.get("matches") else " (not matching this platform/environment)"
+        print(f"skill: {v['name']}{flags}")
+        for k, val in v.get("frontmatter", {}).items():
+            print(f"  {k}: {val}")
+        print("---")
+        print(v.get("body", "").strip()[:800])
+        if v.get("errors"):
+            print("Lint issues:")
+            for e in v["errors"]:
+                print(f"  - {e}")
+    elif args.list:
         for s in list_skills():
             print(f"  {s['name']}: {s['category']} -> {s['harness']}")
     elif args.sync:
