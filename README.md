@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-6366f1?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![stdlib only](https://img.shields.io/badge/stdlib%20only-22d3ee?style=flat-square)](#rules)
-[![625 tests](https://img.shields.io/badge/tests-625%20green-34d399?style=flat-square)](#tests)
+[![861 tests](https://img.shields.io/badge/tests-861%20green-34d399?style=flat-square)](#tests)
 [![PRs welcome](https://img.shields.io/badge/PRs%20welcome-34d399?style=flat-square)](https://github.com/arophin/Atropos)
 
 > **Atropos** (Ἄτροπος) — the Greek Fate who cuts the thread at the appointed moment: *she who cannot be turned.*
@@ -177,7 +177,7 @@ Chat round-2: per-message actions (copy / regenerate / edit-and-resend / delete 
 
 ---
 
-## 🖥 CLI reference — 62 commands
+## 🖥 CLI reference — 69 commands
 
 Bare `atropos` opens the **menu UI** (numbered actions, arrow keys, `/` commands — a trimmed Claude Code-style shell). `atropos repl` is the interactive REPL with `/doctor`, `/backup`, `/lore`…; both are terminal-theme aware. Global flags: `--lang <code>`, `--theme <name>`, `--json`.
 
@@ -249,6 +249,10 @@ Bare `atropos` opens the **menu UI** (numbered actions, arrow keys, `/` commands
 | `atropos audio <file>` | 🆕 Audio info/analysis |
 | `atropos delegate <text>` | 🆕 Delegate to an agent |
 | `atropos bridge start` | 🆕 RAFT bridge: /health /activity /wake |
+| `atropos migrate plan\|apply\|undo` | 🆕 Ask-first, revertible Hermes state import |
+| `atropos approve check\|mode\|allow\|deny` | 🆕 Dangerous-command gate (Hermes approval.py port) |
+| `atropos ai-mod status\|preview\|apply` | 🆕 AI self-modification (patch rewrites) |
+| `atropos autoskill / curator / attribution` | 🆕 Auto-improve lifecycle (usage, curation, audit) |
 
 ---
 
@@ -318,7 +322,7 @@ python3 run_tests.py              # or: python3 -m unittest discover tests
 node tests/test_js_syntax.js      # dashboard JS syntax + panel consistency
 ```
 
-**625 tests, all green** — YAML parser, config roundtrip, settings schema/coercion/migration/secrets, env detection, doctor, 12-hack engine, router + failover logic, extensions, console whitelist (including `rm -rf /` rejection), live HTTP API with auth, SSE, plus round-2 suites: ASCII identity, i18n (11 langs), CLI menu/REPL/tables, middleware filters, agents, capability probe, Telegram gateway, parity matrix, guest isolation, dashboard control checks, mobile-complete markup. Pure `unittest`, zero dependencies.
+**861 tests, all green** — YAML parser, config roundtrip, settings schema/coercion/migration/secrets, env detection, doctor, 12-hack engine, router + failover logic, extensions, console whitelist (including `rm -rf /` rejection), live HTTP API with auth, SSE, plus round-2 suites: ASCII identity, i18n (11 langs), CLI menu/REPL/tables, middleware filters (incl. the Hermes approval gate), agents, capability probe, Telegram gateway, parity matrix (77 dangerous + 12 hardline patterns verbatim), guest isolation, dashboard control checks, mobile-complete markup, sealed guest memory, migration import. Pure `unittest`, zero dependencies.
 
 ---
 

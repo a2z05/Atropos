@@ -737,6 +737,15 @@ def main():
     def _ai_mod_id(args):
         return (getattr(args, "attempt_id", None) or "").strip()
     p.add_argument("attempt_id", nargs="?", default="", help="attempt id (apply/history)")
+    # approve (v18 A.11): dangerous-command gate surface
+    p = sub.add_parser("approve", help="dangerous-command approval gate (Hermes approval.py port)")
+    p.add_argument("action", nargs="?", default="mode",
+                   choices=["check", "mode", "allow", "deny", "pending", "resolve"],
+                   help="check <cmd> | mode [manual|smart|off] | allow <cmd> | deny <glob> | pending | resolve <choice> [scope]")
+    p.add_argument("command", nargs="*", default=None, help="command text (check/allow) or glob (deny)")
+    p.add_argument("choice", nargs="?", default=None, help="approve|deny (resolve)")
+    p.add_argument("scope", nargs="?", default=None, help="session|always (resolve)")
+    p.add_argument("value", nargs="?", default=None, help="mode value (manual|smart|off)")
     p = sub.add_parser("web", help="web tools (needs NINEROUTER_URL/NINEROUTER_KEY)")
     p.add_argument("action", nargs="?", default="search", choices=["search", "fetch"], help="search | fetch <url>")
     p.add_argument("target", nargs="?", default=None, help="query or url")
@@ -1029,6 +1038,7 @@ def main():
         "bridge": cmd_bridge,
         "autoskill": cmd_autoskill,
         "ai-mod": cmd_ai_mod,
+        "approve": cmd_approve,
         "curator": cmd_curator,
         "attribution": cmd_attribution,
         "orchestrate": cmd_orchestrate,
@@ -1360,6 +1370,83 @@ def cmd_ai_mod(args):
         res = update_ai.apply_ai(args.attempt_id, confirm=True)
     print(json.dumps(res, indent=2, ensure_ascii=False))
     sys.exit(0 if res.get("ok") else 1)
+
+
+def cmd_approve(args):
+    """Dangerous-command approval (v18 A.11 Hermes port).
+
+    check   — test a command against the detection rules (no prompt)
+    mode    — show/set approvals.mode (manual|smart|off)
+    allow   — add a command to the permanent allowlist
+    deny    — add a glob to approvals.deny (unconditional)
+    pending — list queued gateway approvals waiting for a human
+    resolve — answer a pending approval: approve|deny [session|always]
+    """
+    from core import approve, settings
+    if args.action == "check":
+        if not args.command:
+            _fail("usage: atropos approve check <command>")
+            return
+        cmd = " ".join(args.command)
+        is_hard, hard_desc = approve.detect_hardline_command(cmd)
+        is_dang, _pk, desc = approve.detect_dangerous_command(cmd)
+        if is_hard:
+            _fail(f"HARDLINE: {hard_desc}")
+        elif is_dang:
+            _warn(f"DANGEROUS: {desc}")
+        else:
+            _ok("safe — no dangerous pattern matched")
+        return
+    if args.action == "mode":
+        value = (args.value or (args.command[0] if args.command else "") or "").strip()
+        if value:
+            settings.set("approvals.mode", value)
+        _info(f"approvals.mode = {settings.get('approvals.mode')}")
+        return
+    if args.action == "allow":
+        if not args.command:
+            _fail("usage: atropos approve allow <command>")
+            return
+        lst = list(settings.get("approvals.allowlist", []) or [])
+        item = " ".join(args.command)
+        if item not in lst:
+            lst.append(item)
+        settings.set("approvals.allowlist", lst)
+        _ok(f"allowlisted: {item}")
+        return
+    if args.action == "deny":
+        if not args.command:
+            _fail("usage: atropos approve deny <glob>")
+            return
+        lst = list(settings.get("approvals.deny", []) or [])
+        item = " ".join(args.command)
+        if item not in lst:
+            lst.append(item)
+        settings.set("approvals.deny", lst)
+        _ok(f"deny rule added (unconditional): {item}")
+        return
+    if args.action == "pending":
+        key = approve.get_current_session_key()
+        if not approve.has_blocking_approval(key):
+            _info("no pending approvals")
+            return
+        with approve._lock:
+            q = list(approve._gateway_queues.get(key, []))
+        for e in q:
+            _info(f"  {e.data.get('description', '?')}")
+        return
+    if args.action == "resolve":
+        if not args.choice:
+            _fail("usage: atropos approve resolve approve|deny [session|always]")
+            return
+        key = approve.get_current_session_key()
+        choice = "always" if args.scope == "always" else (
+            "session" if args.scope == "session" else (
+                "once" if args.choice == "approve" else "deny"))
+        n = approve.resolve_gateway_approval(key, choice, resolve_all=False)
+        _ok(f"resolved {n} pending approval(s) as {choice}")
+        return
+    _fail("usage: atropos approve check|mode|allow|deny|pending|resolve")
 
 
 def cmd_autoskill(args):

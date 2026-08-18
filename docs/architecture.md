@@ -136,4 +136,4 @@ The v1.2 settings hub became the seed of a universal-resource layer:
 - **Surfaces** — dashboard grew to 43 panels (Filters/Agents/Telegram
   added in 1.4.1, i18n 11 langs, 9 themes, bottom-nav mobile),
   `dashboard/chat.html` mobile page with action sheets + stop + pin/rename,
-  TUI +8 panels, CLI 62 commands, 625 tests green.
+  TUI +8 panels, CLI 69 commands, 861 tests green (1.4.2-beta).

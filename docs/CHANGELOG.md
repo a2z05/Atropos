@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.4.2-beta] — 2026-08-18 (v18 addendum: ports + dashboard + migration)
+
+### Added
+- **Dangerous-command approval gate (`core/approve.py`)** — port of Hermes `tools/approval.py` (4161 lines): 77 `DANGEROUS_PATTERNS` + 12 `HARDLINE_PATTERNS` byte-identical to the source (verified by AST diff), full deobfuscation pipeline (ANSI strip, home-fold, `$IFS`/backslash/quote expansion, grep-safe variant, command-substitution resolution), per-session approval state, permanent allowlist, smart mode via the active router, gateway queue + `resolve_gateway_approval`, denial breaker. Wired as the **middleware `approval` filter** (`before_tool`, fail-closed for flagged actions, hardline never bypassable). `approvals.*` settings (mode/deny/allowlist/timeout/cron_mode/smart_policy/denial_breaker_threshold). CLI: `atropos approve check|mode|allow|deny|pending|resolve`. (12 tests)
+- **Documents + safety ports (parity round)** — `core/documents.py` (read_extract.py parity: ipynb/docx/xlsx extraction, PDF text via content streams — `documents_read` renders the fixture PDF) and `core/safety.py` (write_approval + file_state: traversal checks, size gates, `safety.write_approval` setting) now carry behavior parity tests (Hermes-faithful extension sets).
+- **Dashboard Command Center (v18 L)** — landing hero (`cmd-hero` + 7 quick actions: doctor/backup/update/chat/ops/skills/migrate), rebuilt chat welcome card with quick chips, `loadCmdStatus` wiring. `/api/*` untouched.
+- **Sealed guest memory (v18 K)** — guests record notes; the owner sees **counts only**, content never leaves the sealed store (`guest.sealed_owner_view()`).
+- **Migration import (v18 J)** — `atropos migrate plan|apply|undo|history`: pure dry-run plan, ask-first apply (`--yes`), snapshot to `backups/migrate_<ts>/`, `migrations.jsonl` log, revertible undo.
+- **Skill machinery (v18 I)** — Hermes-style lint (`skill_lint`: description/content/prompt budgets), platform/environment matching, nested layout discovery, view; `skills.environments` setting.
+- **Kanban port** — `core/kanban.py` with Hermes move semantics (`t_<8hex>` ids, id-exact moves, same-column reorder).
+- **Cron + F auto-improve + Railway + live sync (phase 2 tail)** — `core/cron.py`, `core/autoskill.py` (usage/lifecycle/curator/attribution/orchestrate), `core/railway.py`, `core/sync_live.py` wired with tests.
+- **install.sh** — one-liner `curl | sh` installer (py3.10+ check, idempotent clone to `~/.atropos`, PATH hint).
+
+### Changed
+- `core/middleware.py`: approval filter now has a real body (was a catalog stub).
+- `core/settings.py`: `approvals.*` group (7 keys) + `safety.write_approval`.
+- `core/tools.py`: kanban shim delegates to the Hermes port.
+- README/architecture: CLI 69 commands, 861 tests green.
+- BETA: VERSION → 1.4.2-beta, package.json → 1.4.2-beta.
+
 ## [1.4.1] — 2026-08-16 (round 2: human-feel + UX)
 
 ### Added

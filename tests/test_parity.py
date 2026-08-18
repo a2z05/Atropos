@@ -31,6 +31,7 @@ CLAIMED = [
     "agent", "telegram", "dashboard", "watch", "search", "cron", "web",
     "kanban", "email", "tts", "vision", "imagine", "video", "youtube",
     "x", "docs", "hue", "audio", "delegate", "bridge",
+    "approve", "ai-mod", "autoskill", "curator", "attribution", "orchestrate",
 ]
 
 
@@ -76,6 +77,16 @@ class ReadonlyInvocationTests(unittest.TestCase):
     def test_middleware_list_runs(self):
         r = _cl(["middleware"])
         self.assertIn("pii", r.stdout)
+
+    def test_approve_check_runs(self):
+        r = _cl(["approve", "check", "rm -rf /etc"])
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("HARDLINE", (r.stdout + r.stderr))
+
+    def test_approve_mode_runs(self):
+        r = _cl(["approve", "mode"])
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("approvals.mode", r.stdout)
 
 
 class ParityMatrixTests(unittest.TestCase):

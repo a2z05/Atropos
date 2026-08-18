@@ -79,6 +79,51 @@ def _code_guard(ctx):
     return ctx
 
 
+def _approval(ctx):
+    """Dangerous-action gate: Hermes approval.py detection, adapted (v18 A.11).
+
+    Events are safe until a tool explicitly escalates; users opt into the
+    gate by enabling ``middleware.approval`` (which runs this body over
+    ``before_tool`` context). No deny rules are pre-registered, so plain
+    Atropos usage is unaffected by default.
+    """
+    from . import approve as _approve
+    tool = ctx.get("tool") or {}
+    name = tool.get("name", "") if isinstance(tool, dict) else str(tool)
+    if not name:
+        return ctx
+    target = tool.get("args") or tool.get("command") or tool.get("workflow") or ""
+    if isinstance(target, dict):
+        target = target.get("command", "")
+    if not isinstance(target, str):
+        target = str(target)
+    target = target.strip()
+    if not target:
+        return ctx
+    # Hardline + deny rules are unconditional and fire in every context
+    # (before the approvals.mode=off bypass, matching hermes ordering).
+    is_hard, hard_desc = _approve.detect_hardline_command(target)
+    if is_hard:
+        return {**ctx, "rejected": True,
+                "reason": _approve._hardline_block_result(hard_desc)["message"]}
+    deny_hit = _approve._match_user_deny_rule(target)
+    if deny_hit is not None:
+        return {**ctx, "rejected": True,
+                "reason": _approve._user_deny_block_result(deny_hit)["message"]}
+    if _approve._get_approval_mode() == "off":
+        return ctx
+    # A headless filter has no human to ask: flagged actions fail closed
+    # (mirror request_tool_approval's fail_closed_when_no_human contract).
+    is_dang, _pk, desc = _approve.detect_dangerous_command(target)
+    if is_dang:
+        return {**ctx, "rejected": True,
+                "reason": (f"BLOCKED by approval gate: {desc}. A middleware "
+                           "filter flagged this action and no interactive user "
+                           "is present to approve it. Run it manually or "
+                           "disable the approval filter.")}
+    return ctx
+
+
 def _audit(ctx):
     from .activity import add as _act
     try:
@@ -178,7 +223,7 @@ def _register_all():
               fun=_summary)
     _register("approval", "before_tool",
               "You approve risky actions before they happen: pauses on dangerous tool calls.",
-              kind="policy")
+              fun=_approval, kind="policy")
     _register("audit", "on_end",
               "Keeps a full record of everything the AI did: appends every step to activity.jsonl.",
               fun=_audit)
