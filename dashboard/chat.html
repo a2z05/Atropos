@@ -159,6 +159,14 @@ body {
   font-size: 17px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .inputbar .btn.ghost { background: var(--card); border: 1px solid var(--border); color: var(--text); }
+/* welcome card (v18 L) */
+.welcome-card { text-align: center; padding-top: 56px; color: var(--dim); }
+.welcome-star { font-size: 30px; margin-bottom: 10px; }
+.welcome-title { font-weight: 800; color: var(--text); font-size: 18px; margin-bottom: 4px; letter-spacing: -.2px; }
+.welcome-sub { font-size: 13px; margin-bottom: 18px; }
+.welcome-quick { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 420px; margin: 0 auto; }
+.welcome-quick .chip { min-height: 40px; padding: 0 14px; border-radius: 20px; background: var(--card); color: var(--text); border: 1px solid var(--border); font-size: 13px; cursor: pointer; }
+.welcome-quick .chip:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -299,16 +307,17 @@ function addMsg(role, text, harness) {
   msgArea.scrollTop = msgArea.scrollHeight;
   return div;
 }
-/* welcome state: suggestions instead of an empty page */
+/* welcome state: command-center style greeting (v18 L) */
 function welcome() {
   if (msgArea.children.length) return;
-  msgArea.innerHTML = `<div style="text-align:center;color:var(--dim);padding-top:64px">
-    <div style="font-size:26px;margin-bottom:10px">✦</div>
-    <div style="font-weight:700;color:var(--text);font-size:16px;margin-bottom:4px">New chat</div>
-    <div style="font-size:12.5px;margin-bottom:16px">Pick a starting point or type anything.</div>
-  </div>
-  <div class="chips-row" style="justify-content:center;max-width:400px;margin:0 auto">` +
-    SUGGESTIONS.map(s => `<button class="chip">${escapeHtmlAttr(s)}</button>`).join('') + '</div>';
+  msgArea.innerHTML = `<div class="welcome-card">
+    <div class="welcome-star">✦</div>
+    <div class="welcome-title">New chat</div>
+    <div class="welcome-sub">One brain, two hands — talk to the harness. Commands work too.</div>
+    <div class="welcome-quick">
+      ${['/doctor', '/status', '/lore', '/backup', '/memory top', 'What can you do?'].map(s => `<button class="chip">${escapeHtmlAttr(s)}</button>`).join('')}
+    </div>
+  </div>`;
 }
 function escapeHtmlAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function addTyping() {
