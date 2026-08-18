@@ -112,45 +112,61 @@ def web_fetch(target: str) -> dict:
     return _web.web_fetch(target)
 
 
-# ── kanban (JSON board in ~/.atropos/kanban.json) ────────────────────────
+# ── kanban (v18: core/kanban.py — Hermes move semantics, id-exact) ────────
 def _kanban_path() -> Path:
     return detect.atropos_home() / "kanban.json"
 
 
 def kanban_list() -> dict:
-    p = _kanban_path()
-    cols = {"todo": [], "doing": [], "done": []}
-    if p.exists():
-        try:
-            cols.update(json.loads(p.read_text(encoding="utf-8")))
-        except (ValueError, OSError):
-            pass
-    return {"ok": True, "cols": cols}
+    """Board as {ok, cols} — delegating to core.kanban (Hermes port)."""
+    try:
+        from . import kanban as _kb
+        return {"ok": True, "cols": _kb.board()["cols"]}
+    except Exception:
+        p = _kanban_path()
+        cols = {"todo": [], "doing": [], "done": []}
+        if p.exists():
+            try:
+                cols.update(json.loads(p.read_text(encoding="utf-8")))
+            except (ValueError, OSError):
+                pass
+        return {"ok": True, "cols": cols}
 
 
 def kanban_add(text: str, col: str = "todo") -> dict:
-    cols = kanban_list()["cols"]
-    col = col if col in cols else "todo"
-    cols[col].append({"text": text, "ts": __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime())})
-    _kanban_path().parent.mkdir(parents=True, exist_ok=True)
-    _kanban_path().write_text(json.dumps(cols, ensure_ascii=False), encoding="utf-8")
-    return {"ok": True, "cols": cols}
+    from . import kanban as _kb
+    res = _kb.add(text, col=col)
+    return {"ok": True, "cols": _kb.board()["cols"], "card": res.get("card", {}),
+            "col": res.get("col", "todo")}
 
 
 def kanban_move(text: str, col: str) -> dict:
-    cols = kanban_list()["cols"]
-    for k in cols:
-        cols[k] = [c for c in cols[k] if c["text"] != text]
-    cols = kanban_list()["cols"]
-    for src in cols:
-        for i, c in enumerate(cols[src]):
-            if c["text"] == text:
-                cols[src].pop(i)
+    """Move a card to another column (id-exact when the text is a card id,
+    text-match fallback for the old shim callers)."""
+    from . import kanban as _kb
+    b = _kb.board()
+    card_id = None
+    if text.startswith("t_"):
+        card_id = text
+    else:
+        for cid, entry in (b.get("index") or {}).items():
+            if entry.get("text") == text:
+                card_id = cid
                 break
-    cols[col if col in cols else "todo"].append({"text": text, "ts": __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime())})
-    _kanban_path().parent.mkdir(parents=True, exist_ok=True)
-    _kanban_path().write_text(json.dumps(cols, ensure_ascii=False), encoding="utf-8")
-    return {"ok": True, "cols": cols}
+    if card_id:
+        _kb.move(card_id, col)
+    else:
+        # legacy shim path: text-match move
+        cols = kanban_list()["cols"]
+        for src in cols:
+            for i, c in enumerate(cols[src]):
+                if c.get("text") == text:
+                    cols[src].pop(i)
+                    break
+        cols[col if col in cols else "todo"].append({"text": text, "ts": __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime())})
+        _kanban_path().parent.mkdir(parents=True, exist_ok=True)
+        _kanban_path().write_text(json.dumps(cols, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "cols": _kb.board()["cols"]}
 
 
 # ── email (himalaya IMAP/SMTP) ───────────────────────────────────────────
