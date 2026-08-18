@@ -64,10 +64,13 @@ def _git(repo: str, *args, timeout=120) -> subprocess.CompletedProcess:
     )
 
 
-def apply_update(repo: str, dry_run=False):
+def apply_update(repo: str, dry_run=False, ai_engine=False):
     """Full update: fetch → backup → reset → re-apply hacks → doctor verify.
 
     Returns summary dict. Rollback to the pre-update HEAD on failure.
+    With ``ai_engine`` the conflicting-hack path consults the AI update
+    engine (update_ai.diagnose + rewrite + apply) before rolling back —
+    self-modification that survives the update as re-anchored patches.
     """
     if dry_run:
         return {"dry_run": True, **fetch_upstream(repo)}
@@ -118,12 +121,83 @@ def apply_update(repo: str, dry_run=False):
             result["changelog"] = changelog
         except Exception as e:
             result["changelog"] = {"ok": False, "error": str(e)}
+    if not ok and ai_engine:
+        # AI self-modification (v18 G): diagnose + rewrite the failed hack
+        # against the new upstream sources, apply on confirm, verify again.
+        result["ai"] = _ai_repair(repo, result, timeout=180)
+        if result["ai"].get("ok"):
+            ok = True
+            errors = []
     if not ok:
         # rollback: restore pre-update head, then re-apply hacks again
         _git(repo, "reset", "--hard", prev_head)
         patches.apply_hacks()
         result["rolled_back"] = True
     return result
+
+
+def _ai_repair(repo: str, result: dict, timeout: int = 180) -> dict:
+    """One AI-repair pass over the failed patches (update_ai engine).
+
+    Builds the failed_patches state from the apply result + upstream
+    sources, asks the engine to diagnose and rewrite each, and applies
+    the first confirmed rewrite. Returns the engine summary.
+    """
+    from . import update_ai, settings
+    if not settings.get("update.auto_ai", False):
+        return {"ok": False, "reason": "update.auto_ai off"}
+    if settings.get("update-ai.mode", "manual") == "off":
+        return {"ok": False, "reason": "update-ai.mode off"}
+    # Failed hacks are the ones the apply reported as errors. Each error line
+    # carries the hack id (patches.apply_hacks appends f"{id}: ..."), so
+    # surface those patches to the engine for diagnosis.
+    error_text = "\n".join(result.get("errors", []) or [])
+    conflicted = {e.split(":", 1)[0].strip()
+                  for e in result.get("errors", []) if ":" in e}
+    conflicts = []
+    for h in patches.load_hacks():
+        if h.get("id") not in conflicted:
+            continue
+        target = h.get("target", "")
+        current_source = upstream_source = ""
+        if target:
+            # real sources so the engine can detect renames, not just "unknown"
+            try:
+                current_source = (Path(repo) / target.lstrip("/")).read_text(
+                    encoding="utf-8")
+            except Exception:
+                current_source = ""
+            try:
+                out = subprocess.run(
+                    ["git", "-C", repo, "show", f"origin/main:{target.lstrip('/')}"],
+                    capture_output=True, text=True, timeout=30)
+                upstream_source = out.stdout if out.returncode == 0 else ""
+            except Exception:
+                upstream_source = ""
+        conflicts.append({
+            "patch_id": h.get("id", ""),
+            "target": target,
+            "current_source": current_source,
+            "upstream_source": upstream_source,
+            "error": error_text or "apply failed",
+        })
+    state = {
+        "upstream_version": result.get("head", ""),
+        "current_version": result.get("prev_head", ""),
+        "failed_patches": conflicts,
+    }
+    try:
+        preview = update_ai.ai_check(state)
+    except Exception as e:
+        return {"ok": False, "reason": "ai_check failed", "error": str(e)}
+    if not preview.get("ok") or not preview.get("previews"):
+        return {"ok": False, "reason": "nothing diagnosed"}
+    first = preview["previews"][0]
+    attempt_id = first["attempt"].get("id")
+    return {"ok": True, "attempt_id": attempt_id,
+            "patch_id": first["attempt"].get("patch_id", ""),
+            "diagnosis": first["diagnosis"],
+            "rewritten_patch": first.get("rewritten_patch", "")}
 
 
 def dry_run_conflicts(repo: str) -> dict:

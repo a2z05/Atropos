@@ -147,6 +147,101 @@ class RateLimit:
         return True
 
 
+# ── bot ops (v18 G): tool-surface management of the gateway itself ───────
+_BOT_OPS = (
+    "get_me", "get_webhook_info", "set_webhook", "delete_webhook",
+    "send_message", "edit_message_text", "delete_message",
+    "pin_chat_message", "unpin_chat_message", "unpin_all_chat_messages",
+    "get_chat", "get_chat_member", "get_chat_members_count",
+    "leave_chat", "set_chat_title", "set_chat_description",
+    "ban_chat_member", "unban_chat_member", "restrict_chat_member",
+    "promote_chat_member",
+)
+
+
+def ops_allowed(user_id: str, chat_id=None) -> tuple:
+    """(allowed, reason) — owner-only by default; per-chat allowlist opt-in.
+
+    ``settings.telegram.ops_allowed`` is a per-chat list: ["chat:1234"] or
+    ["all"] grants non-owners bot-op rights inside those chats. Guests are
+    never allowed to run bot ops.
+    """
+    if str(user_id) in owner_ids():
+        return True, "owner"
+    if guest_mode_for(str(user_id)) == "owner":
+        return True, "owner-like"
+    allowed = [str(x) for x in (settings.get("telegram.ops_allowed", []) or [])]
+    chat = str(chat_id) if chat_id is not None else ""
+    if "all" in allowed or (chat and chat in allowed):
+        return True, "per-chat allowlist"
+    return False, "owner-only"
+
+
+def _confirm_token(chat_id, action: str) -> str:
+    """Two-step confirm for destructive bot ops (60s window).
+
+    Returns the confirmation token (stable per chat+action pair) or "" when
+    a token is already pending from the previous confirm call. The token
+    hash must be stable across processes — Python's randomized str hash is
+    not, so the fold happens over the bytes of the key itself.
+    """
+    now = int(time.time())
+    key = f"confirm:{chat_id}:{action}"
+    pending = confirm_state.get(key)
+    if pending and now - pending["ts"] < 60:
+        return ""  # already pending — ask for the token
+    acc = 0
+    for b in key.encode("utf-8"):
+        acc = (acc * 31 + b) % 1000000
+    token = f"{acc % 1000000:06d}"
+    confirm_state[key] = {"ts": now, "token": token}
+    return token
+
+
+def _check_confirm(chat_id, action: str, token: str) -> bool:
+    """Verify a two-step confirm token within its 60s window."""
+    now = int(time.time())
+    pending = confirm_state.pop(f"confirm:{chat_id}:{action}", None)
+    if not pending or now - pending["ts"] >= 60:
+        return False
+    return str(pending["token"]) == str(token).strip()
+
+
+confirm_state = {}
+
+
+def bot_op(name: str, params: dict, user_id: str, chat_id=None) -> dict:
+    """Call one Telegram Bot API method as a gated tool.
+
+    Gate: two-step confirm (owner) or per-chat allowlist; destructive ops
+    (delete/ban/restrict/promote/leave/pin) always require the 60s token.
+    """
+    if not _token():
+        return {"ok": False, "error": "telegram.token not set"}
+    if name not in _BOT_OPS:
+        return {"ok": False, "error": f"unknown bot op '{name}'"}
+    allowed, reason = ops_allowed(user_id, chat_id)
+    if not allowed:
+        return {"ok": False, "error": f"denied: {reason}"}
+    destructive = name.startswith(("delete_", "ban_", "unban_", "restrict_",
+                                   "promote_", "leave_", "pin_", "unpin_"))
+    # every call carries optional confirm token; destructive without it → ask
+    token = params.pop("confirm", "") if isinstance(params.get("confirm"), str) else ""
+    if destructive and not token:
+        return {"ok": False, "need_confirm": _confirm_token(chat_id, name),
+                "error": "destructive bot op — confirm with confirm=<token>"}
+    if destructive and not _check_confirm(chat_id, name, token):
+        return {"ok": False, "error": "confirm token invalid or expired (60s)"}
+    payload = {k: v for k, v in params.items() if v is not None}
+    try:
+        res = _api_call(name, payload)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if not res.get("ok"):
+        return {"ok": False, "error": res.get("description", "telegram error")}
+    return {"ok": True, "result": res.get("result", {})}
+
+
 # ── step trails ───────────────────────────────────────────────────────────
 class StepTrail:
     """Post a progress message, then EDIT it live as steps complete."""
@@ -190,6 +285,7 @@ class StepTrail:
 
 # ── command routing (mirrors the CLI) ────────────────────────────────────
 _COMMANDS = {
+    "/ops": "Bot-ops surface (per-chat allowlist)",
     "/doctor": "Run the 7 health checks",
     "/backup": "Create a backup now",
     "/sync": "Sync status",
@@ -248,6 +344,29 @@ def route_command(cmd: str, chat_id, user_id) -> list:
         out.append((chat_id, "🧵 Sessions:\n" + text, None))
     elif cmdc == "/stop":
         out.append((chat_id, "Gateway stopping. Goodbye ✦", None))
+    elif cmdc == "/ops":
+        # per-chat bot-ops surface (v18 G): status or one gated bot op
+        parts = cmd.split()
+        if len(parts) == 1:
+            allowed, why = ops_allowed(user_id, chat_id)
+            out.append((chat_id,
+                        f"✂ Bot ops: {len(_BOT_OPS)} methods · access: {why}" +
+                        (" (destructive ops need a 60s confirm token)" if allowed else ""),
+                        [[("Allow chat", "/ops allow"), ("Deny", "/ops deny")]]))
+        elif parts[1] == "allow":
+            allowed = [str(c) for c in (settings.get("telegram.ops_allowed", []) or [])]
+            chat = str(chat_id)
+            if chat not in allowed:
+                allowed.append(chat)
+            settings.set("telegram.ops_allowed", allowed)
+            out.append((chat_id, f"Bot ops allowed in chat {chat}.", None))
+        elif parts[1] == "deny":
+            allowed = [c for c in (settings.get("telegram.ops_allowed", []) or [])
+                       if str(c) != str(chat_id)]
+            settings.set("telegram.ops_allowed", allowed)
+            out.append((chat_id, "Bot ops revoked here.", None))
+        else:
+            out.append((chat_id, "Usage: /ops | /ops allow | /ops deny", None))
     else:
         out.append((chat_id, f"Unknown command: {cmd}. Try /doctor, /backup, /status, /lore.", None))
     return out

@@ -333,3 +333,46 @@ class RunnerTests(UpdateAiBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AiRepairTests(UpdateAiBase):
+    """update._ai_repair — the update-time self-modification hook."""
+
+    def test_repair_off_gate(self):
+        from core import update
+        r = update._ai_repair("repo", {"errors": []}, timeout=10)
+        self.assertFalse(r["ok"])
+        self.assertIn("auto_ai off", r["reason"])
+
+    def test_mode_off_gate(self):
+        from core import update
+        settings.set("update.auto_ai", True)
+        settings.set("update-ai.mode", "off")
+        r = update._ai_repair("repo", {"errors": []}, timeout=10)
+        self.assertFalse(r["ok"])
+        self.assertIn("mode off", r["reason"])
+
+    def test_repair_diagnoses_and_returns_attempt(self):
+        from core import update
+        settings.set("update.auto_ai", True)
+        settings.set("update-ai.mode", "manual")
+        state = {"errors": ["00-test-rewrite: anchor not found upstream"],
+                 "head": "abc1234", "prev_head": "old9999"}
+        with mock.patch("core.update.patches.load_hacks",
+                        return_value=[TEST_HACK]):
+            r = update._ai_repair("repo", state, timeout=10)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["patch_id"], "00-test-rewrite")
+        self.assertTrue(r["attempt_id"])
+
+    def test_repair_nothing_to_diagnose(self):
+        from core import update
+        settings.set("update.auto_ai", True)
+        settings.set("update-ai.mode", "manual")
+        r = update._ai_repair("repo", {"errors": []}, timeout=10)
+        self.assertFalse(r["ok"])
+        self.assertIn("nothing", r["reason"])
+
+
+if __name__ == "__main__":
+    unittest.main()

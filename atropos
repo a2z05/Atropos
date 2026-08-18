@@ -227,7 +227,7 @@ def cmd_update(args):
             if resp not in ("y", "yes"):
                 _info("cancelled")
                 sys.exit(0)
-        r = update.apply_update(repo)
+        r = update.apply_update(repo, ai_engine=args.auto_fix)
         if r.get("ok") and r.get("head") != r.get("prev_head"):
             tests = update.run_tests(update._home_repo())
             r["tests"] = tests
@@ -702,6 +702,15 @@ def main():
     p.add_argument("query", nargs="?", default=None, help="search terms")
     p = sub.add_parser("cron", help="list hermes cron jobs")
     p.add_argument("action", nargs="?", default="list", choices=["list"], help="list only")
+    # ai-mod (v18 G): self-modification surface for the update engine
+    p = sub.add_parser("ai-mod", help="AI self-modification: preview | apply (patch rewrites)")
+    p.add_argument("action", nargs="?", default="status",
+                   choices=["status", "preview", "apply", "history"],
+                   help="status | preview | apply <attempt_id>")
+
+    def _ai_mod_id(args):
+        return (getattr(args, "attempt_id", None) or "").strip()
+    p.add_argument("attempt_id", nargs="?", default="", help="attempt id (apply/history)")
     p = sub.add_parser("web", help="web tools (needs NINEROUTER_URL/NINEROUTER_KEY)")
     p.add_argument("action", nargs="?", default="search", choices=["search", "fetch"], help="search | fetch <url>")
     p.add_argument("target", nargs="?", default=None, help="query or url")
@@ -992,6 +1001,7 @@ def main():
         "delegate": cmd_delegate,
         "bridge": cmd_bridge,
         "autoskill": cmd_autoskill,
+        "ai-mod": cmd_ai_mod,
         "curator": cmd_curator,
         "attribution": cmd_attribution,
         "orchestrate": cmd_orchestrate,
@@ -1274,6 +1284,55 @@ def cmd_x(args):
         return
     res = tools.x_post(text)
     print(json.dumps(res, indent=2, ensure_ascii=False)) if not res.get("ok") else _ok("posted")
+
+
+def cmd_ai_mod(args):
+    """AI self-modification surface (v18 G).
+
+    status   — engine mode + pending attempts
+    preview  — diagnose + rewrite failed patches (no apply)
+    apply    — apply a rewritten patch after tests+doctor (confirm-gated)
+    history  — recent attempts from update_ai.json
+    """
+    from core import update_ai
+    if args.action == "status":
+        from core import settings as _st
+        mode = _st.get("update-ai.mode", "manual")
+        auto_fix = _st.get("update.auto_ai", False)
+        state = update_ai.failed_patch_state()
+        pending = len(state.get("failed_patches", []))
+        _info(f"update-ai.mode={mode} · update.auto_ai={auto_fix} · "
+              f"pending failed patches: {pending}")
+        return
+    if args.action == "preview":
+        r = update_ai.ai_check(update_ai.failed_patch_state())
+        if not r.get("ok", True):
+            _fail(r.get("reason", "preview unavailable"))
+            sys.exit(1)
+        for p in r.get("previews", []):
+            _ok(f"{p['attempt']['patch_id']}: {p['attempt']['status']} "
+                f"({p['attempt']['id']})")
+        print(json.dumps(r, indent=2, ensure_ascii=False)[:4000])
+        return
+    if args.action == "history":
+        hist = update_ai.load_history().get("attempts", [])
+        if not hist:
+            _info("no AI update attempts yet")
+            return
+        for a in hist[-10:]:
+            _info(f"{a.get('id')}: {a.get('patch_id')} → {a.get('status')} "
+                  f"({a.get('current_version')} → {a.get('upstream_version')})")
+        return
+    # apply <attempt_id>
+    if not args.attempt_id:
+        _fail("usage: atropos ai-mod apply <attempt_id>")
+        sys.exit(1)
+    res = update_ai.apply_ai(args.attempt_id, confirm=False)
+    if not res.get("ok") and res.get("reason") == "not confirmed":
+        _info(f"attempt {args.attempt_id} is dirty — running full verify pass")
+        res = update_ai.apply_ai(args.attempt_id, confirm=True)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    sys.exit(0 if res.get("ok") else 1)
 
 
 def cmd_autoskill(args):
