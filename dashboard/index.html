@@ -2667,7 +2667,10 @@ async function loadSkills() {
   for (const s of skills) {
     const row = document.createElement('div');
     row.className = 'row';
-    row.innerHTML = `<span class="ico" style="font-size:13px;">✦</span><span class="nm">${esc(s.name)}</span><span class="sub">${esc(s.path)}</span><span class="desc">${esc(s.head || '').slice(0, 90)}</span>`;
+    const lint = (s.lint && s.lint.length) ? `<span class="tag off" title="${esc(s.lint.join(' · '))}">lint ✗</span>` : '';
+    const lc = s.lifecycle && s.lifecycle !== 'active'
+      ? `<span class="tag ${s.lifecycle === 'archived' ? 'off' : 'warn'}">${esc(s.lifecycle)}</span>` : '';
+    row.innerHTML = `<span class="ico" style="font-size:13px;">✦</span><span class="nm">${esc(s.name)}</span>${lc}${lint}<span class="sub">${esc(s.path)}</span><span class="desc">${esc(s.head || '').slice(0, 90)}</span>`;
     l.appendChild(row);
   }
 }
