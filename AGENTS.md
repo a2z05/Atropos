@@ -72,6 +72,41 @@ Consumers run `npm i -g atropos-hs` or `atropos install` (symlink/copy into
 `~/.local/bin`; on Windows the install copies a self-contained runtime).
 Changes to packaging go in `package.json` + `bin/atropos-dashboard`.
 
+## v18 addendum (1.4.2-beta) — Hermes ports + dashboard + migration
+
+- **Copy > reinvent (v18 A.1)**: every Hermes port cites its source path in
+  the module docstring and documents deviations. `core/approve.py`
+  (approval.py), `core/safety.py` (write_approval + file_state),
+  `core/documents.py` (read_extract.py), `core/kanban.py`, `core/cron.py`,
+  `core/search.py`, `core/web.py`, `core/railway.py`, `core/x.py`,
+  `core/sync_live.py`, `core/ha.py`, `core/tts.py`, `core/vision.py`,
+  `core/imagine.py`, `core/delegate.py` — each with hermetic parity tests.
+- **Approval gate** is the middleware `approval` filter (`before_tool`,
+  fail-closed headless) + `approvals.*` settings + `atropos approve`
+  CLI. The 77 dangerous + 12 hardline regexes are byte-identical to Hermes
+  (AST-verified in tests). Hardline is never bypassable — not even yolo /
+  `approvals.mode: off`.
+- **Settings surface**: new groups `approvals.*` (7 keys) and
+  `safety.write_approval`. Register every new key in `SETTINGS_SCHEMA` or
+  `settings.set` raises `unknown setting`.
+- **CLI registration contract** (from round 2) extended: new commands
+  (`approve`, `ai-mod`, `autoskill`, `curator`, `attribution`,
+  `orchestrate`, `migrate`) are in the subparsers AND the handlers dict
+  AND `tests/test_parity.py` CLAIMED.
+- **Migration (v18 J)**: `atropos migrate plan|apply|undo` — plan is a
+  pure dry-run; apply requires `--yes`; every import snapshots to
+  `backups/migrate_<ts>/` (timestamps use `-`, not `:`, on Windows) and
+  logs `migrations.jsonl`.
+- **Sealed guest memory (v18 K)**: `guest.record_sealed` never echoes
+  content; `sealed_owner_view()` returns counts only. Never leak sealed
+  note text into any owner-facing surface.
+- **Dashboard Command Center (v18 L)**: `index.html` has the `cmd-hero`
+  landing with 7 `data-go` quick actions and `loadCmdStatus`; `chat.html`
+  has the `welcome-card`. The `/api/*` endpoints are the contract — never
+  break them in a redesign.
+- **install.sh** is the one-liner curl|sh installer (py3.10+, idempotent
+  clone to `~/.atropos`, PATH hint). Keep it POSIX-sh compatible.
+
 ## Round 2 (1.4.1) — human-feel + UX layer
 
 - **i18n lives in `languages/*.json`** (en.json master, partial files fall
