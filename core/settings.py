@@ -308,6 +308,10 @@ SETTINGS_SCHEMA = {
     "telegram.guests": {"type": "choice", "default": "allow",
                         "choices": ["allow", "readonly", "deny"], "group": "telegram",
                         "description": "What strangers can do: allow | readonly | deny"},
+    "telegram.ops_allowed": {"type": "list", "default": [], "group": "telegram",
+                              "description": "Per-chat bot-ops allowlist (chat ids or 'all') (v18 G)"},
+    "telegram.ops_confirm_seconds": {"type": "int", "default": 60, "group": "telegram",
+                                     "description": "Two-step confirm window for destructive bot ops (v18 G)"},
     # ---- appearance (dashboard + CLI/TUI themes) ----
     "theme": {"type": "choice", "default": "dark",
               "choices": ["black", "dark", "light", "sepia", "midnight", "matrix",
