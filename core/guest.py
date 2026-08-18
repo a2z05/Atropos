@@ -13,6 +13,7 @@ real sessions — but the CONTEXT they see is filtered:
 The private-term list holds the owner handle and project identifiers; it
 is the single place to edit when ownership changes.
 """
+import json
 import re
 from pathlib import Path
 
@@ -144,6 +145,61 @@ def respond_guard(text: str) -> str | None:
     if touches_private(text) or _PROBE_RE.search(text or ""):
         return _REDIRECT
     return None
+
+
+# ── sealed guest memory (v18 K: guests know, cannot tell) ───────────────
+# A guest can store notes during their session (they "know"), but those
+# notes are sealed: never shown to the owner, never exported, never synced.
+SEALED_TAG = "sealed"
+_sheet = "sealed_memory.json"
+
+
+def _sealed_path() -> Path:
+    return detect.atropos_home() / _sheet
+
+
+def sealed_memory() -> list:
+    """The sealed store: {ts, user, text} entries (owner view of what exists,
+    no content unless owner explicitly asks — the content itself stays under
+    the guest's session)."""
+    try:
+        data = json.loads(_sealed_path().read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except (OSError, ValueError):
+        pass
+    return []
+
+
+def record_sealed(user: str, text: str) -> dict:
+    """A guest stores a sealed note. Returns {ok, count} — the note itself is
+    never echoed back."""
+    notes = sealed_memory()
+    notes.append({"ts": _now(), "user": str(user), "text": text})
+    _sealed_path().parent.mkdir(parents=True, exist_ok=True)
+    _sealed_path().write_text(json.dumps(notes, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+    return {"ok": True, "count": len(notes)}
+
+
+def sealed_visible(user: str) -> list:
+    """Sealed notes visible to a guest in their own session (their own +
+    any sealed-to-them). Never visible to the owner."""
+    return [n for n in sealed_memory() if str(n.get("user", "")) == str(user)]
+
+
+def sealed_owner_view() -> list:
+    """Owner-facing summary: counts per user — content stays sealed even from
+    the owner (know the guest has secrets, cannot read them)."""
+    counts = {}
+    for n in sealed_memory():
+        counts[str(n.get("user", ""))] = counts.get(str(n.get("user", "")), 0) + 1
+    return [{"user": u, "count": c} for u, c in sorted(counts.items())]
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 # ── session isolation ────────────────────────────────────────────────────

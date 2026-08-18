@@ -326,8 +326,19 @@ def cmd_version(args):
 
 def cmd_guest(args):
     # bare "atropos guest" without flags shows status
-    if not args.status and not args.toggle and getattr(args, "test", None) is None:
+    if not args.status and not args.toggle and getattr(args, "test", None) is None \
+            and not getattr(args, "sealed", False):
         args.status = True
+    if getattr(args, "sealed", False):
+        from core import guest as _guest
+        view = _guest.sealed_owner_view()
+        if not view:
+            print("  Sealed guest memory: empty (nothing stored yet).")
+        else:
+            print("  Sealed guest memory (counts only — content stays sealed):")
+            for row in view:
+                print(f"    · {row['user']}: {row['count']} note(s)")
+        sys.exit(0)
     if getattr(args, "test", None) is not None:
         from core import i18n
         pv = guest.preview(args.test)
@@ -619,6 +630,8 @@ def main():
     p.add_argument("--toggle", action="store_true", help="enable/disable guest mode")
     p.add_argument("--test", type=str, default=None, metavar="MSG",
                    help="preview exactly what a guest would see for a message")
+    p.add_argument("--sealed", action="store_true",
+                   help="sealed guest-memory summary (counts only — content stays sealed)")
     p = sub.add_parser("logs",    help="tail recent gateway logs")
     p.add_argument("--tail", type=int, default=40, help="number of lines")
     p = sub.add_parser("config",  help="get/set config keys")
@@ -652,6 +665,15 @@ def main():
     p.add_argument("--list", action="store_true", help="list backups")
     p.add_argument("--restore", type=str, default=None, help="backup name to restore")
     p.add_argument("--prune", type=int, default=None, help="keep N most recent")
+    # migrate (v18 J: ask-first, revertible import)
+    p = sub.add_parser("migrate", help="import external Hermes state (ask-first, revertible)")
+    p.add_argument("action", nargs="?", default="plan",
+                   choices=["plan", "apply", "undo", "history"],
+                   help="plan (dry-run) | apply | undo | history")
+    p.add_argument("--yes", action="store_true", help="confirm apply/undo (ask-first gate)")
+    p.add_argument("--source", type=str, default=None, help="source home (default $HERMES_HOME)")
+    p.add_argument("--kinds", type=str, default=None,
+                   help="comma list: config|memory|skills (default all)")
     # skills
     p = sub.add_parser("skills", help="universal skill management")
     p.add_argument("--list", action="store_true", help="list skills")
@@ -955,6 +977,7 @@ def main():
         "version": cmd_version,
         "watch": cmd_watch,
         "backup": cmd_backup,
+        "migrate": cmd_migrate,
         "skills": cmd_skills,
         "effort": cmd_effort,
         "settings": cmd_settings,
@@ -1583,6 +1606,40 @@ def cmd_watch(args):
             for a in results["alerts"]:
                 _warn(a)
         print(json.dumps(results, indent=2, ensure_ascii=False))
+
+
+def cmd_migrate(args):
+    from core import migrate
+    kinds = [k.strip() for k in (args.kinds or "").split(",") if k.strip()] or None
+    if args.action == "plan":
+        import json as _json
+        print(_json.dumps(migrate.import_plan(args.source, kinds), indent=2, ensure_ascii=False))
+    elif args.action == "apply":
+        r = migrate.import_apply(args.source, kinds, yes=args.yes, replace=False)
+        if not r["ok"]:
+            _fail(r.get("reason", "import failed"))
+            sys.exit(1)
+        _ok(f"imported: config {len(r['imported'].get('config', []))} keys, "
+            f"memory +{r['imported'].get('memory', 0)} notes, "
+            f"skills {len(r['imported'].get('skills', []))}")
+        print(f"  backup: {r.get('backup', '')}")
+        print("  undo with: atropos migrate undo --yes")
+    elif args.action == "undo":
+        r = migrate.undo(yes=args.yes)
+        if not r["ok"]:
+            _fail(r.get("reason", "undo failed"))
+            sys.exit(1)
+        _ok(f"restored: {', '.join(r.get('restored', [])) or 'nothing'}")
+        if r.get("removed_skills"):
+            print(f"  removed skills: {', '.join(r['removed_skills'])}")
+    elif args.action == "history":
+        rows = migrate.history(20)
+        if not rows:
+            _info("no migrations yet")
+        else:
+            for row in rows:
+                print(f"  {row.get('ts', '?')} {row.get('action', '?')} "
+                      f"from {row.get('source', '?')}")
 
 
 def cmd_backup(args):
