@@ -804,5 +804,86 @@ class CronParityTests(_HermeticMixin):
         self.assertTrue(jobs[0]["enabled"])
 
 
+class KanbanParityTests(_HermeticMixin):
+    """core/kanban.py — ported from hermes-agent/tools/kanban_tools.py
+    (+ hermes_cli/kanban_db.py status/route semantics)."""
+
+    def test_add_card_gets_id_and_lands_in_column(self):
+        from core import kanban
+        res = kanban.add("write the doc")
+        self._assert_mock_ok(res)
+        card = res["card"]
+        self.assertTrue(card["id"].startswith("t_"))
+        self.assertEqual(len(card["id"]), 10)  # t_ + 4 hex bytes
+        self.assertEqual(card["text"], "write the doc")
+        self.assertIn("ts", card)
+        b = kanban.board()
+        self.assertEqual([c["id"] for c in b["cols"]["todo"]], [card["id"]])
+        self.assertEqual(b["index"][card["id"]]["col"], "todo")
+
+    def test_add_unknown_column_falls_back_to_todo(self):
+        from core import kanban
+        res = kanban.add("mystery card", col="investigate")
+        self._assert_mock_ok(res)
+        self.assertEqual(res["col"], "todo")
+        self.assertIn(res["card"]["id"], kanban.board()["index"])
+
+    def test_move_card_between_columns_and_same_column_reorder(self):
+        from core import kanban
+        a = kanban.add("task a")["card"]["id"]
+        b1 = kanban.add("task b")["card"]["id"]
+        c = kanban.add("task c", col="doing")["card"]["id"]
+        # move b a -> doing: card keeps order, moves_at stamped
+        res = kanban.move(b1, "doing")
+        self._assert_mock_ok(res)
+        self.assertEqual(res["col"], "doing")
+        self.assertEqual(res["status"], "doing")
+        self.assertIn("moved_at", res["card"])
+        doing = [x["id"] for x in kanban.board()["cols"]["doing"]]
+        self.assertEqual(doing, [c, b1])
+        # move b to done
+        res = kanban.move(b1, "done")
+        self.assertEqual(res["status"], "done")
+        # reorder inside done with pos=0
+        res = kanban.move(c, "done", pos=0)
+        self.assertEqual(res["pos"], 0)
+        done = [x["id"] for x in kanban.board()["cols"]["done"]]
+        self.assertEqual(done, [c, b1])
+        # source column lost the card
+        self.assertNotIn(c, kanban.board()["cols"]["doing"])
+
+    def test_move_unknown_card_returns_error(self):
+        from core import kanban
+        res = kanban.move("t_ffffffff", "done")
+        self.assertFalse(res.get("ok"))
+        self.assertIn("not found", res.get("error", ""))
+
+    def test_add_rejects_empty_text_and_move_rejects_bad_pos(self):
+        from core import kanban
+        res = kanban.add("   ")
+        self.assertFalse(res.get("ok"))
+        card = kanban.add("pos check")["card"]["id"]
+        res = kanban.move(card, "todo", pos=-3)
+        self.assertFalse(res.get("ok"))
+        res = kanban.move(card, "todo", pos="x")
+        self.assertFalse(res.get("ok"))
+
+    def test_metadata_note_rides_on_card(self):
+        from core import kanban
+        res = kanban.add("meta card", priority=2)
+        self._assert_mock_ok(res)
+        self.assertEqual(res["card"]["priority"], 2)
+        self.assertIn("priority", kanban.board()["index"][res["card"]["id"]]["card"])
+
+    def test_kanban_tools_shim_json_store_reads_new_board(self):
+        # The tools.py shim reads the same kanban.json the port writes —
+        # "keeping the JSON store" bit of the port contract.
+        from core import kanban, tools
+        res = kanban.add("shim readable")
+        self._assert_mock_ok(res)
+        cols = tools.kanban_list()["cols"]
+        self.assertIn(res["card"]["id"], [x["id"] for x in cols["todo"]])
+
+
 if __name__ == "__main__":
     unittest.main()
