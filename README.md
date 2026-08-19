@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-6366f1?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6?style=flat-square)](LICENSE)
 [![stdlib only](https://img.shields.io/badge/stdlib%20only-22d3ee?style=flat-square)](#rules)
-[![861 tests](https://img.shields.io/badge/tests-861%20green-34d399?style=flat-square)](#tests)
+[![889 tests](https://img.shields.io/badge/tests-889%20green-34d399?style=flat-square)](#tests)
 [![PRs welcome](https://img.shields.io/badge/PRs%20welcome-34d399?style=flat-square)](https://github.com/arophin/Atropos)
 
 > **Atropos** (Ἄτροπος) — the Greek Fate who cuts the thread at the appointed moment: *she who cannot be turned.*
@@ -177,7 +177,23 @@ Chat round-2: per-message actions (copy / regenerate / edit-and-resend / delete 
 
 ---
 
-## 🖥 CLI reference — 69 commands
+## 🧵 Session Engine — one session for everything
+
+The Single Session Engine routes every conversation (Telegram, dashboard
+chat, CLI REPL, agents) through ONE logical entry that decides per message
+which session it belongs to. **The reply starts before any deep
+classification finishes — always.** Modes:
+
+- **unified** — one session per surface; topics are thread markers inside it. 0 extra ms.
+- **auto-split** — a new session per topic, auto-created/resumed by a stdlib keyword classifier (~0.1ms/msg). 0 ms for ~80% of messages.
+- **hybrid** — unified base; very-confident new topics split into sub-sessions.
+
+All tunables live in `settings.session_engine.*` (per-surface overrides
+via `session_engine.surfaces.*`). CLI: `atropos sessions list|current|threads|route|merge|pin|stats|explain|mode`. Telegram: `/session`, `/thread <name>`. Dashboard: Sessions panel + `POST /api/session_engine/*`. See `docs/SESSION_ENGINE.md`.
+
+---
+
+## 🖥 CLI reference — 70 commands
 
 Bare `atropos` opens the **menu UI** (numbered actions, arrow keys, `/` commands — a trimmed Claude Code-style shell). `atropos repl` is the interactive REPL with `/doctor`, `/backup`, `/lore`…; both are terminal-theme aware. Global flags: `--lang <code>`, `--theme <name>`, `--json`.
 
@@ -253,6 +269,7 @@ Bare `atropos` opens the **menu UI** (numbered actions, arrow keys, `/` commands
 | `atropos approve check\|mode\|allow\|deny` | 🆕 Dangerous-command gate (Hermes approval.py port) |
 | `atropos ai-mod status\|preview\|apply` | 🆕 AI self-modification (patch rewrites) |
 | `atropos autoskill / curator / attribution` | 🆕 Auto-improve lifecycle (usage, curation, audit) |
+| `atropos sessions list\|current\|threads\|route\|merge\|pin\|stats\|explain\|mode` | 🆕 **Session Engine** (v19): one session for everything — unified/auto-split/hybrid |
 
 ---
 

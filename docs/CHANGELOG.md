@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.0-beta] — 2026-08-19 (v19: Single Session Engine)
+
+### Added
+- **Single Session Engine (`core/session_engine.py` + `core/session_classify.py`)** — one logical entry for every conversation (Telegram, dashboard chat, CLI REPL, agents). Three inheritable modes per surface (unified / auto-split / hybrid), fully configurable via `settings.session_engine.*` (mode cards + tunables render automatically in the Settings panel). **Speed guarantee is a hard requirement**: the reply always starts in the current session before any deep classification finishes — the cheap classifier is stdlib-only keyword scoring (~0.1 ms/message, 10k-message bench asserts <3ms) with an affinity rule (0 added latency for the common path), confidence gate, and mirror/copy-on-write for deep-switch corrections (copy-not-move, `/session unmirror` undo).
+- **Cheap classifier** — token/stopword/n-gram scoring over session titles + topic keywords + a built-in multi-topic dictionary; user-extendable `~/.atropos/session_topics.yaml`; dictionary grows automatically from split sessions (per-user, per-language).
+- **Session store tables** in `chat.db` — `threads`, `message_topics`, `mirror_links`, `session_meta` (topic keywords, auto-split flags).
+- **CLI** — `atropos sessions list|current|threads|route|merge|pin|stats|explain|mode [--surface X]` (+ `_dispatch_cmd` handles positional args for menu/REPL); REPL `/session`, `/thread <name>`, `/end`; prompt shows `session-id·thread`.
+- **Telegram** — `/session`, `/session explain <msg>`, `/thread <name>`, `/end`; every free-form message routes through the engine before `chat.send` (step-trail unaffected).
+- **Dashboard** — Sessions panel gains a Session Engine card (mode select, splits/mirrors/threads, per-session threads + mirror badges + route button, explain box). API: `POST /api/session_engine/config`, `/api/session_engine/stats`, `/api/session_engine/explain`, `/api/sessions/route`, `/api/sessions/merge`, `/api/sessions/detailed`.
+- **settings.py** — new `session_engine` group (13 keys incl. per-surface override `session_engine.surfaces.*` with `off` bypass); `float` schema type added.
+- `docs/SESSION_ENGINE.md` — concepts, modes, tunables, examples.
+
+### Changed
+- `core/chat.py`: public `session_exists()` + `message_count()` helpers.
+- `core/cliui.py`: REPL slash table + `/thread`/`/end` handling + session-aware prompt.
+- `core/telegram.py`: `/session`/`/thread`/`/end` commands + engine hook on free-form messages.
+- `core/dashboard.py`: 6 new session-engine API endpoints.
+- README: Session Engine section, CLI 70 commands, 889 tests badge.
+- BETA: VERSION → 1.5.0-beta, package.json → 1.5.0-beta.
+
 ## [1.4.2-beta] — 2026-08-18 (v18 addendum: ports + dashboard + migration)
 
 ### Added

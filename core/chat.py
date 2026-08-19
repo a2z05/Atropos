@@ -320,6 +320,26 @@ def _session_exists(session_id: str) -> bool:
         conn.close()
 
 
+def session_exists(session_id: str) -> bool:
+    """Public existence check (used by the session engine's registry)."""
+    if not session_id:
+        return False
+    _init_db()
+    return _session_exists(session_id)
+
+
+def message_count(session_id: str) -> int:
+    """Message count of a session (used by the session engine's depth gates)."""
+    _init_db()
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT COUNT(*) c FROM messages WHERE session_id = ?",
+                           (session_id,)).fetchone()
+        return row["c"] if row else 0
+    finally:
+        conn.close()
+
+
 def _insert_message(conn, session_id, role, content, harness, model, effort,
                     latency_ms, ts, tokens=None):
     conn.execute(

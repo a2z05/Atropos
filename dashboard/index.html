@@ -1088,6 +1088,23 @@
           <h3><span class="dot"></span>Recent sessions <span class="right" id="sess-hint">click a View for message trace</span></h3>
           <div id="sess-list"><div class="log-empty">Loading…</div></div>
         </section>
+        <!-- v19 M5: Session Engine -->
+        <section class="card span-4">
+          <h3><span class="dot"></span>Session Engine <span class="right" id="se-mode"></span></h3>
+          <div id="se-stats"><div class="log-empty">Loading…</div></div>
+          <div class="row" style="margin-top:8px">
+            <select id="se-mode-select" onchange="seSetMode(this.value)">
+              <option value="unified">Unified</option>
+              <option value="auto-split">Auto-split</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+            <a class="btn ghost" onclick="seExplain()">Explain msg</a>
+          </div>
+        </section>
+        <section class="card span-8">
+          <h3><span class="dot"></span>Threads &amp; mirrors <span class="right" id="se-thread-hint">threads organize, mirrors copy-not-move</span></h3>
+          <div id="se-threads"><div class="log-empty">No engine activity yet.</div></div>
+        </section>
       </div>
     </section>
 
@@ -2268,7 +2285,7 @@ function showPanel(name) {
     doctor: [loadDoctor],
     patches: [loadPatches],
     routers: [loadRouter, loadRouteTest, loadRouterModels, loadRouterSparklines],
-    sessions: [loadSessions],
+    sessions: [loadSessions, loadSessionEngine],
     cron: [loadCron],
     skills: [loadSkills],
     plugins: [loadPlugins],
@@ -2721,6 +2738,66 @@ async function loadSessions() {
       `<td>${id ? `<button class="btn" style="font-size:10.5px;padding:3px 8px;" onclick="loadSessionTrace('${esc(String(id))}')">View</button>` : '—'}</td></tr>`;
   }
   l.innerHTML = html + '</table>';
+}
+
+/* ── Session Engine (v19 M5) ────────────────────────────────────────── */
+async function loadSessionEngine() {
+  try {
+    const [cfg, stats, detailed] = await Promise.all([
+      api('/api/session_engine/config', {}, 'POST'),
+      api('/api/session_engine/stats', {}, 'POST'),
+      api('/api/sessions/detailed', {}, 'POST'),
+    ]);
+    if (cfg && cfg.ok) {
+      document.getElementById('se-mode').textContent = cfg.mode;
+      const sel = document.getElementById('se-mode-select');
+      sel.value = cfg.mode;
+    }
+    if (stats && stats.ok) {
+      document.getElementById('se-stats').innerHTML =
+        `<div class="kv"><span class="k">mode</span><span class="v">${esc(stats.mode)}</span></div>` +
+        `<div class="kv"><span class="k">splits</span><span class="v">${esc(stats.splits)}</span></div>` +
+        `<div class="kv"><span class="k">mirrors</span><span class="v">${esc(stats.mirrors)}</span></div>` +
+        `<div class="kv"><span class="k">threads</span><span class="v">${esc(stats.threads)}</span></div>` +
+        `<div class="kv"><span class="k">surfaces</span><span class="v">${esc(Object.values(stats.surfaces || {}).join(', '))}</span></div>`;
+    }
+    const t = document.getElementById('se-threads');
+    if (!detailed.ok || !detailed.sessions || !detailed.sessions.length) {
+      t.innerHTML = '<div class="log-empty">No engine activity yet — start chatting.</div>';
+      return;
+    }
+    let html = '';
+    for (const s of detailed.sessions) {
+      const threads = (s.threads || []).map(x => `<span class="tag">${esc(x.label)}·${esc(x.msg_count)}</span>`).join(' ');
+      const mirrors = (s.mirrors || []).filter(m => !m.undone).length;
+      html += `<div class="row" style="align-items:center">
+        <span class="tag ${s.auto_split ? 'on' : ''}">${s.auto_split ? 'split' : 'chat'}</span>
+        <span class="nm">${esc(s.title.slice(0, 40))}</span>
+        <span class="sub">${(s.keywords || []).slice(0, 4).join(', ')}</span>
+        <span class="desc">${threads}${mirrors ? ` <span class="tag">mirror×${mirrors}</span>` : ''}</span>
+        <button class="btn ghost" style="font-size:10.5px;padding:3px 8px;" onclick="seRoute('${esc(s.id)}')">route</button>
+      </div>`;
+    }
+    t.innerHTML = html;
+  } catch (e) {
+    document.getElementById('se-threads').innerHTML = '<div class="log-empty">engine API unavailable</div>';
+  }
+}
+async function seSetMode(mode) {
+  const r = await api('/api/session_engine/config', { mode }, 'POST');
+  if (r && r.ok) { document.getElementById('se-mode').textContent = mode; loadSessionEngine(); }
+}
+async function seRoute(sid) {
+  const r = await api('/api/sessions/route', { session_id: sid, surface: 'cli' }, 'POST');
+  if (r && r.ok) alert('routed to ' + sid.slice(0, 8));
+}
+function seExplain() {
+  const msg = prompt('Explain routing for message:');
+  if (!msg) return;
+  api('/api/session_engine/stats', {}, 'POST').then(() => {
+    fetch('/api/session_engine/explain', { method: 'POST', body: JSON.stringify({ message: msg }) })
+      .then(r => r.json()).then(d => alert(d.text || d.error || 'explain unavailable'));
+  });
 }
 
 /* ── cron ─────────────────────────────────────────────────────────────── */

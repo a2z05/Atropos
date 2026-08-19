@@ -301,6 +301,8 @@ _COMMANDS = {
     "/status": "System overview",
     "/new": "Start a fresh session",
     "/sessions": "List sessions",
+    "/session": "Session engine: current session/thread",
+    "/thread": "Start a manual thread (/thread <name>), /end to close",
     "/stop": "Stop the gateway",
 }
 
@@ -342,6 +344,36 @@ def route_command(cmd: str, chat_id, user_id) -> list:
         rows = chat.session_list(5)
         text = "\n".join(f"· {s['title'][:40]}" for s in rows) or "No sessions yet."
         out.append((chat_id, "🧵 Sessions:\n" + text, None))
+    elif cmdc == "/session":
+        # Session Engine (v19 M4): current session + threads + decide status
+        from . import session_engine as _se
+        surface = "telegram"
+        parts = cmd.split()
+        if len(parts) > 1 and parts[1] == "explain":
+            msg = " ".join(parts[2:]) or "…"
+            out.append((chat_id, _se.explain(msg, surface), None))
+        else:
+            mode = _se.surface_mode(surface)
+            sid = _se._current.get(surface, "")
+            thr = _se._threads.get(surface, "") or "general"
+            st = _se.stats()
+            text = (f"🧵 Session: mode {mode}\n"
+                    f"   current: {sid[:8] if sid else '—'}\n"
+                    f"   thread: {thr}\n"
+                    f"   splits: {st['splits']} · mirrors: {st['mirrors']} · threads: {st['threads']}\n"
+                    f"   /session explain <msg> — why a message routes where it does")
+            out.append((chat_id, text, None))
+    elif cmdc == "/thread":
+        name = cmd.split(maxsplit=1)[1] if len(cmd.split()) > 1 else ""
+        from . import session_engine as _se
+        r = _se.set_thread("telegram", name)
+        out.append((chat_id,
+                    f"thread: {name or 'general'}" if r.get("ok")
+                    else f"error: {r.get('error', 'bad name')}", None))
+    elif cmdc == "/end":
+        from . import session_engine as _se
+        _se.set_thread("telegram", "")
+        out.append((chat_id, "thread ended — back to general", None))
     elif cmdc == "/stop":
         out.append((chat_id, "Gateway stopping. Goodbye ✦", None))
     elif cmdc == "/ops":
@@ -402,7 +434,7 @@ def _handle_update(upd: dict) -> None:
         return
     _LOGGER.info("from=%s mode=%s msg=%s", user_id, mode, text[:80])
     if text.startswith("/"):
-        if mode == "readonly" and text not in ("/status", "/doctor", "/lore", "/sessions", "/new"):
+        if mode == "readonly" and text not in ("/status", "/doctor", "/lore", "/sessions", "/session", "/new"):
             send_message(chat_id, "Guests are read-only here — ask the owner for more.")
             return
         for cid, t, btns in route_command(text.strip(), chat_id, user_id):
@@ -417,8 +449,13 @@ def _handle_update(upd: dict) -> None:
         send_message(chat_id, reply)
         return
     send_typing(chat_id)
-    from . import chat
-    res = chat.send(None, text, harness="auto")
+    from . import chat, session_engine as _se
+    # Session Engine hook (v19 M): decide the session per message, then
+    # send there. Reply NEVER waits on a deep classification.
+    ctx = _se.classify_message(text, "telegram")
+    target_sid = ctx.get("session_id")
+    res = chat.send(target_sid, text, harness="auto")
+    _se.submit_message(text, "telegram", target_sid)
     send_message(chat_id, res.get("reply", "…") or "…")
 
 

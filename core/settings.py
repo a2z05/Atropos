@@ -218,6 +218,60 @@ SETTINGS_SCHEMA = {
                                "description": "Extra operator rules appended to the smart-approval system prompt"},
     "approvals.denial_breaker_threshold": {"type": "int", "default": 3, "min": 0, "group": "approvals",
                                            "description": "Consecutive smart DENYs before the reply hard-stops (0 = off)"},
+    # ---- session engine (v19 M5: modes + tunables, per-surface overrides) ----
+    "session_engine.mode": {"type": "choice", "default": "unified",
+                            "choices": ["unified", "auto-split", "hybrid"],
+                            "group": "session_engine",
+                            "description": "unified = one session per surface with threads · auto-split = session per topic · hybrid = unified + confident topic splits"},
+    "session_engine.classifier": {"type": "choice", "default": "cheap",
+                                  "choices": ["cheap", "deep", "hybrid"],
+                                  "group": "session_engine",
+                                  "description": "cheap = keyword router (0-3ms) · deep = LLM every message (slower, opt-in) · hybrid = cheap + async deep check"},
+    "session_engine.affinity_bias": {"type": "float", "default": 0.8, "min": 0.0, "max": 1.0,
+                                     "group": "session_engine",
+                                     "description": "How strongly consecutive messages stay in the current session (0-1)"},
+    "session_engine.confidence_threshold": {"type": "float", "default": 0.6, "min": 0.0, "max": 1.0,
+                                            "group": "session_engine",
+                                            "description": "Gate for the async deep classifier / mirror (0-1)"},
+    "session_engine.mirror_on_deep_switch": {"type": "bool", "default": True,
+                                             "group": "session_engine",
+                                             "description": "Copy the exchange into the better session when a deep switch fires (copy-not-move)"},
+    "session_engine.new_topic_min_messages": {"type": "int", "default": 3, "min": 1,
+                                              "group": "session_engine",
+                                              "description": "Same-topic messages before a session is locked to that topic"},
+    "session_engine.session_titles": {"type": "choice", "default": "auto",
+                                      "choices": ["auto", "manual", "ask"],
+                                      "group": "session_engine",
+                                      "description": "auto = classifier keywords · manual = user names · ask = offer a name after 3rd message"},
+    "session_engine.max_sessions": {"type": "int", "default": 50, "min": 1, "group": "session_engine",
+                                    "description": "Auto-split session cap; beyond → reuse oldest non-pinned"},
+    "session_engine.hybrid_confidence": {"type": "float", "default": 0.9, "min": 0.0, "max": 1.0,
+                                         "group": "session_engine",
+                                         "description": "Hybrid split gate: cheap-classifier confidence needed to split out a new topic"},
+    "session_engine.hybrid_min_depth": {"type": "int", "default": 25, "min": 1,
+                                        "group": "session_engine",
+                                        "description": "Hybrid: minimum session messages before any split is allowed"},
+    "session_engine.hybrid_max_split_sessions": {"type": "int", "default": 6, "min": 1,
+                                                 "group": "session_engine",
+                                                 "description": "Hybrid: cap on split-out sub-sessions"},
+    # per-surface overrides (telegram / dashboard / cli / agents) — every
+    # tunable above can be overridden per surface by prefixing "surfaces."
+    "session_engine.surfaces.telegram": {"type": "choice", "default": None,
+                                         "choices": ["unified", "auto-split", "hybrid", "off"],
+                                         "group": "session_engine",
+                                         "description": "Telegram surface override (off = engine off for this surface)"},
+    "session_engine.surfaces.dashboard": {"type": "choice", "default": None,
+                                          "choices": ["unified", "auto-split", "hybrid", "off"],
+                                          "group": "session_engine",
+                                          "description": "Dashboard surface override"},
+    "session_engine.surfaces.cli": {"type": "choice", "default": None,
+                                    "choices": ["unified", "auto-split", "hybrid", "off"],
+                                    "group": "session_engine",
+                                    "description": "CLI surface override"},
+    "session_engine.surfaces.agents": {"type": "choice", "default": None,
+                                       "choices": ["unified", "auto-split", "hybrid", "off"],
+                                       "group": "session_engine",
+                                       "description": "Agents surface override"},
     # ---- jailbreak ----
     "jailbreak.auto_apply": {"type": "bool", "default": False, "group": "jailbreak",
                              "description": "Re-apply all jailbreak bypasses on doctor --fix"},
@@ -349,6 +403,7 @@ GROUPS = [
     "routing", "mcp", "identity", "configs", "lan", "chat",
     "fleet", "memory", "budget", "links", "activity", "snapshots",
     "sync", "update-ai", "webhooks", "permissions", "middleware", "telegram",
+    "session_engine",
 ]
 
 
@@ -410,6 +465,23 @@ def _coerce(spec: dict, value):
             num = int(value)
         else:
             raise ValueError(f"expected an integer, got {type(value).__name__}")
+        if "min" in spec and num < spec["min"]:
+            raise ValueError(f"must be >= {spec['min']}")
+        if "max" in spec and num > spec["max"]:
+            raise ValueError(f"must be <= {spec['max']}")
+        return num
+    if t == "float":
+        if isinstance(value, bool):
+            raise ValueError("expected a number, got a boolean")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            num = float(value)
+        elif isinstance(value, str):
+            try:
+                num = float(value.strip())
+            except ValueError:
+                raise ValueError(f"expected a number, got {value!r}")
+        else:
+            raise ValueError(f"expected a number, got {type(value).__name__}")
         if "min" in spec and num < spec["min"]:
             raise ValueError(f"must be >= {spec['min']}")
         if "max" in spec and num > spec["max"]:
@@ -666,6 +738,10 @@ def import_yaml(text: str) -> dict:
                 break
             node = node[part]
         if present:
+            if node is None and spec.get("default") is None:
+                # explicit None = "use default" (optional choice override
+                # keys like session_engine.surfaces.*) — skip validation
+                continue
             _coerce(spec, node)  # raises on mismatch
     # unknown top-level keys? reject clearly
     known_prefixes = tuple(k.split(".")[0] for k in SETTINGS_SCHEMA)

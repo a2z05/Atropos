@@ -486,6 +486,111 @@ def api_sessions():
     }
 
 
+# ── v19 M5: Single Session Engine API ────────────────────────────────────
+def api_session_engine_config(payload=None):
+    """Session Engine config: mode cards + per-surface modes + tunables."""
+    from . import session_engine as _se, settings as _settings
+    cards = _se.MODE_CARDS
+    overrides = {}
+    for surface in ("telegram", "dashboard", "cli", "agents"):
+        overrides[surface] = _settings.get(f"session_engine.surfaces.{surface}", None)
+    return {
+        "ok": True,
+        "mode": _settings.get("session_engine.mode", "unified"),
+        "cards": cards,
+        "surfaces": {s: _se.surface_mode(s) for s in ("telegram", "dashboard", "cli", "agents")},
+        "overrides": overrides,
+        "tunables": {
+            "classifier": _settings.get("session_engine.classifier", "cheap"),
+            "affinity_bias": _settings.get("session_engine.affinity_bias", 0.8),
+            "confidence_threshold": _settings.get("session_engine.confidence_threshold", 0.6),
+            "mirror_on_deep_switch": _settings.get("session_engine.mirror_on_deep_switch", True),
+            "new_topic_min_messages": _settings.get("session_engine.new_topic_min_messages", 3),
+            "session_titles": _settings.get("session_engine.session_titles", "auto"),
+            "max_sessions": _settings.get("session_engine.max_sessions", 50),
+            "hybrid_confidence": _settings.get("session_engine.hybrid_confidence", 0.9),
+            "hybrid_min_depth": _settings.get("session_engine.hybrid_min_depth", 25),
+            "hybrid_max_split_sessions": _settings.get("session_engine.hybrid_max_split_sessions", 6),
+        },
+    }
+
+
+def api_session_engine_config_set(payload):
+    """POST /api/session_engine/config {mode?, surfaces?, tunables?}."""
+    from . import session_engine as _se, settings as _settings
+    errors = []
+    mode = (payload or {}).get("mode")
+    if mode:
+        try:
+            _settings.set("session_engine.mode", mode)
+        except ValueError as e:
+            errors.append(str(e))
+    surfaces = (payload or {}).get("surfaces") or {}
+    for surface, m in surfaces.items():
+        try:
+            _settings.set(f"session_engine.surfaces.{surface}", m)
+        except ValueError as e:
+            errors.append(f"{surface}: {e}")
+    tunables = (payload or {}).get("tunables") or {}
+    for key, val in tunables.items():
+        if key in ("classifier", "affinity_bias", "confidence_threshold",
+                   "mirror_on_deep_switch", "new_topic_min_messages",
+                   "session_titles", "max_sessions", "hybrid_confidence",
+                   "hybrid_min_depth", "hybrid_max_split_sessions"):
+            try:
+                _settings.set(f"session_engine.{key}", val)
+            except ValueError as e:
+                errors.append(f"{key}: {e}")
+    if errors:
+        return {"ok": False, "errors": errors}
+    return {"ok": True, "config": api_session_engine_config()}
+
+
+def api_session_engine_stats():
+    """POST /api/session_engine/stats — engine counters + mode state."""
+    from . import session_engine as _se
+    st = _se.stats()
+    st["ok"] = True
+    return st
+
+
+def api_sessions_route(payload):
+    """POST /api/sessions/route {session_id, surface} — manual route."""
+    from . import session_engine as _se
+    surface = (payload or {}).get("surface", "cli")
+    sid = (payload or {}).get("session_id", "")
+    if not sid:
+        return {"ok": False, "error": "session_id required"}
+    r = _se.switch_session(surface, sid)
+    r["surface"] = surface
+    return r
+
+
+def api_sessions_merge(payload):
+    """POST /api/sessions/merge {a, b, surface} — merge b into a."""
+    from . import session_engine as _se
+    surface = (payload or {}).get("surface", "cli")
+    a = (payload or {}).get("a", "")
+    b = (payload or {}).get("b", "")
+    return _se.merge_sessions(surface, a, b)
+
+
+def api_sessions_list_detailed(payload=None):
+    """GET/POST /api/sessions/detailed — engine-decorated sessions."""
+    from . import session_engine as _se
+    return {"ok": True, "sessions": _se.sessions_detailed()}
+
+
+def api_session_engine_explain(payload):
+    """POST /api/session_engine/explain {message} — decision trail."""
+    from . import session_engine as _se
+    msg = (payload or {}).get("message", "")
+    if not msg:
+        return {"ok": False, "error": "message required"}
+    surface = (payload or {}).get("surface", "cli")
+    return {"ok": True, "text": _se.explain(msg, surface)}
+
+
 def api_models():
     """Current default model + provider."""
     cfg = config.load()
@@ -2778,6 +2883,19 @@ class Handler(BaseHTTPRequestHandler):
             return api_middleware_action({**(payload or {}), "action": sub})
         if path == "/api/agents/run":
             return api_agents_action(payload)
+        # v19 M5: Session Engine endpoints
+        if path == "/api/session_engine/config":
+            return api_session_engine_config(payload)
+        if path == "/api/session_engine/stats":
+            return api_session_engine_stats()
+        if path == "/api/sessions/route":
+            return api_sessions_route(payload)
+        if path == "/api/sessions/merge":
+            return api_sessions_merge(payload)
+        if path == "/api/sessions/detailed":
+            return api_sessions_list_detailed(payload)
+        if path == "/api/session_engine/explain":
+            return api_session_engine_explain(payload)
         return {"ok": False, "error": f"unknown api: {path}"}
 
     def do_GET(self):
