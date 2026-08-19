@@ -389,7 +389,13 @@ def run(hook: str, ctx: dict, order: list | None = None) -> dict:
 
     Errors are isolated: a failing filter logs and continues. Returns the
     mutated ctx (possibly with rejected=True + reason for short-circuits).
+    Each filter pass records a breadcrumb (benchmark area 29 adoption) so
+    the decision trail is inspectable.
     """
+    try:
+        from . import errors
+    except Exception:
+        errors = None
     for key, fun, h in _all_filters(order):
         if h != hook:
             continue
@@ -400,7 +406,13 @@ def run(hook: str, ctx: dict, order: list | None = None) -> dict:
                     ctx = res
         except Exception as e:
             ctx.setdefault("filter_errors", []).append(f"{key}: {e}")
+            if errors:
+                errors.breadcrumb("middleware", f"{key} raised: {e}", "error")
         if ctx.get("rejected"):
+            if errors:
+                errors.breadcrumb("middleware",
+                                  f"{key} rejected ({ctx.get('reason', '')})",
+                                  "warn")
             break
     return ctx
 

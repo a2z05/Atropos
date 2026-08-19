@@ -17,6 +17,9 @@ import time
 MAX_CLIENTS = 32
 MAX_QUEUE = 200
 HEARTBEAT_SECONDS = 15
+# Last-Event-ID resume (benchmark area 44): keep a per-channel ring of the
+# most recent frames so a reconnecting client can replay what it missed.
+HISTORY_RING = 60
 
 
 class Hub:
@@ -25,6 +28,8 @@ class Hub:
     def __init__(self):
         self._clients = {}
         self._lock = threading.Lock()
+        self._counter = 0
+        self._history = {}  # channel -> [(event_id, frame_bytes), ...] ring
 
     # ── client lifecycle ──────────────────────────────────────────────
     def subscribe(self, client_id: str, q: queue.Queue):
@@ -55,21 +60,53 @@ class Hub:
 
     # ── fan-out ───────────────────────────────────────────────────────
     def broadcast(self, channel: str, data: dict):
-        """Push one frame to every subscriber of a channel."""
-        frame = json.dumps({"channel": channel, "data": data},
-                           ensure_ascii=False).encode("utf-8")
+        """Push one frame to every subscriber of a channel.
+
+        Frames are ``(event_id, channel, payload_bytes)``. The payload is
+        the legacy ``{"channel": ..., "data": ...}`` wrapper (the
+        dashboard's ``onmessage`` handler parses it); the stream ALSO
+        serializes the SSE ``event: <channel>`` field so native
+        ``addEventListener("status", ...)`` listeners work (benchmark
+        area 44 adoption)."""
         with self._lock:
+            self._counter += 1
+            eid = self._counter
+            payload = json.dumps({"channel": channel, "data": data},
+                                 ensure_ascii=False).encode("utf-8")
+            ring = self._history.setdefault(channel, [])
+            ring.append((eid, channel, payload))
+            if len(ring) > HISTORY_RING:
+                del ring[:len(ring) - HISTORY_RING]
             clients = list(self._clients.items())
         for cid, (q, _last) in clients:
             try:
-                q.put_nowait(frame)
+                q.put_nowait((eid, channel, payload))
             except queue.Full:
                 # drop-oldest then retry once
                 try:
                     q.get_nowait()
-                    q.put_nowait(frame)
+                    q.put_nowait((eid, channel, payload))
                 except Exception:
                     pass
+
+    def replay_from(self, client_id: str, q: queue.Queue, last_event_id: int | None) -> int:
+        """Replay frames newer than ``last_event_id`` for a reconnecting
+        client (SSE Last-Event-ID resume). Returns the next event id.
+
+        ``last_event_id`` may be 0 (replay everything in the ring — used
+        by tests and by clients without a prior id). ``None`` means "no
+        replay" (fresh client, future frames only)."""
+        if last_event_id is None:
+            return 1
+        with self._lock:
+            for channel, ring in self._history.items():
+                for eid, _ch, payload in ring:
+                    if eid > last_event_id:
+                        try:
+                            q.put_nowait((eid, _ch, payload))
+                        except queue.Full:
+                            break
+        return last_event_id
 
     def active_count(self) -> int:
         """Number of live subscribers."""
@@ -117,21 +154,28 @@ def start_status_broadcaster():
 
 
 # ── generator for the HTTP handler ────────────────────────────────────────
-def stream(client_id: str, timeout: float = 35.0):
+def stream(client_id: str, timeout: float = 35.0, last_event_id: int | None = None):
     """Yield SSE frames for one client until it stalls or disconnects.
 
     Yields ``str`` frames (already encoded "data: ..."). Heartbeat every
     HEARTBEAT_SECONDS; if the client hasn't consumed for ``timeout``
-    seconds it is unsubscribed and the stream ends.
+    seconds it is unsubscribed and the stream ends. Frames carry SSE
+    ``id:`` fields; a reconnecting client passes its Last-Event-ID to
+    replay everything missed (benchmark area 44 adoption).
     """
     q = queue.Queue(maxsize=MAX_QUEUE)
     hub.subscribe(client_id, q)
     last_pulse = time.monotonic()
+    if last_event_id is not None:
+        hub.replay_from(client_id, q, last_event_id)
+    # SSE retry hint + a named event for the initial snapshot
+    yield b"retry: 3000\n\n"
     try:
         while True:
             try:
-                frame = q.get(timeout=HEARTBEAT_SECONDS)
-                yield b"data: " + frame + b"\n\n"
+                eid, channel, payload = q.get(timeout=HEARTBEAT_SECONDS)
+                yield (f"id: {eid}\nevent: {channel}\n".encode("utf-8")
+                       + b"data: " + payload + b"\n\n")
                 hub.touch(client_id)
                 last_pulse = time.monotonic()
                 # also refresh the pulse deadline after real frames
