@@ -777,6 +777,15 @@ def main():
     p.add_argument("action", nargs="?", default="status",
                    choices=["status", "run"], help="status | run")
     p.add_argument("--consolidate", action="store_true", help="merge duplicates on run")
+    # sessions (v19 M5: the Single Session Engine CLI surface)
+    p = sub.add_parser("sessions", help="Single Session Engine: list|current|threads|route|merge|pin|stats|explain|mode")
+    p.add_argument("action", nargs="?", default="list",
+                   choices=["list", "current", "threads", "route", "merge",
+                            "pin", "stats", "explain", "mode"],
+                   help="what to show/do")
+    p.add_argument("args", nargs="*", default=None, help="session id / message / mode value")
+    p.add_argument("--surface", type=str, default="cli",
+                   help="surface: cli|dashboard|telegram|agents (default cli)")
     p = sub.add_parser("attribution", help="edit attribution log: who changed what")
     p.add_argument("file", nargs="?", default=None, help="file path to inspect")
     p.add_argument("--actor", default=None, help="actor on record")
@@ -1040,6 +1049,7 @@ def main():
         "ai-mod": cmd_ai_mod,
         "approve": cmd_approve,
         "curator": cmd_curator,
+        "sessions": cmd_sessions,
         "attribution": cmd_attribution,
         "orchestrate": cmd_orchestrate,
     }
@@ -1478,6 +1488,73 @@ def cmd_autoskill(args):
         _ok(res.get("path", str(res))) if res.get("ok") else _fail(res.get("error", "save failed"))
 
 
+def cmd_sessions(args):
+    """Single Session Engine (v19 M): one session for everything.
+
+    list | current | threads | route <id> | merge <a> <b> | pin <id>
+    | stats | explain <msg> | mode [unified|auto-split|hybrid]
+    """
+    from core import session_engine as se, settings, cliui
+    surface = args.surface or "cli"
+    if args.action == "list":
+        rows = []
+        for s in se.sessions_detailed(surface):
+            rows.append([s["id"][:8], s["title"][:30],
+                         "✓" if s["auto_split"] else "",
+                         "/".join(t["label"] for t in s["threads"])[:24],
+                         str(s["message_count"])])
+        print(cliui.table(rows, headers=["id", "title", "split", "threads", "msgs"]))
+    elif args.action == "current":
+        sid = se._current.get(surface, "")
+        info = {}
+        for s in se.sessions_detailed(surface):
+            if s["id"] == sid:
+                info = s
+                break
+        print(f"  current session: {sid[:8]} {info.get('title', '')[:40]}")
+        print(f"  mode: {se.surface_mode(surface)}  thread: {se._threads.get(surface, '') or '—'}")
+    elif args.action == "threads":
+        rows = [[t["label"], t["msg_count"]]
+                for s in se.sessions_detailed(surface) for t in s["threads"]]
+        print(cliui.table(rows, headers=["thread", "msgs"]) if rows else "  no threads yet")
+    elif args.action == "route":
+        if not args.args:
+            _fail("usage: atropos sessions route <session-id>")
+            return
+        r = se.switch_session(surface, args.args[0])
+        _ok(f"routed to {args.args[0][:8]}") if r.get("ok") else _fail(r.get("error", "route failed"))
+    elif args.action == "merge":
+        if not args.args or len(args.args) < 2:
+            _fail("usage: atropos sessions merge <sessionA> <sessionB>")
+            return
+        r = se.merge_sessions(surface, args.args[0], args.args[1])
+        _ok(f"merged into {r['merged_into'][:8]}") if r.get("ok") else _fail(r.get("error", "merge failed"))
+    elif args.action == "pin":
+        if not args.args:
+            _fail("usage: atropos sessions pin <session-id>")
+            return
+        se.pin_session(surface, args.args[0])
+        _ok(f"pinned {args.args[0][:8]}")
+    elif args.action == "stats":
+        st = se.stats()
+        print(cliui.table([[k, str(v)] for k, v in st.items()], headers=["key", "value"]))
+    elif args.action == "explain":
+        if not args.args:
+            _fail("usage: atropos sessions explain <message>")
+            return
+        print(se.explain(" ".join(args.args), surface))
+    elif args.action == "mode":
+        if args.args:
+            try:
+                settings.set("session_engine.surfaces." + surface, args.args[0])
+            except ValueError as e:
+                _fail(str(e))
+                return
+        _info(f"{surface} mode = {se.surface_mode(surface)}")
+    else:
+        _fail("usage: atropos sessions list|current|threads|route|merge|pin|stats|explain|mode")
+
+
 def cmd_curator(args):
     """Skill curator: status | run [--consolidate]."""
     from core import autoskill
@@ -1629,6 +1706,12 @@ def _dispatch_cmd(cmd):
         for flag, val in zip(rest.split()[::2], rest.split()[1::2]):
             if flag.startswith("--"):
                 setattr(ns, flag.lstrip("-").replace("-", "_"), val)
+        if name == "sessions":
+            # positional action + free args (route/merge/explain/mode)
+            words = [w for w in rest.split() if not w.startswith("--")]
+            ns.action = words[0] if words else "list"
+            ns.args = words[1:] or None
+            ns.surface = getattr(ns, "surface", "cli")
     try:
         handler(ns)
     except SystemExit:

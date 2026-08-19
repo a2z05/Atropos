@@ -1,6 +1,6 @@
 {
   "name": "atropos-hs",
-  "version": "1.4.2-beta",
+  "version": "1.5.0-beta",
   "description": "Atropos \u00e2\u20ac\u201d the harness that cannot be turned. Hermes + Claude fusion control plane: self-healing, stdlib-only Python. (beta)",
   "license": "MIT",
   "author": "ATRA",

@@ -32,6 +32,7 @@ CLAIMED = [
     "kanban", "email", "tts", "vision", "imagine", "video", "youtube",
     "x", "docs", "hue", "audio", "delegate", "bridge",
     "approve", "ai-mod", "autoskill", "curator", "attribution", "orchestrate",
+    "sessions",
 ]
 
 

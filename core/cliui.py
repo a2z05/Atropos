@@ -261,6 +261,9 @@ _REPL_SLASH = {
     "/skills": ("skills --list", "list skills"),
     "/status": ("status", "system overview"),
     "/settings": ("settings", "settings table"),
+    "/session": ("sessions current", "session engine: current session/thread"),
+    "/thread": None,   # handled specially in repl()
+    "/end": None,      # handled specially in repl()
     "/exit": None,
     "/quit": None,
     "/help": None,
@@ -296,9 +299,19 @@ def repl(dispatch) -> int:
         _rl = None
     print(_ascii.banner() or "ATROPOS")
     print(dim("CLOTHO · LACHESIS · ATROPOS — type `?` for help, `/exit` to quit"))
+    # session-engine status in the prompt (best-effort, never crashes)
+    def _prompt():
+        try:
+            from . import session_engine as _se
+            sid = _se._current.get("cli", "")
+            thr = _se._threads.get("cli", "")
+            tag = (sid[:6] + ("·" + thr if thr else "")) if sid else ""
+            return bold("atropos") + dim("[" + tag + "]> ") if tag else bold("atropos> ")
+        except Exception:
+            return bold("atropos> ")
     while True:
         try:
-            line = input(bold("atropos> ")).strip()
+            line = input(_prompt()).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             print(dim("  session saved to ~/.atropos/history — see you soon."))
@@ -316,6 +329,26 @@ def repl(dispatch) -> int:
             continue
         if line == "/backup":
             dispatch("backup create")
+            continue
+        if line.startswith("/thread"):
+            try:
+                from . import session_engine as _se
+                name = line[len("/thread"):].strip()
+                r = _se.set_thread("cli", name)
+                print(dim(f"  thread: {r.get('ok') and (name or 'general') or r.get('error', 'bad name')}"))
+            except Exception as e:
+                print(dim(f"  thread error: {e}"))
+            continue
+        if line == "/end":
+            try:
+                from . import session_engine as _se
+                _se.set_thread("cli", "")
+                print(dim("  thread ended — back to general"))
+            except Exception:
+                pass
+            continue
+        if line.startswith("/session"):
+            dispatch("sessions " + line[len("/session"):].strip() or "current")
             continue
         try:
             history.append(line)
