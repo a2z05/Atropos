@@ -1951,6 +1951,29 @@ function cmdAction(el) {
     return;
   }
 }
+/* thread-trio driver — lights the working weaver (hero + sidebar trios) */
+(function trioDriver() {
+  const nodes = document.querySelectorAll('.side-trio .st-node, .hero-trio .st-node');
+  if (!nodes.length) return;
+  let act = '';
+  const mark = () => {
+    nodes.forEach(n => n.classList.toggle('live', n.dataset.ent === act));
+  };
+  // status poll drives the active worker
+  const tick = async () => {
+    try {
+      const d = await api('/api/status').catch(() => null);
+      if (d) {
+        const rt = d.runtime || {};
+        const active = rt.active_agent || (d.threads ? 'claude' : '');
+        act = active === 'hermes' || active === 'claude' ? active : 'atropos';
+      }
+    } catch (_) {}
+    mark();
+    setTimeout(tick, 5000);
+  };
+  tick();
+})();
 document.querySelectorAll('.cmd-actions [data-go]').forEach(btn => {
   btn.addEventListener('click', () => cmdAction(btn));
 });

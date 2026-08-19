@@ -3,3 +3,5 @@ __pycache__/
 .atropos/
 # live-server test homes (shared mutable state by design)
 tests/tmp_dash_home/
+
+.claude/
