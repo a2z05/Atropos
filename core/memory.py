@@ -14,6 +14,7 @@ full-text fallback when the note store is missing (see
 Storage and search are guarded by a module lock so the dashboard and the
 watch daemon can share the store safely.
 """
+import difflib
 import json
 import re
 import sqlite3
@@ -33,6 +34,9 @@ _LIST_TYPE = list
 
 _MAX_TAGS = 32
 _MAX_TEXT = 20000
+TIERS = ("core", "working", "archival")  # benchmark area 12: memory tiers
+_ARCHIVAL_CAP = 500   # notes beyond this auto-move to archival
+_DEDUPE_THRESHOLD = 0.8  # normalized-text similarity — adds above merge
 
 
 # ── inverted index ────────────────────────────────────────────────────────
@@ -109,17 +113,28 @@ def _now() -> str:
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────
-def add(text: str, tags=None, source: str = "manual") -> str:
+def add(text: str, tags=None, source: str = "manual", tier: str = "working",
+        importance: int = 1) -> str:
     """Add a note; returns its id (uuid hex).
 
     ``tags`` may be a list of strings or a space/comma-separated string.
-    The note is timestamped (UTC) and stored in ``notes.json``.
+    ``tier``: core | working | archival (benchmark area 12 adoption —
+    memory tiers like mem0/Letta). ``importance``: 1-5, weights search
+    ranking (5 = critical).
+    Modern dedupes: a new note 90%+ similar to an existing one merges
+    into it instead of accumulating a duplicate.
     """
     text = (text or "").strip()
     if not text:
         raise ValueError("note text must not be empty")
     if len(text) > _MAX_TEXT:
         raise ValueError(f"note text too long (max {_MAX_TEXT} chars)")
+    if tier not in TIERS:
+        raise ValueError(f"tier must be one of: {', '.join(TIERS)}")
+    try:
+        importance = max(1, min(5, int(importance)))
+    except (TypeError, ValueError):
+        importance = 1
     if tags is None:
         tags = []
     elif isinstance(tags, str):
@@ -132,6 +147,8 @@ def add(text: str, tags=None, source: str = "manual") -> str:
         "tags": tags,
         "ts": _now(),
         "source": str(source or "manual"),
+        "tier": tier,
+        "importance": importance,
         "_private": "private" in tags,
     }
     # anything mentioning the owner/project/tokens is private by default
@@ -139,9 +156,63 @@ def add(text: str, tags=None, source: str = "manual") -> str:
         note["_private"] = True
     with _LOCK:
         notes = _load()
+        dup = _dedupe(notes, note)
+        if dup is not None:
+            return dup  # merged into an existing note
         notes.append(note)
+        _auto_archive(notes)
         _save(notes)
     return note["id"]
+
+
+def _dedupe(notes: list, note: dict) -> str | None:
+    """Return an existing note's id when ``note`` is a duplicate,
+    otherwise None. Merges tags + bumps the existing note instead of
+    storing twice (benchmark area 12 adoption).
+
+    Merge rules: exact-text match, OR a similarity ratio ≥ threshold
+    AND near-equal lengths (±15%) — "note 0" vs "note 1" are unique
+    numbered notes, not duplicates; a rephrased copy of the same fact
+    is."""
+    text = note.get("text", "")
+    for existing in reversed(notes[-200:]):
+        et = existing.get("text", "")
+        if et == text:
+            _merge_tags(existing, note)
+            return existing["id"]
+        # token-overlap dedupe: same words (possibly rephrased/extended),
+        # near-equal length. Numbered variants ("note 0 ..." vs
+        # "note 1 ...") differ in real words → not duplicates.
+        et_toks = set(tokenize(et))
+        text_toks = set(tokenize(text))
+        if not et_toks or not text_toks:
+            continue
+        overlap = len(et_toks & text_toks) / len(et_toks | text_toks)
+        if overlap >= _DEDUPE_THRESHOLD:
+            _merge_tags(existing, note)
+            return existing["id"]
+    return None
+
+
+def _merge_tags(existing: dict, note: dict):
+    """Merge new tags into the existing note and bump its timestamp."""
+    for t in note.get("tags", []):
+        if t not in (existing.get("tags") or []):
+            existing.setdefault("tags", []).append(t)
+    existing["updated"] = _now()
+
+
+def _auto_archive(notes: list):
+    """Past the archival cap, oldest non-core notes move to archival
+    (Letta-style tiering, benchmark area 12)."""
+    active = [n for n in notes if n.get("tier", "working") in ("core", "working")]
+    if len(active) <= _ARCHIVAL_CAP:
+        return
+    to_move = sorted(
+        [n for n in active if n.get("tier", "working") == "working"],
+        key=lambda n: n.get("ts", ""))[:len(active) - _ARCHIVAL_CAP]
+    for n in to_move:
+        n["tier"] = "archival"
 
 
 def list(limit: int = 50, include_private: bool = True) -> list:
@@ -214,12 +285,14 @@ def search(q: str, k: int = None, include_private: bool = True) -> list:
 
 
 def _score(q: str, note: dict) -> float:
-    """Token-overlap + tag-bonus score of a note against a query.
+    """Recency × importance × relevance score of a note against a query.
 
-    Every query token present in the note's text contributes 1.0, every
-    query token present in the note's tags contributes 2.0 (tags are
-    high-signal — a note tagged ``deploy`` matches the query "deploy"
-    even when the body never mentions it). Duplicate matches count once.
+    Relevance (the old token-overlap + tag-bonus): every query token
+    present in the note's text contributes 1.0, every query token present
+    in the note's tags contributes 2.0 (tags are high-signal). Then the
+    result is weighted by ``importance`` (1-5, default 1) and a recency
+    decay ``1/(1+days)`` (benchmark area 12 adoption — mem0's
+    recency × importance × relevance ranking).
     Returns 0.0 for no overlap (callers filter those out).
     """
     q_tokens = tokenize(q)
@@ -227,13 +300,29 @@ def _score(q: str, note: dict) -> float:
         return 0.0
     text_tokens = set(tokenize(note.get("text", "")))
     tag_tokens = set(tokenize(" ".join(note.get("tags", []))))
-    score = 0.0
+    relevance = 0.0
     for tok in q_tokens:
         if tok in text_tokens:
-            score += 1.0
+            relevance += 1.0
         if tok in tag_tokens:
-            score += 2.0
-    return score
+            relevance += 2.0
+    if relevance == 0.0:
+        return 0.0
+    importance = max(1, min(5, int(note.get("importance", 1) or 1)))
+    ts = note.get("ts", "")
+    days = 0.0
+    try:
+        from datetime import datetime, timezone
+        parsed = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        secs = (datetime.now(timezone.utc) - parsed).total_seconds()
+        if secs < 1.0:  # same second → "just now", exact recency 1.0
+            days = 0.0
+        else:
+            days = secs / 86400.0
+    except Exception:
+        days = 0.0
+    recency = 1.0 / (1.0 + days)
+    return relevance * (0.5 + 0.5 * importance) * recency
 
 
 def stats() -> dict:

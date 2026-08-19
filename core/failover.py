@@ -170,6 +170,12 @@ def check_now(timeout: float = 8.0) -> dict:
         save_state(state)
         if first_time:
             _send_alert("All routers down — failover exhausted (nain/omni/local)")
+            try:
+                from . import errors
+                errors.breadcrumb("router", "all routers down (failover exhausted)",
+                                  "critical")
+            except Exception:
+                pass
         return {"ok": False, "all_down": True, "ping": ping, "state": state}
 
     if state["failures"] < retries:

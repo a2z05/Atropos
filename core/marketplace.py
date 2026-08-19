@@ -76,6 +76,111 @@ NAME_ALIASES = {
     },
 }
 
+# ── user-added sources (GitHub repos only, SSRF-proof) ────────────────────
+# Persisted as JSON under the Atropos home: {sources: [{repo, subdir, branch,
+# kind, target, name, author}]}. Repo URLs are parsed with str.startswith
+# against the two allowed hosts and re-validated on every read.
+_CUSTOM_SOURCES_FILE = "marketplace_custom.json"
+
+
+def _custom_sources() -> list:
+    """User-added sources, validated on every read (defense in depth)."""
+    try:
+        p = Path(detect.atropos_home()) / _CUSTOM_SOURCES_FILE
+        if not p.exists():
+            return []
+        data = json.loads(p.read_text(encoding="utf-8"))
+        out = []
+        for s in data.get("sources", []):
+            if not isinstance(s, dict):
+                continue
+            repo = str(s.get("repo", ""))
+            subdir = str(s.get("subdir", ""))
+            branch = str(s.get("branch", "main"))
+            if valid_repo(repo) and valid_subdir(subdir):
+                out.append({
+                    "id": f"{repo}/{subdir}".rstrip("/"),
+                    "name": str(s.get("name") or repo.split("/")[-1]),
+                    "author": str(s.get("author") or repo.split("/")[0]),
+                    "kind": str(s.get("kind", "skill")),
+                    "target": str(s.get("target", "hermes")),
+                    "repo": repo,
+                    "subdir": subdir,
+                    "branch": branch,
+                    "type": "dir-from-api",
+                    "custom": True,
+                    "description": str(s.get("description") or "Custom marketplace source"),
+                })
+        return out
+    except Exception:
+        return []
+
+
+def _save_custom_sources(sources: list) -> dict:
+    """Persist user-added sources; keep only valid entries."""
+    try:
+        p = Path(detect.atropos_home()) / _CUSTOM_SOURCES_FILE
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"sources": sources}, indent=2), encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def valid_repo(repo: str) -> bool:
+    """Repo must be 'owner/name' on an allowed host (SSRF guard)."""
+    if not repo or "/" not in repo:
+        return False
+    if not all(ch.isalnum() or ch in "._-" for ch in repo):
+        return False
+    return True
+
+
+def valid_subdir(subdir: str) -> bool:
+    """Subdir must be empty or a plain path segment (no '..', no leading /)."""
+    if not subdir:
+        return True
+    if subdir.startswith("/") or ".." in subdir:
+        return False
+    return all(ch.isalnum() or ch in "._-/ " for ch in subdir)
+
+
+def add_source(repo: str, subdir: str = "", branch: str = "main",
+               kind: str = "skill", target: str = "hermes",
+               name: str = "", author: str = "") -> dict:
+    """Add a custom GitHub marketplace source (validated, persisted)."""
+    repo = (repo or "").strip()
+    subdir = (subdir or "").strip().strip("/")
+    branch = (branch or "main").strip() or "main"
+    kind = kind if kind in ("skill", "plugin") else "skill"
+    target = target if target in ("hermes", "claude") else "hermes"
+    if not valid_repo(repo):
+        return {"ok": False, "error": "repo must be owner/name on github.com"}
+    if not valid_subdir(subdir):
+        return {"ok": False, "error": "invalid subdir"}
+    sources = _custom_sources()
+    src_id = f"{repo}/{subdir}".rstrip("/")
+    if any(s["id"] == src_id for s in sources):
+        return {"ok": False, "error": "source already added"}
+    sources.append({
+        "repo": repo, "subdir": subdir, "branch": branch,
+        "kind": kind, "target": target,
+        "name": (name or "").strip() or repo.split("/")[-1],
+        "author": (author or "").strip() or repo.split("/")[0],
+        "description": f"Custom GitHub source: {repo}/{subdir}".rstrip("/"),
+    })
+    return _save_custom_sources(sources)
+
+
+def remove_source(source_id: str) -> dict:
+    """Remove a user-added source by its id (repo/subdir)."""
+    sources = _custom_sources()
+    new = [s for s in sources if s["id"] != source_id]
+    if len(new) == len(sources):
+        return {"ok": False, "error": "source not found"}
+    return _save_custom_sources(new)
+
+
 # ── allowlist ─────────────────────────────────────────────────────────────
 # Each source: {id, name, author, kind, target, type ('dir-from-api' |
 # 'dir-from-alias'), repo, branch, subdir}
@@ -189,7 +294,7 @@ def catalog() -> dict:
     """
     installed = _installed_names()
     sources_out = []
-    for src in SOURCES:
+    for src in SOURCES + _custom_sources():
         names = None
         if src["type"] == "dir-from-api":
             names = _api_list(src["repo"], src["subdir"], src["branch"])

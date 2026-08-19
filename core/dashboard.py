@@ -44,6 +44,22 @@ def _body(status, data):
     return json.dumps(data, ensure_ascii=False).encode(), "application/json", status
 
 
+def _error(code: str, message: str, details=None, status: int = 400) -> dict:
+    """Structured error envelope (benchmark area 28 adoption).
+
+    Stable machine-readable ``code`` + human ``message`` + optional
+    ``details``. Backward compatible with the flat
+    ``{"ok": False, "error": "..."}`` shape (``error`` stays present).
+    """
+    out = {"ok": False, "error": message}
+    wrapped = {"code": code, "message": message}
+    if details is not None:
+        wrapped["details"] = details
+    out["error_obj"] = wrapped
+    out["_status"] = status
+    return out
+
+
 def _ts():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -1610,6 +1626,31 @@ def api_marketplace_uninstall(payload):
     return result
 
 
+def api_marketplace_source_add(payload):
+    """Add a custom GitHub marketplace source (validated + persisted)."""
+    from . import marketplace
+    p = payload or {}
+    result = marketplace.add_source(
+        p.get("repo", ""), p.get("subdir", ""), p.get("branch", "main"),
+        p.get("kind", "skill"), p.get("target", "hermes"),
+        p.get("name", ""), p.get("author", ""),
+    )
+    if result.get("ok"):
+        history_log("marketplace", f"added custom source {p.get('repo', '')}")
+        _notify("marketplace", {"action": "source_add", "repo": p.get("repo", "")})
+    return result
+
+
+def api_marketplace_source_remove(payload):
+    """Remove a user-added marketplace source by id."""
+    from . import marketplace
+    p = payload or {}
+    result = marketplace.remove_source(p.get("source_id", ""))
+    if result.get("ok"):
+        history_log("marketplace", f"removed custom source {p.get('source_id', '')}")
+    return result
+
+
 def api_run(payload):
     """POST /api/run — whitelist-only console dispatcher."""
     from . import console
@@ -2817,6 +2858,10 @@ class Handler(BaseHTTPRequestHandler):
             return api_marketplace_install(payload)
         if path == "/api/marketplace/uninstall":
             return api_marketplace_uninstall(payload)
+        if path == "/api/marketplace/source/add":
+            return api_marketplace_source_add(payload)
+        if path == "/api/marketplace/source/remove":
+            return api_marketplace_source_remove(payload)
         if path == "/api/run":
             return api_run(payload)
         # v1.4 universal-resource mutations
@@ -2924,7 +2969,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._auth():
                 self._send(401, b'{"error":"unauthorized"}')
                 return
-            data = self._route_get(path, q)
+            try:
+                data = self._route_get(path, q)
+            except Exception as e:
+                # structured error envelope instead of a stack trace
+                data = _error("internal", f"internal error: {e}", status=500)
             if data is not None:
                 body, ctype, status = _body(200, data)
                 self._send(status, body, ctype)
@@ -2942,7 +2991,11 @@ class Handler(BaseHTTPRequestHandler):
             self.do_chat_stream()
             return
         payload = self._read_json()
-        data = self._route_post(path, payload)
+        try:
+            data = self._route_post(path, payload)
+        except Exception as e:
+            # structured error envelope instead of a stack trace
+            data = _error("internal", f"internal error: {e}", status=500)
         body, ctype, status = _body(200, data)
         self._send(status, body, ctype)
 
@@ -3082,21 +3135,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
         client_id = f"ev-{secrets.token_urlsafe(8)}"
+        # SSE Last-Event-ID resume: replay missed frames for reconnects.
+        last_event_id = None
         try:
-            q_client = queue.Queue(maxsize=sse.MAX_QUEUE)
-            sse.hub.subscribe(client_id, q_client)
-            try:
-                while True:
-                    try:
-                        frame = q_client.get(timeout=sse.HEARTBEAT_SECONDS)
-                        sse.hub.touch(client_id)
-                        self.wfile.write(b"data: " + frame + b"\n\n")
-                        self.wfile.flush()
-                    except queue.Empty:
-                        self.wfile.write(b": ping\n\n")
-                        self.wfile.flush()
-            finally:
-                sse.hub.unsubscribe(client_id)
+            raw = int(self.headers.get("Last-Event-ID", "") or "")
+            last_event_id = raw if raw > 0 else None
+        except (ValueError, TypeError):
+            last_event_id = None
+        try:
+            for frame in sse.stream(client_id, last_event_id=last_event_id):
+                self.wfile.write(frame)
+                self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         except Exception:

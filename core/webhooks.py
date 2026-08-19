@@ -20,7 +20,10 @@ never raises or blocks the others; failures are collected and returned.
 
 Pure stdlib (urllib), never imports core.dashboard (circular).
 """
+import hmac
 import json
+import os
+import random
 import re
 import time
 import urllib.error
@@ -33,6 +36,9 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 MODES = ("shared", "per-harness", "atropos-only")
 TIMEOUT = 8  # per-hook HTTP timeout in seconds
+MAX_RETRIES = 3          # benchmark area 37: retry-with-backoff
+BACKOFF_BASE = 2.0       # 2^n seconds + jitter
+DEAD_FILE = "webhooks_dead.json"
 
 
 def valid_name(name: str) -> bool:
@@ -97,8 +103,14 @@ def list_webhooks() -> list:
     return json.loads(json.dumps(_load()))
 
 
-def add(name: str, url: str, events: list | None = None, mode: str = "shared") -> dict:
-    """Register a webhook. Raises ValueError on invalid name/url/duplicates."""
+def add(name: str, url: str, events: list | None = None, mode: str = "shared",
+        secret: str = "") -> dict:
+    """Register a webhook. Raises ValueError on invalid name/url/duplicates.
+
+    ``secret`` (optional): when set, delivery signs the body with
+    HMAC-SHA256 and sends it as ``X-Atropos-Signature`` so the receiver
+    can verify authenticity (benchmark area 37 adoption).
+    """
     if not valid_name(name):
         raise ValueError(f"invalid webhook name: {name!r}")
     if not _valid_url(url):
@@ -117,6 +129,7 @@ def add(name: str, url: str, events: list | None = None, mode: str = "shared") -
         "events": events,
         "enabled": True,
         "mode": mode,
+        "secret": secret,
         "last_sent": None,
         "last_status": None,
     }
@@ -160,15 +173,18 @@ def _set_enabled(name: str, value: bool) -> dict:
 
 
 # ── delivery ──────────────────────────────────────────────────────────────
-def _post(url: str, payload: dict) -> tuple:
+def _sign(body: bytes, secret: str) -> str:
+    """HMAC-SHA256 signature of the raw body (benchmark area 37)."""
+    return hmac.new(secret.encode("utf-8"), body, "sha256").hexdigest()
+
+
+def _post(url: str, payload: dict, secret: str = "") -> tuple:
     """POST JSON to one url. Returns (ok, status, error). Never raises."""
     body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    headers = {"Content-Type": "application/json"}
+    if secret:
+        headers["X-Atropos-Signature"] = _sign(body, secret)
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return True, resp.status, None
@@ -184,6 +200,44 @@ def _post(url: str, payload: dict) -> tuple:
         return False, None, str(err.reason or err)
     except Exception as exc:
         return False, None, str(exc)
+
+
+def _dead_path() -> Path:
+    return detect.atropos_home() / DEAD_FILE
+
+
+def _append_dead(hook: dict, payload: dict, error: str):
+    """Dead-letter queue: persistent record of undeliverable events."""
+    p = _dead_path()
+    try:
+        entries = []
+        if p.exists():
+            entries = json.loads(p.read_text(encoding="utf-8"))
+        entries.append({
+            "ts": _now_iso(),
+            "hook": hook.get("name"),
+            "url": hook.get("url"),
+            "event": payload.get("event"),
+            "error": error,
+        })
+        entries = entries[-200:]  # cap
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n",
+                     encoding="utf-8")
+    except Exception:
+        pass
+
+
+def dead_letters() -> list:
+    """Recent dead-letter entries (undeliverable webhook events)."""
+    p = _dead_path()
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 def trigger(event: str, payload: dict | None = None) -> dict:
@@ -207,7 +261,7 @@ def trigger(event: str, payload: dict | None = None) -> dict:
         if event not in (h.get("events") or []):
             skipped.append(h["name"])
             continue
-        ok, status, err = _post(h["url"], body)
+        ok, status, err = _deliver_with_retry(h["url"], body, h.get("secret", ""))
         h["last_sent"] = _now_iso()
         h["last_status"] = status
         changed = True
@@ -216,6 +270,7 @@ def trigger(event: str, payload: dict | None = None) -> dict:
         else:
             failed.append(h["name"])
             errors.append({"name": h["name"], "error": err})
+            _append_dead(h, body, err)
     if changed:
         _save(hooks)
     return {
@@ -227,6 +282,18 @@ def trigger(event: str, payload: dict | None = None) -> dict:
     }
 
 
+def _deliver_with_retry(url: str, body: dict, secret: str = "") -> tuple:
+    """POST with exponential-backoff retry (area 37). Returns (ok, status, err)."""
+    ok, status, err = _post(url, body, secret)
+    attempt = 0
+    while not ok and status != 4 and attempt < MAX_RETRIES:
+        # retry transient failures (5xx, network) with 2^n + jitter
+        attempt += 1
+        time.sleep(min(BACKOFF_BASE ** attempt, 8.0) + random.uniform(0, 0.5))
+        ok, status, err = _post(url, body, secret)
+    return ok, status, err
+
+
 def ping(name: str) -> dict:
     """Test one webhook with the conventional ``{"event": "ping"}`` body."""
     if not valid_name(name):
@@ -235,7 +302,8 @@ def ping(name: str) -> dict:
     h = _hook(hooks, name)
     if h is None:
         raise FileNotFoundError(f"webhook not found: {name}")
-    ok, status, err = _post(h["url"], {"event": "ping"})
+    ok, status, err = _deliver_with_retry(h["url"], {"event": "ping"},
+                                          h.get("secret", ""))
     h["last_sent"] = _now_iso()
     h["last_status"] = status
     _save(hooks)

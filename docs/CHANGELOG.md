@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.1-beta] — 2026-08-19 (v20: Global Benchmark)
+
+### Added
+- **`docs/BENCHMARK.md`** — 50-area research audit vs the world (comparables → best pattern → adopt/reject → sources), top-10-that-changed-us list, honest "already best-in-class" entries. Every adopt landed in code + tests.
+- **Memory tiers + importance + dedupe (`core/memory.py`, area 12)** — mem0/Letta pattern: `tier` (core/working/archival) with auto-archival past a cap, `importance` (1-5) weighted into search scoring with recency decay `1/(1+days)` (recency × importance × relevance), and dedupe-on-add via token-overlap merge (near-identical notes merge instead of accumulating; numbered variants stay distinct).
+- **SSE Last-Event-ID + event types + retry (`core/sse.py`, area 44)** — frames carry `id:` (monotonic) + `event: <channel>` (native `addEventListener`) + `retry: 3000`; per-channel history ring (60) with `replay_from(last_event_id)`; the dashboard /api/events handler resumes from the `Last-Event-ID` header. Payload stays the legacy `{channel, data}` wrapper so existing `onmessage` handlers keep working.
+- **Structured error envelope (`core/dashboard.py`, area 28)** — `_error(code, message, details, status)` helper, backward-compatible with the flat `{ok, error}` shape; GET/POST dispatch wraps unhandled handler exceptions → `_error("internal", …, 500)` so no stack traces leak to clients.
+- **Error codes + breadcrumbs (`core/errors.py`, area 29)** — stable `E_*` codes with "what. why. fix:" messages; process-wide breadcrumb ring (deque, 200) with trail(); wired into `middleware.run` (per-filter pass + rejections) and router failover exhaustion.
+- **Webhook HMAC signature + retry + dead-letter (`core/webhooks.py`, area 37)** — optional per-hook `secret` → `X-Atropos-Signature: HMAC-SHA256(body)`; outbound retry `2^n + jitter` (max 3, 5xx/network only) + dead-letter queue `webhooks_dead.json` with `dead_letters()` reader; `ping` uses the retry path.
+- **A11y (`dashboard/index.html`, area 32)** — `aria-live="polite"` on console output + toast containers (focus-visible already present).
+- **Repo ownership** — package.json author → `a2z`; repo URLs in package.json + README → `github.com/a2z05/Atropos`.
+
+### Changed
+- VERSION/package.json → 1.5.1-beta. README tests badge → 900+ tests (was 889).
+- Tests: `tests/test_benchmark_adoptions.py` (19 tests: SSE resume, error envelope, webhook sig/retry/dead-letter, memory tiers/dedupe, error codes/breadcrumbs) + a JS syntax pass.
+
 ## [1.5.0-beta] — 2026-08-19 (v19: Single Session Engine)
 
 ### Added

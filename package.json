@@ -1,12 +1,12 @@
 {
   "name": "atropos-hs",
-  "version": "1.5.0-beta",
+  "version": "1.5.1-beta",
   "description": "Atropos \u00e2\u20ac\u201d the harness that cannot be turned. Hermes + Claude fusion control plane: self-healing, stdlib-only Python. (beta)",
   "license": "MIT",
-  "author": "ATRA",
+  "author": "a2z",
   "repository": {
     "type": "git",
-    "url": "https://github.com/arophin/Atropos.git"
+    "url": "https://github.com/a2z05/Atropos.git"
   },
   "bin": {
     "atropos": "./atropos",

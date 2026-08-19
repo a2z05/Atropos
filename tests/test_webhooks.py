@@ -158,27 +158,30 @@ class DeliveryTests(WebhookBase):
         fake.assert_not_called()
 
     def test_error_isolation(self):
-        # first hook raises, second succeeds — nothing propagates
+        # first hook is permanently bad (every attempt fails), second
+        # succeeds — nothing propagates, failures don't block others,
+        # and the bad hook is retried (retry-with-backoff adoption)
         webhooks.add("bad", "https://example.com/bad", ["alerts"])
         webhooks.add("good", "https://example.com/good", ["alerts"])
 
         calls = {"n": 0}
-        def flaky_urlopen(req, timeout=None):
+        def bad_urlopen(req, timeout=None):
             calls["n"] += 1
-            if calls["n"] == 1:
+            if req.full_url and "bad" in req.full_url:
                 raise OSError("connection refused")
             fake = mock.MagicMock()
             fake.status = 200
             fake.__enter__.return_value = fake
             return fake
         with mock.patch.object(webhooks.urllib.request, "urlopen",
-                               side_effect=flaky_urlopen) as patched:
+                               side_effect=bad_urlopen) as patched:
             res = webhooks.trigger("alerts")
-        self.assertEqual(patched.call_count, 2)
+        # bad: 1 initial + retries; good: 1. Isolation intact either way.
         self.assertEqual(res["delivered"], ["good"])
         self.assertEqual(res["failed"], ["bad"])
         self.assertEqual(len(res["errors"]), 1)
         self.assertEqual(res["errors"][0]["name"], "bad")
+        self.assertGreaterEqual(patched.call_count, 2)
         # per-hook records are still written for the failure
         by_name = {h["name"]: h for h in self.registry()}
         self.assertEqual(by_name["bad"]["last_status"], None)
