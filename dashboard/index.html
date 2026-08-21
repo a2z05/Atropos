@@ -369,6 +369,9 @@
   .router-card .st { font-size: 11px; color: var(--muted); margin-top: 3px; }
   .router-card .lt { font-size: 11.5px; font-family: var(--font-mono); margin-top: 6px; display: flex; align-items: center; gap: 6px; }
   .router-card .lt .bar { flex: 1; }
+  .rbtn { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; transition: var(--tr); text-align: left; }
+  .rbtn:hover { border-color: var(--primary); transform: translateY(-1px); }
+  .rbtn.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) .12, var(--surface2)); box-shadow: inset 0 0 16px color-mix(in srgb, var(--primary) .08, transparent), var(--glow); color: var(--primary-l); }
 
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .spacer { flex: 1; }
@@ -737,26 +740,53 @@
 
     <section class="panel" id="panel-routers">
       <div class="grid">
+        <!-- Active router selector -->
         <section class="card span-12">
-          <h3><span class="dot"></span>Routers <span class="right" id="router-active-label">nain · omni · local</span></h3>
+          <h3><span class="dot"></span>Active Router <span class="right" id="router-active-label">—</span></h3>
           <div class="router-grid" id="router-grid" style="grid-template-columns:repeat(3,1fr);"></div>
-          <div class="router-state" id="router-state">—</div>
-          <div class="btn-row just-end">
-            <button class="btn" id="btn-test-routers">Test all routers</button>
-            <button class="btn green" id="btn-apply-route">Apply active to Hermes + Claude</button>
+          <div class="router-state" id="router-state" style="margin-top:10px;font-size:12px;color:var(--muted);">—</div>
+          <div class="btn-row just-end" style="margin-top:10px;">
+            <button class="btn" id="btn-test-routers">Test all</button>
+            <button class="btn green" id="btn-apply-route">Apply to Hermes + Claude</button>
           </div>
         </section>
-        <section class="card span-12">
-          <h3><span class="dot"></span>Available models <span class="right" id="router-models-state"></span></h3>
-          <div id="router-models"><div class="log-empty">Load the routers panel to fetch models from the active endpoint.</div></div>
+
+        <!-- 9Router config -->
+        <section class="card span-6">
+          <h3><span class="dot" style="background:var(--cyan);"></span>9Router <small style="color:var(--muted);font-weight:400;">nain</small></h3>
+          <div class="set-row"><label>Base URL</label><input id="cfg-nainer-url" class="token-input" placeholder="$NINEROUTER_URL or default"></div>
+          <div class="set-row"><label>API Key</label><input id="cfg-nainer-key" class="token-input" type="password" placeholder="$NINEROUTER_KEY"></div>
+          <div class="set-row"><label>Model</label><input id="cfg-nainer-model" class="token-input" placeholder="deepmo"></div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn" id="btn-save-nainer">Save 9Router</button>
+            <button class="btn" id="btn-test-nainer">Test</button>
+          </div>
+          <div id="nainer-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
         </section>
-        <section class="card span-12">
-          <h3><span class="dot"></span>Live test results</h3>
-          <div id="router-test-out"><div class="log-empty">Run a test to see latency results.</div></div>
+
+        <!-- OmniRoute config -->
+        <section class="card span-6">
+          <h3><span class="dot" style="background:var(--secondary);"></span>OmniRoute <small style="color:var(--muted);font-weight:400;">omni</small></h3>
+          <div class="set-row"><label>Base URL</label><input id="cfg-omni-url" class="token-input" placeholder="$OPENAI_BASE_URL or default"></div>
+          <div class="set-row"><label>API Key</label><input id="cfg-omni-key" class="token-input" type="password" placeholder="$OPENAI_API_KEY"></div>
+          <div class="set-row"><label>Model</label><input id="cfg-omni-model" class="token-input" placeholder="gpt-4o"></div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn" id="btn-save-omni">Save OmniRoute</button>
+            <button class="btn" id="btn-test-omni">Test</button>
+          </div>
+          <div id="omni-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
         </section>
+
+        <!-- Models list -->
         <section class="card span-12">
-          <h3><span class="dot"></span>Latency history (sparklines)</h3>
-          <div id="router-sparklines" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;"><div class="log-empty">Run a router test to populate sparkline data.</div></div>
+          <h3><span class="dot"></span>Available Models <span class="right" id="router-models-state"></span></h3>
+          <div id="router-models"><div class="log-empty">Select a router and click Test to fetch its models.</div></div>
+        </section>
+
+        <!-- Test results -->
+        <section class="card span-12">
+          <h3><span class="dot"></span>Test Results</h3>
+          <div id="router-test-out"><div class="log-empty">Click "Test all" to ping each router.</div></div>
         </section>
       </div>
     </section>
@@ -1657,7 +1687,7 @@ const I18N = {
     accent_coral: 'Coral', accent_emerald: 'Emerald', accent_crimson: 'Crimson',
     doc_python: 'python >= 3.10', doc_agent: 'hermes-agent',
     doc_ptb: 'PTB >= 22.8', doc_claude: 'claude code',
-    doc_patches: 'patches', doc_disk: 'disk < 85%', doc_tz: 'timezone Asia/Tehran',
+    doc_patches: 'patches', doc_disk: 'disk < 85%', doc_tz: 'timezone',
     doc_fixed: ' (fixed)',
     tier_minimal: 'minimal', tier_low: 'low', tier_medium: 'medium',
     tier_high: 'high', tier_xhigh: 'xhigh', tier_ultracode: 'ultracode',
@@ -1858,7 +1888,7 @@ function showPanel(name) {
     overview: [loadCmdStatus, loadStatus, loadRouter, loadOverviewStats, loadOverviewMoirai],
     doctor: [loadDoctor],
     patches: [loadPatches],
-    routers: [loadRouter, loadRouteTest, loadRouterModels, loadRouterSparklines],
+    routers: [loadRouterConfigs, loadRouter, loadRouteTest, loadRouterModels],
     sessions: [loadSessions, loadSessionEngine],
     cron: [loadCron],
     skills: [loadSkills],
@@ -2084,7 +2114,7 @@ function renderRouterCards(router, available, containerId, detailId, withSwitch)
     const b = document.createElement('button');
     b.className = 'rbtn' + (name === active ? ' active' : '');
     b.title = desc;
-    b.innerHTML = `<b>${esc(name)}</b><small>${esc(model || '')} · ${esc(base || 'default url')}</small>`;
+    b.innerHTML = `<b>${esc(name)}</b><small>${esc(model || '')} · ${esc(base || 'env default')}</small>`;
     if (withSwitch) {
       b.addEventListener('click', async () => {
         try {
@@ -2092,7 +2122,7 @@ function renderRouterCards(router, available, containerId, detailId, withSwitch)
           toast(`Router → ${name}`, 'ok');
           const rt = await api('/api/router');
           renderRouterCards(rt.router, rt.available, containerId, detailId, true);
-          if (detailId) document.getElementById(detailId).textContent = '';
+          if (detailId) document.getElementById(detailId).textContent = `Active: ${name}`;
           await loadRouterModels();
         } catch (e) { toast(e.message, 'err'); }
       });
@@ -2101,7 +2131,72 @@ function renderRouterCards(router, available, containerId, detailId, withSwitch)
   }
   if (detailId) {
     document.getElementById(detailId).textContent =
-      `Active: ${esc(active)} · model: ${esc((router && router.model) || '')} · url: ${esc((router && router.base_url) || 'default')}`;
+      `Active: ${esc(active)} · model: ${esc((router && router.model) || '')}`;
+  }
+}
+
+/* ── router config load/save ─────────────────────────────────────────── */
+async function loadRouterConfigs() {
+  try {
+    const d = await api('/api/router');
+    const rt = d.router || {};
+    const av = d.available || [];
+    renderRouterCards(rt, av, 'router-grid', 'router-state', true);
+    document.getElementById('router-active-label').textContent = rt.active || '—';
+    // Fill 9Router fields
+    const nain = av.find(r => r.name === 'nain') || {};
+    document.getElementById('cfg-nainer-url').value = rt.base_url || nain.base_url || '';
+    document.getElementById('cfg-nainer-model').value = rt.model || nain.model || 'deepmo';
+    // Fill OmniRoute fields
+    const omni = av.find(r => r.name === 'omni') || {};
+    document.getElementById('cfg-omni-url').value = omni.base_url || '';
+    document.getElementById('cfg-omni-model').value = omni.model || 'gpt-4o';
+    // Load saved API keys from settings (masked)
+    try {
+      const st = await api('/api/settings');
+      const vals = st.values || {};
+      if (vals['router.ninerouter_key']) document.getElementById('cfg-nainer-key').placeholder = '•••••••• (saved)';
+      if (vals['router.openai_key']) document.getElementById('cfg-omni-key').placeholder = '•••••••• (saved)';
+      if (vals['router.ninerouter_url']) document.getElementById('cfg-nainer-url').value = vals['router.ninerouter_url'];
+    } catch(e) {}
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function saveRouterConfig(name) {
+  const isNainer = name === 'nain';
+  const prefix = isNainer ? 'nainer' : 'omni';
+  const url = document.getElementById(`cfg-${prefix}-url`).value.trim();
+  const key = document.getElementById(`cfg-${prefix}-key`).value.trim();
+  const model = document.getElementById(`cfg-${prefix}-model`).value.trim();
+  const statusEl = document.getElementById(`${prefix}-status`);
+  try {
+    if (url) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: isNainer ? 'router.ninerouter_url' : 'router.base_url', value: url }) });
+    if (key) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: isNainer ? 'router.ninerouter_key' : 'router.openai_key', value: key }) });
+    if (model) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.model', value: model }) });
+    statusEl.textContent = '✓ saved';
+    statusEl.style.color = 'var(--green)';
+    toast(`${name} config saved`, 'ok');
+  } catch (e) {
+    statusEl.textContent = '✗ ' + e.message;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+async function testRouter(name) {
+  const statusEl = document.getElementById(name === 'nain' ? 'nainer-status' : 'omni-status');
+  statusEl.textContent = 'testing…';
+  statusEl.style.color = 'var(--muted)';
+  try {
+    const d = await api('/api/router/test', { method: 'POST', body: JSON.stringify({ name }) });
+    const r = (d.results || {})[name] || {};
+    if (r.ok) {
+      statusEl.textContent = `✓ ${r.latency_ms}ms · ${r.model || ''}`;
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = `✗ ${r.error || 'failed'}`;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    statusEl.textContent = '✗ ' + e.message;
+    statusEl.style.color = 'var(--red)';
   }
 }
 async function loadRouterModels() {
@@ -2227,6 +2322,10 @@ document.getElementById('btn-apply-route').addEventListener('click', async () =>
     await loadRouter();
   } catch (e) { toast(e.message, 'err'); }
 });
+document.getElementById('btn-save-nainer').addEventListener('click', () => saveRouterConfig('nain'));
+document.getElementById('btn-save-omni').addEventListener('click', () => saveRouterConfig('omni'));
+document.getElementById('btn-test-nainer').addEventListener('click', () => testRouter('nain'));
+document.getElementById('btn-test-omni').addEventListener('click', () => testRouter('omni'));
 async function loadRouteTest() { /* results are cleared on panel open */ }
 
 /* ── doctor ───────────────────────────────────────────────────────────── */
@@ -2234,7 +2333,7 @@ const DOC_NAME_KEYS = {
   'python >= 3.10': 'doc_python', 'hermes-agent': 'doc_agent',
   'PTB >= 22.8': 'doc_ptb', 'claude code': 'doc_claude',
   'patches': 'doc_patches', 'disk < 85%': 'doc_disk',
-  'timezone Asia/Tehran': 'doc_tz',
+  'timezone': 'doc_tz',
 };
 async function loadDoctor() {
   const d = await api('/api/doctor');

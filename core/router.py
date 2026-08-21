@@ -93,12 +93,15 @@ def set_active(name: str):
         raise ValueError(f"unknown router: {name}. Available: {available()}")
     rinfo = ROUTERS[name]
     cfg = config.load()
-    cfg["router"] = {
-        "active": name,
-        "base_url": rinfo["base_url"],
-        "api_key_env": rinfo["api_key_env"],
-        "model": rinfo["model"],
-    }
+    r = cfg.setdefault("router", {})
+    r["active"] = name
+    # Always update model to the router's default
+    r["model"] = rinfo["model"]
+    # Preserve user-customized base_url / api_key_env if set, else use router default
+    if not r.get("base_url"):
+        r["base_url"] = rinfo["base_url"]
+    if not r.get("api_key_env"):
+        r["api_key_env"] = rinfo["api_key_env"]
     config.save(cfg)
     # a manual choice is authoritative: failover holds off for its grace period
     try:
@@ -202,10 +205,19 @@ def _endpoint(name: str, path: str = "chat/completions") -> str:
     """Resolve the base URL for a router and append an API path."""
     rinfo = ROUTERS[name]
     base = rinfo["base_url"]
+    # Check settings-stored URLs first, then env vars
+    try:
+        from . import settings as _st
+        if name == "nain":
+            base = _st.get("router.ninerouter_url") or base
+        if not base:
+            base = _st.get("router.base_url") or base
+    except Exception:
+        pass
     if name == "local" and os.environ.get("OLLAMA_HOST"):
         host = os.environ["OLLAMA_HOST"].rstrip("/")
         base = host if host.startswith("http") else "http://" + host
-    elif name == "nain" and os.environ.get("NINEROUTER_URL"):
+    elif name == "nain" and not base and os.environ.get("NINEROUTER_URL"):
         base = os.environ["NINEROUTER_URL"].rstrip("/")
     elif not base and os.environ.get("OPENAI_BASE_URL"):
         base = os.environ["OPENAI_BASE_URL"].rstrip("/")
@@ -216,13 +228,26 @@ def _endpoint(name: str, path: str = "chat/completions") -> str:
 
 def _headers(name: str) -> dict:
     rinfo = ROUTERS[name]
-    key = os.environ.get(rinfo["api_key_env"], "")
+    # Check settings-stored keys first, then fall back to env vars
+    key = ""
+    try:
+        from . import settings as _st
+        if name == "nain":
+            key = _st.get("router.ninerouter_key") or ""
+        elif name == "omni":
+            key = _st.get("router.openai_key") or ""
+        if not key:
+            key = _st.get("router.api_key") or ""
+    except Exception:
+        pass
+    if not key:
+        key = os.environ.get(rinfo["api_key_env"], "")
     headers = {"Content-Type": "application/json"}
     if key and rinfo["api_key_env"] != "OLLAMA_HOST":
         headers["Authorization"] = f"Bearer {key}"
     elif name == "nain" and not key:
         # 9Router serves its model catalog to the public key too; chat needs
-        # NINEROUTER_KEY (set it in the shell env: export NINEROUTER_KEY=...).
+        # NINEROUTER_KEY (set it in the shell env or atropos settings set router.ninerouter_key <key>).
         headers["Authorization"] = "Bearer public"
     return headers
 
