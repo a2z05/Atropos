@@ -1,9 +1,26 @@
 [build]
-builder = "nixpacks"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python atropos dashboard --port $PORT"
+startCommand = "python atropos init && python atropos dashboard --port $PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
-restartPolicyType = "on_failure"
+restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
+
+[variables]
+# ── Router (9Router / OmniRoute) ─────────────────────────────────────
+# Set at least ONE of these for the AI router to work:
+# NINEROUTER_URL = "https://your-9router-url.com/v1"
+# NINEROUTER_KEY = "sk-your-9router-key"
+# OPENAI_API_KEY = "sk-your-openai-key"
+
+# ── Telegram Bot ─────────────────────────────────────────────────────
+# TELEGRAM_BOT_TOKEN = "123456:ABC-DEF..."
+
+# ── Owner IDs (comma-separated Telegram user IDs) ───────────────────
+# OWNER_IDS = "123456789,987654321"
+
+# ── Dashboard ────────────────────────────────────────────────────────
+# DASHBOARD_PASSWORD = "your-password"

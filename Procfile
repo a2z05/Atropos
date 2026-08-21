@@ -1,1 +1,1 @@
-web: python atropos dashboard --port $PORT
+web: python atropos init && python atropos dashboard --port $PORT

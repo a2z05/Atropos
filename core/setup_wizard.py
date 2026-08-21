@@ -219,7 +219,7 @@ def get_checks():
 # ── First-time config ──────────────────────────────────────────────────────
 
 def _configure_first_time():
-    """Interactive config setup for first-time."""
+    """Interactive config setup for first-time (reads Railway env vars too)."""
     cfg = config.load()
     home = config.config_path().parent
     home.mkdir(parents=True, exist_ok=True)
@@ -230,15 +230,48 @@ def _configure_first_time():
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if bot_token:
         _ok(f"Telegram bot token: ...{bot_token[-8:]}")
+        cfg.setdefault("telegram", {})["token"] = bot_token
     else:
         _info("No TELEGRAM_BOT_TOKEN set. Add it to ~/.atropos/config.yaml later.")
 
-    # Router
-    router = cfg.get("router", {})
+    # Owner IDs (comma-separated)
+    owner_ids = os.environ.get("OWNER_IDS", "")
+    if owner_ids:
+        ids = [int(x.strip()) for x in owner_ids.split(",") if x.strip().isdigit()]
+        if ids:
+            cfg.setdefault("telegram", {})["owner_ids"] = ids
+            _ok(f"Owner IDs: {ids}")
+
+    # Router — read from env vars
+    router = cfg.setdefault("router", {})
     if not router.get("active"):
-        _info("Setting default router: nain")
-        cfg.setdefault("router", {})["active"] = "nain"
-        cfg["router"]["model"] = "deepmo"
+        router["active"] = "nain"
+        router["model"] = "deepmo"
+
+    # 9Router / OmniRoute keys from env
+    ninerouter_url = os.environ.get("NINEROUTER_URL", "")
+    ninerouter_key = os.environ.get("NINEROUTER_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+
+    if ninerouter_url:
+        router["base_url"] = ninerouter_url
+        _ok(f"9Router URL: {ninerouter_url[:40]}...")
+    if ninerouter_key:
+        _ok(f"9Router key: ...{ninerouter_key[-8:]}")
+    if openai_key:
+        _ok(f"OpenAI key: ...{openai_key[-8:]}")
+
+    # Dashboard — bind to 0.0.0.0 on Railway
+    cloud = "none"
+    try:
+        from . import detect as _detect
+        cloud = _detect.detect_cloud()
+    except Exception:
+        pass
+    if cloud == "railway":
+        cfg.setdefault("dashboard", {})["host"] = "0.0.0.0"
+        cfg["dashboard"]["port"] = int(os.environ.get("PORT", 8787))
+        _ok("Railway detected: dashboard bound to 0.0.0.0")
 
     # Guest
     cfg.setdefault("guest", {})["enabled"] = False
