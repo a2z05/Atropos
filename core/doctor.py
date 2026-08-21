@@ -97,18 +97,21 @@ def _checks():
 
     yield ("disk < 85%", disk_check, None)
 
-    # 7. Timezone
+    # 7. Timezone — report local timezone (always passes, informational)
     def tz_check():
         import datetime
         import time
-        # On Windows time.timezone semantics differ; report instead of fail.
+        try:
+            local_tz = datetime.datetime.now(datetime.timezone.utc).astimezone().tzname()
+        except Exception:
+            local_tz = "unknown"
+        # On Windows time.timezone semantics differ; just report.
         if os.name == "nt":
-            return (True, "Windows — tz check skipped")
+            return (True, f"tz={local_tz} (Windows)")
         off = time.timezone if time.daylight == 0 else time.altzone
-        # +0330 = Asia/Tehran = -12600
-        return (off == -12600, f"offset={off}")
+        return (True, f"tz={local_tz} offset={off}")
 
-    yield ("timezone Asia/Tehran", tz_check, None)
+    yield ("timezone", tz_check, None)
 
     # ── v18 B.8: Railway volume + stale PIDs (only when running on Railway) ──
     def railway_check():

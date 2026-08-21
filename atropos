@@ -1726,10 +1726,32 @@ def _dispatch_default(ap):
     dashboard    → start the web dashboard (prints URL + QR)
     both         → dashboard in the background, then this status overview
                    with a pointer to the dashboard URL
+
+    On first run the setup wizard launches automatically. On Railway, the
+    dashboard binds to 0.0.0.0 with the $PORT env var.
     """
+    # ── first-run: auto-launch setup wizard ────────────────────────────
+    if detect.is_first_run():
+        cloud = detect.detect_cloud()
+        if cloud == "railway":
+            # Railway headless: no TTY → skip wizard, run silent init
+            from core import setup_wizard
+            setup_wizard._configure_first_time()
+            detect.mark_setup_done()
+            _info("first-run init complete (Railway headless)")
+        elif _IS_TTY:
+            from core.setup_wizard import run_wizard
+            run_wizard()
+            detect.mark_setup_done()
+            _info("setup complete — welcome to Atropos!")
+        else:
+            # Non-TTY, non-Railway: run init silently
+            cmd_init(argparse.Namespace())
+            detect.mark_setup_done()
+
     action = "cli"
     try:
-        action = settings.get("cli.default_action", "cli") or "cli"
+        action = settings.get("cli.default_action", "both") or "both"
     except Exception:
         pass
     if action == "menu":
@@ -1746,7 +1768,12 @@ def _dispatch_default(ap):
         from core import lan
         cfg = config.load()
         d = cfg.get("dashboard", {})
-        port = int(d.get("port", 8787))
+        # Railway: read port from $PORT env var
+        cloud = detect.detect_cloud()
+        if cloud == "railway":
+            port = int(os.environ.get("PORT", d.get("port", 8787)))
+        else:
+            port = int(d.get("port", 8787))
         url = f"http://{lan.lan_ip()}:{port}/"
         try:
             import subprocess as _sp

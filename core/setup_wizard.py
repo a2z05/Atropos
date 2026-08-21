@@ -61,6 +61,9 @@ def _info(msg):  print(f"  {C_CYAN}→{C_RESET} {msg}")
 
 
 def _read_key():
+    if os.name == "nt":
+        import msvcrt
+        return msvcrt.getch().decode("utf-8", errors="replace")
     import termios, tty
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
@@ -489,22 +492,26 @@ def run_wizard(check_only=False):
             _read_key()
             return
 
-        # Step 3: Install missing
+        # Step 3: Install missing (ask per component)
         if missing:
             print(f"\n  {C_BOLD}{C_WHITE}Step 3: Install Missing{C_RESET}\n")
             for i, c in enumerate(missing):
                 print(f"    [{i+1}] {c.name}: {c.description}")
             print(f"    [0] Skip all\n")
-
-            _info("Installing in 3 seconds... (press any key to choose)")
-            # auto-install all
             for c in missing:
+                try:
+                    ans = input(f"  {C_CYAN}?{C_RESET} Install {C_BOLD}{c.name}{C_RESET}? [Y/n] ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    ans = "n"
+                if ans in ("n", "no", "0", "skip"):
+                    _info(f"skipped {c.name}")
+                    continue
                 print(f"\n  {C_YELLOW}Installing {c.name}...{C_RESET}")
                 ok = c.install()
                 if ok:
                     _ok(f"{c.name} installed")
                 else:
-                    _fail(f"{c.name} install failed")
+                    _fail(f"{c.name} install failed — you can install it later")
         else:
             print(f"\n  {C_GREEN}All components installed!{C_RESET}")
 
