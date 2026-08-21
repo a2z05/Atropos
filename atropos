@@ -1749,11 +1749,16 @@ def _dispatch_default(ap):
             cmd_init(argparse.Namespace())
             detect.mark_setup_done()
 
-    action = "cli"
+    action = "both"
     try:
         action = settings.get("cli.default_action", "both") or "both"
     except Exception:
         pass
+    if action == "cli":
+        # "cli" = interactive menu (the actual CLI experience)
+        from core import cliui
+        cliui.menu(_dispatch_cmd)
+        sys.exit(0)
     if action == "menu":
         from core import cliui
         cliui.menu(_dispatch_cmd)
