@@ -410,9 +410,9 @@ def _pristine(target_rel: str) -> str:
     rel = target_rel.lstrip("/")
     out = subprocess.run(
         ["git", "-C", repo, "show", f"HEAD:{rel}"],
-        capture_output=True, text=True, timeout=30, check=True,
+        capture_output=True, timeout=30, check=True,
     )
-    return out.stdout
+    return out.stdout.decode("utf-8", errors="replace")
 
 
 def _target_path(target_rel: str) -> Path:
@@ -460,8 +460,8 @@ def apply_hacks(hacks=None, target=None, write=True, force_guest=False):
             applied.append(h["id"])
         ok = True
         for h in hs:
-            for g in h.get("verify", []):
-                if g and g not in src:
+            for g in (h.get("verify") or []):
+                if g and src and g not in src:
                     errors.append(f"{h['id']}: verify grep missing: {g}")
                     ok = False
         if t.endswith(".py") and ok:
