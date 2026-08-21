@@ -87,7 +87,7 @@ SETTINGS_SCHEMA = {
     "update.auto_ai": {"type": "bool", "default": False, "group": "core",
                        "description": "Let the AI update engine fix conflict updates when update.auto=apply"},
     # ---- cli ----
-    "cli.default_action": {"type": "choice", "default": "cli",
+    "cli.default_action": {"type": "choice", "default": "both",
                            "choices": ["cli", "dashboard", "both", "menu", "repl"], "group": "cli",
                            "description": "What a bare `atropos` (no subcommand) invokes: cli|dashboard|both|menu|repl"},
     "cli.theme": {"type": "choice", "default": "dark",

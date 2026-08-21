@@ -3164,6 +3164,14 @@ def serve(host="127.0.0.1", port=8787):
             history_log("railway", "deploy detected — snapshot+backup taken")
     except Exception:
         pass
+    # Railway: bind to 0.0.0.0 and read $PORT (Railway requires this)
+    try:
+        from . import detect as _detect
+        if _detect.detect_cloud() == "railway":
+            host = "0.0.0.0"
+            port = int(os.environ.get("PORT", port))
+    except Exception:
+        pass
     # kick off the periodic SSE status broadcaster (once, daemon thread)
     try:
         from .sse import start_status_broadcaster

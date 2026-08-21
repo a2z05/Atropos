@@ -163,6 +163,24 @@ def save_runtime() -> dict:
     return data
 
 
+def is_first_run() -> bool:
+    """True when the setup wizard has never completed (no .setup_done marker).
+
+    The wizard writes ~/.atropos/.setup_done after a successful run.
+    On Railway, first-run is detected by the absence of config.yaml instead
+    (headless environments skip the interactive wizard).
+    """
+    home = atropos_home()
+    return not (home / ".setup_done").exists()
+
+
+def mark_setup_done():
+    """Write the .setup_done sentinel so the wizard won't re-trigger."""
+    home = atropos_home()
+    home.mkdir(parents=True, exist_ok=True)
+    (home / ".setup_done").write_text("1", encoding="utf-8")
+
+
 if __name__ == "__main__":
     d = save_runtime()
     for k, v in d.items():
