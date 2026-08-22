@@ -160,7 +160,6 @@ def _print_update_result(r):
 
 
 def cmd_update(args):
-    repo = detect.hermes_agent()
     if args.set_auto:
         try:
             from core import settings as _st
@@ -170,84 +169,139 @@ def cmd_update(args):
             _fail(str(e))
             sys.exit(1)
         return
-    if not repo:
-        _fail("hermes-agent not found — can't update")
-        sys.exit(1)
-    if args.ai_check:
-        from core import update_ai
-        r = update_ai.ai_check(update_ai.failed_patch_state())
-        print(json.dumps(r, indent=2, ensure_ascii=False))
-        sys.exit(0 if r.get("ok", True) else 1)
-    if args.check:
+
+    # ── 1. Check Atropos itself from GitHub ──────────────────────────────
+    print(f"\n  {_C_BOLD}Checking Atropos updates...{_C_RESET}")
+    atropos_repo = str(Path(__file__).resolve().parent)
+    try:
+        import subprocess as _sp
+        # Fetch latest from origin
+        _sp.run(["git", "-C", atropos_repo, "fetch", "origin", "main"],
+                capture_output=True, timeout=30)
+        head = _sp.run(["git", "-C", atropos_repo, "rev-parse", "--short", "HEAD"],
+                       capture_output=True, text=True, timeout=10).stdout.strip()
+        remote = _sp.run(["git", "-C", atropos_repo, "rev-parse", "--short", "origin/main"],
+                         capture_output=True, text=True, timeout=10).stdout.strip()
+        behind = _sp.run(["git", "-C", atropos_repo, "rev-list", "--count", "HEAD..origin/main"],
+                         capture_output=True, text=True, timeout=10).stdout.strip() or "0"
+
+        if behind == "0" or head == remote:
+            _ok(f"Atropos is up to date @ {head}")
+        else:
+            _warn(f"Atropos is behind by {behind} commit(s): {head} → {remote}")
+            try:
+                ans = input(f"  Update Atropos now? [Y/n] ").strip().lower()
+            except EOFError:
+                ans = "y"
+            if ans not in ("n", "no"):
+                _info("Pulling latest Atropos...")
+                pull = _sp.run(["git", "-C", atropos_repo, "pull", "--ff-only", "origin", "main"],
+                               capture_output=True, text=True, timeout=60)
+                if pull.returncode == 0:
+                    new_head = _sp.run(["git", "-C", atropos_repo, "rev-parse", "--short", "HEAD"],
+                                       capture_output=True, text=True, timeout=10).stdout.strip()
+                    _ok(f"Atropos updated: {head} → {new_head}")
+                    # Reinstall the CLI
+                    _info("Reinstalling atropos CLI...")
+                    _sp.run([sys.executable, str(Path(__file__).resolve()), "install"],
+                            capture_output=True, timeout=30)
+                    _ok("CLI reinstalled")
+                else:
+                    _fail(f"pull failed: {pull.stderr[:200]}")
+    except Exception as e:
+        _fail(f"Atropos check failed: {e}")
+
+    # ── 2. Ask about hermes-agent ───────────────────────────────────────
+    repo = detect.hermes_agent()
+    if repo:
+        print()
+        try:
+            ans = input(f"  Check hermes-agent updates? [y/N] ").strip().lower()
+        except EOFError:
+            ans = "n"
+        if ans in ("y", "yes"):
+            _update_hermes(repo, args)
+    else:
+        _info("hermes-agent not found — skipping")
+
+    # ── 3. Ask about Claude Code ────────────────────────────────────────
+    claude = detect._find_claude()
+    if claude:
+        print()
+        try:
+            ans = input(f"  Check Claude Code updates? [y/N] ").strip().lower()
+        except EOFError:
+            ans = "n"
+        if ans in ("y", "yes"):
+            _update_claude(claude)
+    else:
+        _info("Claude Code not found — skipping")
+
+
+def _update_hermes(repo, args):
+    """Check and optionally update hermes-agent."""
+    print(f"\n  {_C_BOLD}Checking hermes-agent...{_C_RESET}")
+    try:
         r = update.update_check(repo)
         if r.get("up_to_date"):
-            _ok(f"up to date @ {r['head']}")
+            _ok(f"hermes-agent is up to date @ {r['head']}")
         elif r.get("ok"):
-            _warn(f"behind: {r.get('behind')} commits")
-            print(f"  head={r.get('head')} -> remote={r.get('remote')}")
-            print(f"  diff:\n{r.get('diff', '(no diff)')}")
-            dry = r.get("dry_run", {})
-            if dry:
-                n_conflicts = len(dry.get("conflicts", []))
-                state = "clean" if dry.get("clear") else f"{n_conflicts} hack conflicts"
-                print(f"  dry-run: {state}")
-                if dry.get("clear"):
-                    _ok("all hacks apply cleanly upstream")
-                else:
-                    for c in dry.get("conflicts", []):
-                        _warn(f"    {c['id']}: {c.get('reason')}")
-            print("  Run `atropos update apply` to apply.")
-        else:
-            _fail(f"error: {r.get('error')}")
-            sys.exit(1)
-    elif args.apply:
-        confirm = not args.yes
-        if confirm:
-            pre = update.update_check(repo)
-            if pre.get("up_to_date"):
-                _ok(f"up to date @ {pre.get('head')}")
-                sys.exit(0)
-            print(f"\n  {_C_BOLD}Update preview{_C_RESET}")
-            print(f"  head={pre.get('head')} -> remote={pre.get('remote')} ({pre.get('behind')} commits)")
-            dry = pre.get("dry_run", {})
-            if dry and not dry.get("clear"):
-                _warn(f"  {len(dry.get('conflicts', []))} hack(s) would conflict:")
-                for c in dry.get("conflicts", []):
-                    print(f"    ✗ {c['id']}: {c.get('reason')}")
-                if not args.yes:
-                    if args.auto_fix:
-                        _info("--auto-fix: will delegate conflicts to the AI update engine")
-                    else:
-                        _fail("aborting — use `--yes` to force, `--auto-fix` to delegate to AI")
-                        sys.exit(1)
+            _warn(f"hermes-agent is behind: {r.get('behind')} commits")
             try:
-                resp = input(f"  Apply {pre.get('behind')} commit(s)? [y/N] ").strip().lower()
+                ans = input(f"  Update hermes-agent now? [y/N] ").strip().lower()
             except EOFError:
-                resp = ""
-            if resp not in ("y", "yes"):
-                _info("cancelled")
-                sys.exit(0)
-        r = update.apply_update(repo, ai_engine=args.auto_fix)
-        if r.get("ok") and r.get("head") != r.get("prev_head"):
-            tests = update.run_tests(update._home_repo())
-            r["tests"] = tests
-            if not tests.get("ok"):
-                _warn("post-update tests failed — rolling back")
-                from core import patches as _patches
-                subprocess_run = None
-                from core import update as _upd
-                _git = _upd._git
-                _git(repo, "reset", "--hard", r.get("prev_head"))
-                _patches.apply_hacks()
-                _fail("rolled back")
-                sys.exit(1)
-        if r.get("ok") and r.get("head") == r.get("prev_head"):
-            _ok(f"up to date @ {r.get('head')}")
-            sys.exit(0)
-        _print_update_result({**r, "ok": r.get("ok"), "up_to_date": False})
-    else:
-        r = update.apply_update(repo)
-        _print_update_result(r)
+                ans = "n"
+            if ans in ("y", "yes"):
+                _info("Applying hermes-agent update...")
+                res = update.apply_update(repo)
+                if res.get("ok") and res.get("head") != res.get("prev_head"):
+                    _ok(f"hermes-agent updated: {res.get('prev_head')} → {res.get('head')}")
+                    # Apply patches
+                    from core import patches as _patches
+                    applied, skipped, errors = _patches.apply_hacks()
+                    _ok(f"Patches applied: {len(applied)}")
+                elif res.get("up_to_date"):
+                    _ok(f"up to date @ {res.get('head')}")
+                else:
+                    _fail(res.get("error", "update failed"))
+        else:
+            _fail(f"hermes-agent check failed: {r.get('error')}")
+    except Exception as e:
+        _fail(f"hermes-agent update error: {e}")
+
+
+def _update_claude(claude_path):
+    """Check and optionally update Claude Code via npm."""
+    print(f"\n  {_C_BOLD}Checking Claude Code...{_C_RESET}")
+    import subprocess as _sp
+    try:
+        cur = _sp.run(["claude", "--version"], capture_output=True, text=True, timeout=10)
+        cur_ver = cur.stdout.strip().split("\n")[0] if cur.returncode == 0 else "unknown"
+        _info(f"Current version: {cur_ver}")
+
+        npm_out = _sp.run(["npm", "view", "@anthropic-ai/claude-code", "version"],
+                          capture_output=True, text=True, timeout=15)
+        latest = npm_out.stdout.strip() if npm_out.returncode == 0 else ""
+        if latest and latest != cur_ver:
+            _warn(f"New version available: {latest}")
+            try:
+                ans = input(f"  Update Claude Code to {latest}? [y/N] ").strip().lower()
+            except EOFError:
+                ans = "n"
+            if ans in ("y", "yes"):
+                _info("Updating Claude Code...")
+                up = _sp.run(["npm", "install", "-g", "@anthropic-ai/claude-code"],
+                             capture_output=True, text=True, timeout=120)
+                if up.returncode == 0:
+                    _ok(f"Claude Code updated to {latest}")
+                else:
+                    _fail(f"npm update failed: {up.stderr[:200]}")
+        else:
+            _ok(f"Claude Code is up to date ({cur_ver})")
+    except FileNotFoundError:
+        _fail("npm not found — can't update Claude Code")
+    except Exception as e:
+        _fail(f"Claude Code check failed: {e}")
 
 
 def cmd_install(args):
