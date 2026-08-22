@@ -541,9 +541,7 @@
 
     <div class="nav-group">Models &amp; Data</div>
     <div class="nav-item" data-panel="routers"><span class="ico">
-      <svg viewBox="0 0 24 24"><path d="M3 7h12M15 12h6M3 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="3" cy="12" r="2"/><circle cx="21" cy="17" r="2"/></svg></span>Routers</div>
-    <div class="nav-item" data-panel="models"><span class="ico">
-      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></span>Models</div>
+      <svg viewBox="0 0 24 24"><path d="M3 7h12M15 12h6M3 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="3" cy="12" r="2"/><circle cx="21" cy="17" r="2"/></svg></span>Models &amp; Routing</div>
     <div class="nav-item" data-panel="mcp"><span class="ico">
       <svg viewBox="0 0 24 24"><path d="M8 7h13M8 12h10M8 17h13M3 7h.01M3 12h.01M3 17h.01"/></svg></span>MCP</div>
     <div class="nav-item" data-panel="memory"><span class="ico">
@@ -1378,26 +1376,6 @@
       </div>
     </section>
 
-    <section class="panel" id="panel-models">
-      <div class="grid">
-        <section class="card span-8">
-          <h3><span class="dot"></span>Models <span class="right" id="models-count"></span></h3>
-          <div id="models-list"><div class="log-empty">Loading…</div></div>
-        </section>
-        <section class="card span-4">
-          <h3><span class="dot"></span>Add model</h3>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <input id="models-name" class="token-input" style="width:100%;" placeholder="name">
-            <input id="models-model" class="token-input" style="width:100%;" placeholder="model id (optional)">
-            <input id="models-base" class="token-input" style="width:100%;" placeholder="base url (optional)">
-          </div>
-          <div class="btn-row just-end"><button class="btn green" id="btn-models-add">Add</button></div>
-          <div class="edit-label">assign per harness</div>
-          <div id="models-assign" class="checklist"><div class="log-empty">Loading…</div></div>
-        </section>
-      </div>
-    </section>
-
     <section class="panel" id="panel-webhooks">
       <div class="grid">
         <section class="card span-7">
@@ -1871,7 +1849,7 @@ function showPanel(name) {
     overview: [loadCmdStatus, loadStatus, loadRouter, loadOverviewStats, loadOverviewMoirai],
     doctor: [loadDoctor],
     patches: [loadPatches],
-    routers: [loadModelsPanel],
+    routers: [loadModelsPanel, renderModelList],
     sessions: [loadSessions, loadSessionEngine],
     cron: [loadCron],
     skills: [loadSkills],
@@ -1895,7 +1873,6 @@ function showPanel(name) {
     configs: [loadConfigs],
     routing: [loadRouting],
     files: [loadFiles],
-    models: [loadModels],
     webhooks: [loadWebhooks],
     pairing: [loadPairing],
     fleet: [loadFleet],
@@ -2085,47 +2062,49 @@ document.getElementById('btn-reload').addEventListener('click', () => location.r
 document.getElementById('btn-dismiss-update').addEventListener('click', () => document.getElementById('update-banner').classList.remove('show'));
 
 /* ── models management ──────────────────────────────────────────────── */
-let _mdlModels = []; // in-memory model list
+let _mdlModels = [];
+let _mdlCustom = JSON.parse(localStorage.getItem('atropos_custom_models') || '[]');
 
 async function loadModelsPanel() {
   try {
     const d = await api('/api/router');
     const rt = d.router || {};
-    // Load provider config from settings
     let st = {};
     try { st = (await api('/api/settings')).values || {}; } catch(e) {}
     document.getElementById('mdl-provider-url').value = st['router.base_url'] || rt.base_url || '';
     document.getElementById('mdl-active-model').value = rt.model || '';
     if (st['router.api_key'] || st['router.ninerouter_key'] || st['router.openai_key'])
       document.getElementById('mdl-provider-key').placeholder = '•••••••• (saved)';
-    // Fetch models list
-    await fetchModelList();
+    await renderModelList();
   } catch (e) {}
 }
 
-async function fetchModelList() {
+async function renderModelList() {
   const listEl = document.getElementById('mdl-list');
   const countEl = document.getElementById('mdl-count');
+  const cur = document.getElementById('mdl-active-model').value;
+  // Merge API models + custom models
+  let apiModels = [];
   try {
     const d = await api('/api/router/models');
-    const models = d.models || [];
-    _mdlModels = models;
-    countEl.textContent = models.length;
-    if (!models.length) {
-      listEl.innerHTML = '<div class="log-empty">No models found. Set provider URL + API key, then click "Fetch Models".</div>';
-      return;
-    }
-    const cur = document.getElementById('mdl-active-model').value;
-    listEl.innerHTML = models.map(m => {
-      const active = m === cur;
-      return `<div class="set-row" style="padding:6px 10px;background:${active ? 'color-mix(in srgb, var(--primary) .1, var(--surface))' : 'var(--surface2)'};border:1px solid ${active ? 'var(--primary)' : 'var(--border)'};border-radius:var(--radius-x);cursor:pointer;" onclick="selectModel('${esc(m)}')">
-        <span style="flex:1;font-size:13px;font-family:var(--font-mono);">${esc(m)}</span>
-        ${active ? '<span style="color:var(--primary);font-size:11px;">● active</span>' : ''}
-      </div>`;
-    }).join('');
-  } catch (e) {
-    listEl.innerHTML = `<div class="log-empty" style="color:var(--red);">${esc(e.message)}</div>`;
+    apiModels = d.models || [];
+  } catch(e) {}
+  _mdlModels = [...new Set([...apiModels, ..._mdlCustom])];
+  countEl.textContent = _mdlModels.length;
+  if (!_mdlModels.length) {
+    listEl.innerHTML = '<div class="log-empty">No models. Set provider URL + API key and click "Fetch", or add one manually.</div>';
+    return;
   }
+  listEl.innerHTML = _mdlModels.map(m => {
+    const active = m === cur;
+    const isCustom = _mdlCustom.includes(m) && !apiModels.includes(m);
+    return `<div class="set-row" style="padding:6px 10px;background:${active ? 'color-mix(in srgb, var(--primary) .1, var(--surface))' : 'var(--surface2)'};border:1px solid ${active ? 'var(--primary)' : 'var(--border)'};border-radius:var(--radius-x);cursor:pointer;display:flex;align-items:center;gap:8px;" onclick="selectModel('${esc(m)}')">
+      <span style="flex:1;font-size:13px;font-family:var(--font-mono);">${esc(m)}</span>
+      ${active ? '<span style="color:var(--primary);font-size:11px;">● active</span>' : ''}
+      ${isCustom ? '<span style="color:var(--muted);font-size:10px;">manual</span>' : ''}
+      <button onclick="event.stopPropagation();removeCustomModel('${esc(m)}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px;" title="remove">×</button>
+    </div>`;
+  }).join('');
 }
 
 async function selectModel(name) {
@@ -2133,8 +2112,24 @@ async function selectModel(name) {
   try {
     await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.model', value: name }) });
     toast(`Model → ${name}`, 'ok');
-    await fetchModelList();
+    await renderModelList();
   } catch (e) { toast(e.message, 'err'); }
+}
+
+async function fetchModelList() {
+  const statusEl = document.getElementById('mdl-provider-status');
+  statusEl.textContent = 'fetching…';
+  statusEl.style.color = 'var(--muted)';
+  try {
+    const d = await api('/api/router/models');
+    const models = d.models || [];
+    statusEl.textContent = `✓ ${models.length} models found`;
+    statusEl.style.color = models.length ? 'var(--green)' : 'var(--yellow)';
+    await renderModelList();
+  } catch (e) {
+    statusEl.textContent = '✗ ' + e.message;
+    statusEl.style.color = 'var(--red)';
+  }
 }
 
 async function saveProviderConfig() {
@@ -2149,8 +2144,6 @@ async function saveProviderConfig() {
     statusEl.textContent = '✓ saved';
     statusEl.style.color = 'var(--green)';
     toast('Provider saved', 'ok');
-    // Auto-fetch models after saving
-    await fetchModelList();
   } catch (e) {
     statusEl.textContent = '✗ ' + e.message;
     statusEl.style.color = 'var(--red)';
@@ -2161,11 +2154,18 @@ async function addModelManual() {
   const input = document.getElementById('mdl-add-name');
   const name = input.value.trim();
   if (!name) return;
-  // Add to the display list and set as active
-  if (!_mdlModels.includes(name)) _mdlModels.push(name);
+  if (!_mdlCustom.includes(name)) {
+    _mdlCustom.push(name);
+    localStorage.setItem('atropos_custom_models', JSON.stringify(_mdlCustom));
+  }
   input.value = '';
   await selectModel(name);
-  toast(`Added ${name}`, 'ok');
+}
+
+function removeCustomModel(name) {
+  _mdlCustom = _mdlCustom.filter(m => m !== name);
+  localStorage.setItem('atropos_custom_models', JSON.stringify(_mdlCustom));
+  renderModelList();
 }
 async function loadStatus() {
   try {
@@ -3049,7 +3049,7 @@ const CMD_ITEMS = [
   { ico: '✚', name: 'Doctor — Fix All', action: 'Apply Fix', fn: () => runDoctor(true) },
   { ico: '⚡', name: 'Patches', panel: 'patches', action: 'Verify patches', fn: () => loadPatches() },
   { ico: '⚡', name: 'Patches — Apply All', action: 'Apply hacks', fn: () => { toast('Applying all hacks…', 'ok'); api('/api/patches/apply', { method:'POST', body:'{}' }).then(() => { toast('Hacks applied ✓', 'ok'); loadPatches(); }).catch(e => toast(e.message, 'err')); }},
-  { ico: '⚡', name: 'Models', panel: 'routers', action: 'Open models panel', fn: () => { location.hash='routers'; }},
+  { ico: '⚡', name: 'Models & Routing', panel: 'routers', action: 'Open models panel', fn: () => { location.hash='routers'; }},
   { ico: '▤', name: 'Sessions', panel: 'sessions' },
   { ico: '◷', name: 'Cron', panel: 'cron' },
   { ico: '✦', name: 'Skills', panel: 'skills' },
