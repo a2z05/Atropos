@@ -3328,34 +3328,6 @@ async function loadChangelog() {
   } catch (e) { box.innerHTML = `<div class="log-empty">${esc(e.message)}</div>`; }
 }
 
-/* ── router sparklines ──────────────────────────────────────────── */
-function renderSparkline(name, samples) {
-  if (!samples || samples.length < 1) return '';
-  const lats = samples.filter(s => s.latency_ms != null && s.ok).map(s => s.latency_ms);
-  if (lats.length < 1) return '';
-  const min = Math.min(...lats), max = Math.max(...lats);
-  const range = max - min || 1;
-  const W = 120, H = 24, P = 4;
-  const pts = lats.map((v, i) => `${P + (i / (lats.length - 1 || 1)) * (W - 2*P)},${H - P - ((v - min) / range) * (H - 2*P)}`);
-  const avg = Math.round(lats.reduce((a,b)=>a+b,0) / lats.length);
-  return `<div style="text-align:center;">
-    <div class="sparkline-wrap">
-      <svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.join(' ')}" fill="none" stroke="var(--primary-l)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </div>
-    <div class="spark-val">${esc(name)} · avg ${avg}ms (${lats.length} samples)</div>
-  </div>`;
-}
-async function loadRouterSparklines() {
-  const box = document.getElementById('router-sparklines');
-  if (!box) return;
-  try {
-    const d = await api('/api/router/history');
-    const hist = d.history || {};
-    const names = ['nain', 'omni', 'local'];
-    const html = names.map(n => renderSparkline(n, hist[n] || [])).join('');
-    box.innerHTML = html || '<div class="log-empty">No sparkline data yet — run a router test to populate.</div>';
-  } catch (e) { box.innerHTML = `<div class="log-empty">${esc(e.message)}</div>`; }
-}
 
 /* ── backup period selector ─────────────────────────────────────── */
 async function loadBackupPeriod() {
