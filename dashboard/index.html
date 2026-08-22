@@ -501,6 +501,14 @@
   .model-chip.current { border-color: var(--primary); color: var(--primary-l); }
   .sparkline-wrap { margin: 4px 0; }
   .spark-val { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  /* guest pill */
+  .guest-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface2); border: 1px solid var(--border); transition: var(--tr); }
+  .guest-pill.on { border-color: var(--green); color: var(--green); background: color-mix(in srgb, var(--green) 8%, var(--surface)); }
+  .guest-pill.off { color: var(--muted); }
+  .mini-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .guest-pill.on .mini-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  /* effort tier chips */
+  .tier-chip { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11.5px; font-weight: 600; background: var(--surface2); border: 1px solid var(--border); text-transform: capitalize; }
 
 </style>
 </head>
@@ -2239,7 +2247,10 @@ document.getElementById('btn-mdl-save').addEventListener('click', saveProviderCo
 document.getElementById('btn-mdl-fetch').addEventListener('click', fetchModelList);
 document.getElementById('btn-mdl-add').addEventListener('click', addModelManual);
 document.getElementById('mdl-add-name').addEventListener('keydown', e => { if (e.key === 'Enter') addModelManual(); });
-async function loadRouteTest() { /* results are cleared on panel open */ }
+async function loadRouteTest() {
+  const el = document.getElementById('route-test-result');
+  if (el) el.innerHTML = '';
+}
 
 /* ── doctor ───────────────────────────────────────────────────────────── */
 const DOC_NAME_KEYS = {
@@ -4641,15 +4652,14 @@ function startLiveHub() {
     settings: () => loadSettings().catch(() => {}),
     mcp: () => loadMcp().catch(() => {}),
     memory: () => loadMemory().catch(() => {}),
+    'update-ai': () => loadUpdateAi().catch(() => {}),
+    backends: () => loadBackendBackups().catch(() => {}),
+    wizard: () => loadWizard().catch(() => {}),
   };
   setInterval(() => {
     const p = currentPanel();
     const loader = _panelLoaders[p];
     if (loader) loader();
-  }, refreshMs);
-    if (p === 'update-ai') loadUpdateAi().catch(() => {});
-    if (p === 'backends') loadBackendBackups().catch(() => {});
-    if (p === 'wizard') loadWizard().catch(() => {});
   }, refreshMs);
   // fleet refresh: 30s regardless of which panel is open
   setInterval(() => { if (getToken() && currentPanel() === 'fleet') loadFleet().catch(() => {}); }, 30000);
