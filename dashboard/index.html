@@ -689,11 +689,7 @@
         </section>
         <section class="card span-7">
           <h3><span class="dot"></span>Router <span class="right" id="ov-router-state">—</span></h3>
-          <div class="router-grid" id="ov-router-grid"></div>
-          <div class="router-state" id="ov-router-detail">—</div>
-          <div class="btn-row just-end">
-            <button class="btn" id="ov-test-routers">Test all routers</button>
-          </div>
+          <div id="ov-router-detail" style="font-size:13px;color:var(--muted);margin-top:8px;">—</div>
         </section>
         <section class="card span-12">
           <h3><span class="dot"></span>Quick stats</h3>
@@ -740,53 +736,50 @@
 
     <section class="panel" id="panel-routers">
       <div class="grid">
-        <!-- Active router selector -->
+        <!-- 9Router Management -->
+        <section class="card span-6">
+          <h3><span class="dot" style="background:var(--cyan);"></span>9Router <small style="color:var(--muted);font-weight:400;">nain · AI gateway</small></h3>
+          <div class="set-row"><label>Base URL</label><input id="rt-nain-url" class="token-input" placeholder="$NINEROUTER_URL or default"></div>
+          <div class="set-row"><label>API Key</label><input id="rt-nain-key" class="token-input" type="password" placeholder="$NINEROUTER_KEY"></div>
+          <div class="set-row"><label>Model</label><input id="rt-nain-model" class="token-input" placeholder="deepmo"></div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn green" id="btn-rt-nain-save">Save</button>
+            <button class="btn" id="btn-rt-nain-test">Test</button>
+            <button class="btn" id="btn-rt-nain-activate">Set Active</button>
+          </div>
+          <div id="rt-nain-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
+        </section>
+
+        <!-- OmniRoute Management -->
+        <section class="card span-6">
+          <h3><span class="dot" style="background:var(--secondary);"></span>OmniRoute <small style="color:var(--muted);font-weight:400;">omni · multi-provider</small></h3>
+          <div class="set-row"><label>Base URL</label><input id="rt-omni-url" class="token-input" placeholder="$OPENAI_BASE_URL or default"></div>
+          <div class="set-row"><label>API Key</label><input id="rt-omni-key" class="token-input" type="password" placeholder="$OPENAI_API_KEY"></div>
+          <div class="set-row"><label>Model</label><input id="rt-omni-model" class="token-input" placeholder="gpt-4o"></div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn green" id="btn-rt-omni-save">Save</button>
+            <button class="btn" id="btn-rt-omni-test">Test</button>
+            <button class="btn" id="btn-rt-omni-activate">Set Active</button>
+          </div>
+          <div id="rt-omni-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
+        </section>
+
+        <!-- Local Ollama -->
         <section class="card span-12">
-          <h3><span class="dot"></span>Active Router <span class="right" id="router-active-label">—</span></h3>
-          <div class="router-grid" id="router-grid" style="grid-template-columns:repeat(3,1fr);"></div>
-          <div class="router-state" id="router-state" style="margin-top:10px;font-size:12px;color:var(--muted);">—</div>
-          <div class="btn-row just-end" style="margin-top:10px;">
-            <button class="btn" id="btn-test-routers">Test all</button>
-            <button class="btn green" id="btn-apply-route">Apply to Hermes + Claude</button>
-          </div>
-        </section>
-
-        <!-- 9Router config -->
-        <section class="card span-6">
-          <h3><span class="dot" style="background:var(--cyan);"></span>9Router <small style="color:var(--muted);font-weight:400;">nain</small></h3>
-          <div class="set-row"><label>Base URL</label><input id="cfg-nainer-url" class="token-input" placeholder="$NINEROUTER_URL or default"></div>
-          <div class="set-row"><label>API Key</label><input id="cfg-nainer-key" class="token-input" type="password" placeholder="$NINEROUTER_KEY"></div>
-          <div class="set-row"><label>Model</label><input id="cfg-nainer-model" class="token-input" placeholder="deepmo"></div>
+          <h3><span class="dot" style="background:var(--green);"></span>Local Ollama <small style="color:var(--muted);font-weight:400;">local · localhost:11434</small></h3>
+          <div class="set-row"><label>Base URL</label><input id="rt-local-url" class="token-input" placeholder="http://localhost:11434/v1"></div>
+          <div class="set-row"><label>Model</label><input id="rt-local-model" class="token-input" placeholder="llama3"></div>
           <div class="btn-row" style="margin-top:10px;">
-            <button class="btn" id="btn-save-nainer">Save 9Router</button>
-            <button class="btn" id="btn-test-nainer">Test</button>
+            <button class="btn" id="btn-rt-local-test">Test</button>
+            <button class="btn" id="btn-rt-local-activate">Set Active</button>
           </div>
-          <div id="nainer-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
-        </section>
-
-        <!-- OmniRoute config -->
-        <section class="card span-6">
-          <h3><span class="dot" style="background:var(--secondary);"></span>OmniRoute <small style="color:var(--muted);font-weight:400;">omni</small></h3>
-          <div class="set-row"><label>Base URL</label><input id="cfg-omni-url" class="token-input" placeholder="$OPENAI_BASE_URL or default"></div>
-          <div class="set-row"><label>API Key</label><input id="cfg-omni-key" class="token-input" type="password" placeholder="$OPENAI_API_KEY"></div>
-          <div class="set-row"><label>Model</label><input id="cfg-omni-model" class="token-input" placeholder="gpt-4o"></div>
-          <div class="btn-row" style="margin-top:10px;">
-            <button class="btn" id="btn-save-omni">Save OmniRoute</button>
-            <button class="btn" id="btn-test-omni">Test</button>
-          </div>
-          <div id="omni-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
+          <div id="rt-local-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
         </section>
 
         <!-- Models list -->
         <section class="card span-12">
           <h3><span class="dot"></span>Available Models <span class="right" id="router-models-state"></span></h3>
-          <div id="router-models"><div class="log-empty">Select a router and click Test to fetch its models.</div></div>
-        </section>
-
-        <!-- Test results -->
-        <section class="card span-12">
-          <h3><span class="dot"></span>Test Results</h3>
-          <div id="router-test-out"><div class="log-empty">Click "Test all" to ping each router.</div></div>
+          <div id="router-models"><div class="log-empty">Click "Test" on a router to fetch its models.</div></div>
         </section>
       </div>
     </section>
@@ -1888,7 +1881,7 @@ function showPanel(name) {
     overview: [loadCmdStatus, loadStatus, loadRouter, loadOverviewStats, loadOverviewMoirai],
     doctor: [loadDoctor],
     patches: [loadPatches],
-    routers: [loadRouterConfigs, loadRouter, loadRouteTest, loadRouterModels],
+    routers: [loadRouterConfigs, loadRouterModels],
     sessions: [loadSessions, loadSessionEngine],
     cron: [loadCron],
     skills: [loadSkills],
@@ -2101,87 +2094,65 @@ async function loadVersion() {
 document.getElementById('btn-reload').addEventListener('click', () => location.reload());
 document.getElementById('btn-dismiss-update').addEventListener('click', () => document.getElementById('update-banner').classList.remove('show'));
 
-/* ── status / overview ────────────────────────────────────────────────── */
-function renderRouterCards(router, available, containerId, detailId, withSwitch) {
-  const grid = document.getElementById(containerId);
-  grid.innerHTML = '';
-  const active = (router && router.active) || '';
-  for (const item of available || []) {
-    const name = typeof item === 'string' ? item : (item.name || '');
-    const model = typeof item === 'object' ? (item.model || '') : (router && router.model) || '';
-    const base = typeof item === 'object' ? (item.base_url || '') : (router && router.base_url) || '';
-    const desc = typeof item === 'object' ? (item.description || '') : '';
-    const b = document.createElement('button');
-    b.className = 'rbtn' + (name === active ? ' active' : '');
-    b.title = desc;
-    b.innerHTML = `<b>${esc(name)}</b><small>${esc(model || '')} · ${esc(base || 'env default')}</small>`;
-    if (withSwitch) {
-      b.addEventListener('click', async () => {
-        try {
-          const d = await api('/api/router/set', { method: 'POST', body: JSON.stringify({ name }) });
-          toast(`Router → ${name}`, 'ok');
-          const rt = await api('/api/router');
-          renderRouterCards(rt.router, rt.available, containerId, detailId, true);
-          if (detailId) document.getElementById(detailId).textContent = `Active: ${name}`;
-          await loadRouterModels();
-        } catch (e) { toast(e.message, 'err'); }
-      });
-    }
-    grid.appendChild(b);
-  }
-  if (detailId) {
-    document.getElementById(detailId).textContent =
-      `Active: ${esc(active)} · model: ${esc((router && router.model) || '')}`;
-  }
-}
-
-/* ── router config load/save ─────────────────────────────────────────── */
+/* ── router management ───────────────────────────────────────────────── */
 async function loadRouterConfigs() {
   try {
     const d = await api('/api/router');
     const rt = d.router || {};
     const av = d.available || [];
-    renderRouterCards(rt, av, 'router-grid', 'router-state', true);
-    document.getElementById('router-active-label').textContent = rt.active || '—';
-    // Fill 9Router fields
+    const active = rt.active || '';
+    // Load settings for API keys
+    let st = {};
+    try { st = (await api('/api/settings')).values || {}; } catch(e) {}
+    // Fill 9Router
     const nain = av.find(r => r.name === 'nain') || {};
-    document.getElementById('cfg-nainer-url').value = rt.base_url || nain.base_url || '';
-    document.getElementById('cfg-nainer-model').value = rt.model || nain.model || 'deepmo';
-    // Fill OmniRoute fields
+    document.getElementById('rt-nain-url').value = st['router.ninerouter_url'] || rt.base_url || '';
+    document.getElementById('rt-nain-model').value = rt.model || nain.model || 'deepmo';
+    if (st['router.ninerouter_key']) document.getElementById('rt-nain-key').placeholder = '•••••••• (saved)';
+    document.getElementById('rt-nain-status').textContent = active === 'nain' ? '● active' : '';
+    document.getElementById('rt-nain-status').style.color = active === 'nain' ? 'var(--green)' : 'var(--muted)';
+    // Fill OmniRoute
     const omni = av.find(r => r.name === 'omni') || {};
-    document.getElementById('cfg-omni-url').value = omni.base_url || '';
-    document.getElementById('cfg-omni-model').value = omni.model || 'gpt-4o';
-    // Load saved API keys from settings (masked)
-    try {
-      const st = await api('/api/settings');
-      const vals = st.values || {};
-      if (vals['router.ninerouter_key']) document.getElementById('cfg-nainer-key').placeholder = '•••••••• (saved)';
-      if (vals['router.openai_key']) document.getElementById('cfg-omni-key').placeholder = '•••••••• (saved)';
-      if (vals['router.ninerouter_url']) document.getElementById('cfg-nainer-url').value = vals['router.ninerouter_url'];
-    } catch(e) {}
+    document.getElementById('rt-omni-url').value = st['router.base_url'] || omni.base_url || '';
+    document.getElementById('rt-omni-model').value = rt.model || omni.model || 'gpt-4o';
+    if (st['router.openai_key']) document.getElementById('rt-omni-key').placeholder = '•••••••• (saved)';
+    document.getElementById('rt-omni-status').textContent = active === 'omni' ? '● active' : '';
+    document.getElementById('rt-omni-status').style.color = active === 'omni' ? 'var(--green)' : 'var(--muted)';
+    // Fill Local
+    const local = av.find(r => r.name === 'local') || {};
+    document.getElementById('rt-local-url').value = local.base_url || 'http://localhost:11434/v1';
+    document.getElementById('rt-local-model').value = local.model || 'llama3';
+    document.getElementById('rt-local-status').textContent = active === 'local' ? '● active' : '';
+    document.getElementById('rt-local-status').style.color = active === 'local' ? 'var(--green)' : 'var(--muted)';
   } catch (e) { toast(e.message, 'err'); }
 }
-async function saveRouterConfig(name) {
-  const isNainer = name === 'nain';
-  const prefix = isNainer ? 'nainer' : 'omni';
-  const url = document.getElementById(`cfg-${prefix}-url`).value.trim();
-  const key = document.getElementById(`cfg-${prefix}-key`).value.trim();
-  const model = document.getElementById(`cfg-${prefix}-model`).value.trim();
-  const statusEl = document.getElementById(`${prefix}-status`);
+
+async function saveRtConfig(name) {
+  const prefix = name;
+  const url = document.getElementById(`rt-${prefix}-url`).value.trim();
+  const key = document.getElementById(`rt-${prefix}-key`).value.trim();
+  const model = document.getElementById(`rt-${prefix}-model`).value.trim();
+  const statusEl = document.getElementById(`rt-${prefix}-status`);
   try {
-    if (url) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: isNainer ? 'router.ninerouter_url' : 'router.base_url', value: url }) });
-    if (key) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: isNainer ? 'router.ninerouter_key' : 'router.openai_key', value: key }) });
+    if (name === 'nain') {
+      if (url) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.ninerouter_url', value: url }) });
+      if (key) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.ninerouter_key', value: key }) });
+    } else if (name === 'omni') {
+      if (url) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.base_url', value: url }) });
+      if (key) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.openai_key', value: key }) });
+    }
     if (model) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.model', value: model }) });
     statusEl.textContent = '✓ saved';
     statusEl.style.color = 'var(--green)';
-    toast(`${name} config saved`, 'ok');
+    toast(`${name} saved`, 'ok');
   } catch (e) {
     statusEl.textContent = '✗ ' + e.message;
     statusEl.style.color = 'var(--red)';
   }
 }
-async function testRouter(name) {
-  const statusEl = document.getElementById(name === 'nain' ? 'nainer-status' : 'omni-status');
+
+async function testRt(name) {
+  const statusEl = document.getElementById(`rt-${name}-status`);
   statusEl.textContent = 'testing…';
   statusEl.style.color = 'var(--muted)';
   try {
@@ -2198,6 +2169,15 @@ async function testRouter(name) {
     statusEl.textContent = '✗ ' + e.message;
     statusEl.style.color = 'var(--red)';
   }
+}
+
+async function activateRt(name) {
+  try {
+    await api('/api/router/set', { method: 'POST', body: JSON.stringify({ name }) });
+    toast(`Router → ${name}`, 'ok');
+    await loadRouterConfigs();
+    await loadRouterModels();
+  } catch (e) { toast(e.message, 'err'); }
 }
 async function loadRouterModels() {
   const box = document.getElementById('router-models');
@@ -2265,14 +2245,12 @@ async function loadStripAnalytics() {
 async function loadRouter() {
   try {
     const d = await api('/api/router');
-    renderRouterCards(d.router, d.available, 'ov-router-grid', 'ov-router-detail', false);
-    renderRouterCards(d.router, d.available, 'router-grid', 'router-state', true);
+    const rt = d.router || {};
     document.getElementById('ov-router-state').textContent =
-      `active: ${esc(d.router.active)} · model: ${esc(d.router.model)}`;
-    const lbl = document.getElementById('router-active-label');
-    if (lbl) lbl.textContent = `${esc(d.router.active)} · ${esc(d.router.model)}`;
-    loadRouterModels().catch(() => {});
-  } catch (e) { toast(e.message, 'err'); }
+      `active: ${esc(rt.active || '—')} · model: ${esc(rt.model || '—')}`;
+    const detail = document.getElementById('ov-router-detail');
+    if (detail) detail.textContent = `${esc(rt.active || '—')} · ${esc(rt.model || '—')}`;
+  } catch (e) {}
 }
 
 async function loadOverviewStats() {
@@ -2291,41 +2269,14 @@ async function loadOverviewStats() {
   } catch (_) {}
 }
 
-/* ── router live test ─────────────────────────────────────────────────── */
-async function runRouteTest(name) {
-  const out = document.getElementById('router-test-out');
-  out.innerHTML = '<div class="log-empty">Testing…</div>';
-  try {
-    const body = name ? JSON.stringify({ name }) : '{}';
-    const d = await api('/api/route/test', { method: 'POST', body });
-    const rows = Object.entries(d.results || {}).map(([n, r]) => {
-      const ok = r.ok;
-      const lat = r.latency_ms != null ? r.latency_ms + 'ms' : '—';
-      const icon = ok ? '✅' : '❌';
-      const detail = ok ? ('model: ' + r.model) : ('error: ' + r.error);
-      return `<div class="check"><span class="pulse ${ok ? 'ok' : 'bad'}"></span><span class="nm">${esc(n)}</span><span class="msg">${icon} ${esc(lat)} · ${esc(detail)}</span></div>`;
-    }).join('');
-    out.innerHTML = rows || '<div class="log-empty">No results.</div>';
-    toast(name ? 'Tested ' + name : 'Tested all routers', 'ok');
-    loadRouterSparklines().catch(() => {});
-  } catch (e) { out.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`; }
-}
-document.getElementById('btn-test-routers').addEventListener('click', () => runRouteTest());
-document.getElementById('ov-test-routers').addEventListener('click', () => runRouteTest());
-document.getElementById('btn-apply-route').addEventListener('click', async () => {
-  toast('Applying router to Hermes + Claude…', 'ok');
-  try {
-    const d = await api('/api/route/apply', { method: 'POST', body: '{}' });
-    const results = d.results || [];
-    const allOk = results.every(r => r && r[1]);
-    toast(allOk ? 'Router applied to all targets ✓' : 'Some targets failed', allOk ? 'ok' : 'err');
-    await loadRouter();
-  } catch (e) { toast(e.message, 'err'); }
-});
-document.getElementById('btn-save-nainer').addEventListener('click', () => saveRouterConfig('nain'));
-document.getElementById('btn-save-omni').addEventListener('click', () => saveRouterConfig('omni'));
-document.getElementById('btn-test-nainer').addEventListener('click', () => testRouter('nain'));
-document.getElementById('btn-test-omni').addEventListener('click', () => testRouter('omni'));
+document.getElementById('btn-rt-nain-save').addEventListener('click', () => saveRtConfig('nain'));
+document.getElementById('btn-rt-nain-test').addEventListener('click', () => testRt('nain'));
+document.getElementById('btn-rt-nain-activate').addEventListener('click', () => activateRt('nain'));
+document.getElementById('btn-rt-omni-save').addEventListener('click', () => saveRtConfig('omni'));
+document.getElementById('btn-rt-omni-test').addEventListener('click', () => testRt('omni'));
+document.getElementById('btn-rt-omni-activate').addEventListener('click', () => activateRt('omni'));
+document.getElementById('btn-rt-local-test').addEventListener('click', () => testRt('local'));
+document.getElementById('btn-rt-local-activate').addEventListener('click', () => activateRt('local'));
 async function loadRouteTest() { /* results are cleared on panel open */ }
 
 /* ── doctor ───────────────────────────────────────────────────────────── */
@@ -3136,10 +3087,10 @@ const CMD_ITEMS = [
   { ico: '✚', name: 'Doctor — Fix All', action: 'Apply Fix', fn: () => runDoctor(true) },
   { ico: '⚡', name: 'Patches', panel: 'patches', action: 'Verify patches', fn: () => loadPatches() },
   { ico: '⚡', name: 'Patches — Apply All', action: 'Apply hacks', fn: () => { toast('Applying all hacks…', 'ok'); api('/api/patches/apply', { method:'POST', body:'{}' }).then(() => { toast('Hacks applied ✓', 'ok'); loadPatches(); }).catch(e => toast(e.message, 'err')); }},
-  { ico: '⇄', name: 'Routers', panel: 'routers', action: 'Test all routers', fn: () => { location.hash='routers'; runRouteTest(); }},
-  { ico: '⇄', name: 'Routers → nain', action: 'Set nain', fn: () => { api('/api/router/set', { method:'POST', body: JSON.stringify({name:'nain'}) }).then(() => { toast('Router → nain', 'ok'); location.hash='routers'; loadRouter(); }).catch(e => toast(e.message, 'err')); }},
-  { ico: '⇄', name: 'Routers → omni', action: 'Set omni', fn: () => { api('/api/router/set', { method:'POST', body: JSON.stringify({name:'omni'}) }).then(() => { toast('Router → omni', 'ok'); location.hash='routers'; loadRouter(); }).catch(e => toast(e.message, 'err')); }},
-  { ico: '⇄', name: 'Routers → local', action: 'Set local', fn: () => { api('/api/router/set', { method:'POST', body: JSON.stringify({name:'local'}) }).then(() => { toast('Router → local', 'ok'); location.hash='routers'; loadRouter(); }).catch(e => toast(e.message, 'err')); }},
+  { ico: '⇄', name: 'Routers', panel: 'routers', action: 'Open router panel', fn: () => { location.hash='routers'; }},
+  { ico: '⇄', name: 'Routers → nain', action: 'Set nain', fn: () => activateRt('nain').then(() => location.hash='routers') },
+  { ico: '⇄', name: 'Routers → omni', action: 'Set omni', fn: () => activateRt('omni').then(() => location.hash='routers') },
+  { ico: '⇄', name: 'Routers → local', action: 'Set local', fn: () => activateRt('local').then(() => location.hash='routers') },
   { ico: '▤', name: 'Sessions', panel: 'sessions' },
   { ico: '◷', name: 'Cron', panel: 'cron' },
   { ico: '✦', name: 'Skills', panel: 'skills' },
