@@ -632,6 +632,19 @@ def cmd_dashboard(args):
             _info(f"Opening dashboard in browser: {url}")
         except Exception:
             _info(f"Dashboard: {url}")
+    # Kill any stale process on this port
+    import subprocess as _sp
+    try:
+        if os.name == "nt":
+            out = _sp.run(["netstat", "-ano"], capture_output=True, text=True, timeout=5)
+            for line in out.stdout.splitlines():
+                if f":{port}" in line and "LISTENING" in line:
+                    pid = line.strip().split()[-1]
+                    _sp.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=5)
+                    _info(f"Killed stale process on port {port}")
+                    break
+    except Exception:
+        pass
     from core.dashboard import serve
     serve(d.get("host", "127.0.0.1"), port)
 
