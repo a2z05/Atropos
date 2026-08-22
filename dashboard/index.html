@@ -638,7 +638,6 @@
       <div class="spacer"></div>
       <button class="btn tb-chip" id="btn-share-top" title="Share on LAN"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4"/></svg><span>Share</span></button>
       <button class="btn tb-chip" id="btn-focus" title="Focus mode — only the active panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg><span>Focus</span></button>
-      <button class="btn tb-chip" id="btn-token" title="Dashboard token"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span id="btn-token-label">Token</span></button>
       <button class="btn tb-chip" id="btn-chat-top" title="Open Atropos Chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button>
       <span id="version" class="version-chip">v—</span>
     </div>
@@ -2026,10 +2025,9 @@ function loadCmdStatus() {
 
 /* ── fetch helper ─────────────────────────────────────────────────────── */
 async function api(path, opts) {
-  const headers = { 'X-Atropos-Token': getToken() };
+  const headers = {};
   if (opts && opts.body) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, Object.assign({}, opts, { headers }));
-  if (res.status === 401) { toast('Unauthorized — check your token', 'err'); throw new Error('unauthorized'); }
   const data = await res.json().catch(() => ({}));
   if (!data.ok && data.error) throw new Error(data.error);
   return data;
