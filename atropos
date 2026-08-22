@@ -120,7 +120,7 @@ def cmd_status(args):
     print(f"  hermes agent: {detect.hermes_agent() or 'not found'}")
     print(f"  claude:       {detect._find_claude() or 'not found'}")
     print(f"  cloud:        {detect.detect_cloud()}")
-    print(f"  router:       {router.get().get('active', '?')} ({router.get().get('model','')})")
+    print(f"  model:        {router.get().get('model', 'not set')}")
     g = guest.status()
     print(f"  guest:        {'enabled' if g['enabled'] else 'disabled'}" +
           (f" (persona loaded)" if g['persona_loaded'] else ""))
