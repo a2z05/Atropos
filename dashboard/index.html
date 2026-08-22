@@ -1761,8 +1761,10 @@ function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function getPw() { return localStorage.getItem(PW_KEY) || ''; }
 function setPw(p) { localStorage.setItem(PW_KEY, p); }
 const tokenInput = document.getElementById('token');
-tokenInput.value = getToken();
-tokenInput.addEventListener('input', () => setToken(tokenInput.value.trim()));
+if (tokenInput) {
+  tokenInput.value = getToken();
+  tokenInput.addEventListener('input', () => setToken(tokenInput.value.trim()));
+}
 
 /* ── password gate ─────────────────────────────────────────────────────── */
 async function checkAuthGate() {
