@@ -1530,7 +1530,7 @@
     <span class="s-sep"></span>
     <span class="s-item">up <span class="s-val" id="strip-uptime">—</span></span>
     <span class="s-sep"></span>
-    <span class="s-item">router <span class="s-val" id="strip-router">—</span></span>
+    <span class="s-item">model <span class="s-val" id="strip-router">—</span></span>
     <span class="s-sep"></span>
     <span class="s-item">model <span class="s-val" id="strip-model">—</span></span>
     <span class="s-sep"></span>
@@ -1699,7 +1699,7 @@ const SUBTITLES = {
   overview: 'the loom at a glance',
   doctor: 'seven checks, one command',
   patches: 'self-healing, re-arms on update',
-  routers: 'nain · omni · local failover',
+  routers: 'configure your AI provider',
   sessions: 'every thread, searchable',
   cron: 'scheduled runs, read-only',
   skills: 'shared skills, marketplace',
@@ -2196,7 +2196,7 @@ async function loadStatus() {
     const hrs = Math.floor(up / 3600);
     const mins = Math.floor((up % 3600) / 60);
     document.getElementById('strip-uptime').textContent = hrs ? hrs + 'h ' + mins + 'm' : mins + 'm';
-    document.getElementById('strip-router').textContent = (d.router && d.router.active) || '—';
+    document.getElementById('strip-router').textContent = (d.router && d.router.model) || '—';
     document.getElementById('strip-model').textContent = (d.router && d.router.model) || '—';
   } catch (_) {}
 }
@@ -2229,7 +2229,7 @@ async function loadOverviewStats() {
       { n: an.sessions || '—', l: 'sessions', c: 'violet' },
       { n: an.messages || '—', l: 'messages', c: 'cyan' },
       { n: (d.router && d.router.model) || '—', l: 'model', c: 'green' },
-      { n: (d.router && d.router.active) || '—', l: 'router', c: 'indigo' },
+      { n: (d.router && d.router.model) || '—', l: 'model', c: 'green' },
     ];
     box.innerHTML = stats.map(s => `<div class="stat-tile ${s.c}"><div class="n">${esc(s.n)}</div><div class="l">${esc(s.l)}</div></div>`).join('');
   } catch (_) {}
