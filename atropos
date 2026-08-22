@@ -614,10 +614,11 @@ def cmd_dashboard(args):
     cfg = config.load()
     d = cfg.get("dashboard", {})
     port = args.port or int(d.get("port", 8787))
-    url = f"http://{lan.lan_ip()}:{port}/"
+    url = f"http://127.0.0.1:{port}/"
     if args.share:
+        share_url = f"http://{lan.lan_ip()}:{port}/"
         print(f"  {_C_BOLD}Atropos dashboard — share{_C_RESET}")
-        print(f"  {_C_CYAN}URL:{_C_RESET}        {url}")
+        print(f"  {_C_CYAN}URL:{_C_RESET}        {share_url}")
         if not args.quiet:
             print()
             for ln in qr.qr_ascii(url.split("//")[1] + "  " + _MOIRAI_TAGLINE):
@@ -1779,7 +1780,7 @@ def _dispatch_default(ap):
             port = int(os.environ.get("PORT", d.get("port", 8787)))
         else:
             port = int(d.get("port", 8787))
-        url = f"http://{lan.lan_ip()}:{port}/"
+        url = f"http://127.0.0.1:{port}/"
         try:
             import subprocess as _sp
             _sp.Popen(
