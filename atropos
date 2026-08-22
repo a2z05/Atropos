@@ -621,7 +621,7 @@ def cmd_dashboard(args):
         print(f"  {_C_CYAN}URL:{_C_RESET}        {share_url}")
         if not args.quiet:
             print()
-            for ln in qr.qr_ascii(url.split("//")[1] + "  " + _MOIRAI_TAGLINE):
+            for ln in qr.qr_ascii(share_url.split("//")[1] + "  " + _MOIRAI_TAGLINE):
                 print("  " + ln)
         print()
     # Auto-open browser

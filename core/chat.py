@@ -467,7 +467,20 @@ def send_llm(messages, router_name=None) -> dict:
     rinfo = router.ROUTERS[router_name]
     endpoint = _endpoint(router_name)
     api_key_env = rinfo["api_key_env"]
-    api_key = os.environ.get(api_key_env, "")
+    # Check settings-stored keys first, then env vars
+    api_key = ""
+    try:
+        from . import settings as _st
+        if router_name == "nain":
+            api_key = _st.get("router.ninerouter_key") or ""
+        elif router_name == "omni":
+            api_key = _st.get("router.openai_key") or ""
+        if not api_key:
+            api_key = _st.get("router.api_key") or ""
+    except Exception:
+        pass
+    if not api_key:
+        api_key = os.environ.get(api_key_env, "")
     headers = {"Content-Type": "application/json"}
     if api_key and api_key_env != "OLLAMA_HOST":
         headers["Authorization"] = f"Bearer {api_key}"
