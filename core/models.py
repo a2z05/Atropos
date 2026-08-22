@@ -270,6 +270,41 @@ def active(harness: str) -> dict | None:
     }
 
 
+def toggle(name: str) -> dict:
+    """Toggle enable/disable for a model entry."""
+    if not valid_name(name):
+        raise ValueError(f"invalid model name: {name!r}")
+    data = _load()
+    e = _entry(data["entries"], name)
+    if e is None:
+        raise FileNotFoundError(f"model not found: {name}")
+    e["enabled"] = not e.get("enabled", True)
+    _save(data)
+    return {"ok": True, "name": name, "enabled": e["enabled"]}
+
+
+def list_providers() -> list:
+    """Known providers from router.ROUTERS."""
+    out = []
+    for pname, info in router.ROUTERS.items():
+        out.append({
+            "name": pname,
+            "description": info.get("description", ""),
+            "base_url": info.get("base_url", ""),
+            "api_key_env": info.get("api_key_env", ""),
+            "model": info.get("model", ""),
+            "model_kinds": info.get("model_kinds", ["chat"]),
+        })
+    return out
+
+
+def test_provider(name: str) -> dict:
+    """Ping a provider's /v1/models endpoint."""
+    res = router.discover_models(name, timeout=10)
+    return {"ok": res.get("ok", False), "models": res.get("models", []),
+            "count": res.get("count", 0), "error": res.get("error")}
+
+
 if __name__ == "__main__":
     for h in HARNESSES:
         resolved = active(h)

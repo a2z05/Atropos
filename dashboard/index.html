@@ -741,10 +741,26 @@
 
     <section class="panel" id="panel-routers">
       <div class="grid">
-        <!-- Provider config -->
+        <!-- Provider chips -->
         <section class="card span-12">
-          <h3><span class="dot"></span>Provider</h3>
-          <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;"><span class="dot"></span>Providers</h3>
+            <button class="btn" id="btn-mdl-add-provider" style="font-size:12px;">+ Add Provider</button>
+          </div>
+          <div id="mdl-providers" style="display:flex;gap:8px;flex-wrap:wrap;"><div class="log-empty">Loading…</div></div>
+        </section>
+
+        <!-- Provider detail -->
+        <section class="card span-12" id="mdl-detail-card" style="display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;"><span class="dot"></span><span id="mdl-detail-name">—</span>
+              <span id="mdl-detail-status" style="font-size:11px;margin-left:8px;color:var(--muted);">—</span></h3>
+            <div class="btn-row" style="gap:6px;">
+              <button class="btn" id="btn-mdl-fetch">Fetch Models</button>
+              <button class="btn green" id="btn-mdl-save">Save</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <div style="flex:2;min-width:200px;">
               <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Base URL</label>
               <input id="mdl-provider-url" class="token-input" style="width:100%;" placeholder="https://api.openai.com/v1">
@@ -754,27 +770,29 @@
               <input id="mdl-provider-key" class="token-input" style="width:100%;" type="password" placeholder="sk-...">
             </div>
             <div style="flex:1;min-width:120px;">
-              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Model</label>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Default Model</label>
               <input id="mdl-active-model" class="token-input" style="width:100%;" placeholder="gpt-4o">
-            </div>
-            <div class="btn-row" style="gap:6px;">
-              <button class="btn green" id="btn-mdl-save">Save</button>
-              <button class="btn" id="btn-mdl-fetch">Fetch Models</button>
             </div>
           </div>
           <div id="mdl-provider-status" style="margin-top:8px;font-size:12px;color:var(--muted);">—</div>
         </section>
 
-        <!-- Models list -->
-        <section class="card span-12">
+        <!-- Models list per provider -->
+        <section class="card span-8">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
             <h3 style="margin:0;"><span class="dot"></span>Models <span class="right" id="mdl-count" style="font-size:12px;color:var(--muted);">0</span></h3>
             <div class="btn-row" style="gap:6px;">
-              <input id="mdl-add-name" class="token-input" style="width:160px;" placeholder="model name">
+              <input id="mdl-add-name" class="token-input" style="width:160px;" placeholder="model id">
               <button class="btn" id="btn-mdl-add">+ Add</button>
             </div>
           </div>
-          <div id="mdl-list" style="display:flex;flex-direction:column;gap:4px;"><div class="log-empty">No models configured. Add one above or click "Fetch Models".</div></div>
+          <div id="mdl-list" style="display:flex;flex-direction:column;gap:4px;"><div class="log-empty">Select a provider above, then fetch or add models.</div></div>
+        </section>
+
+        <!-- Harness assignments -->
+        <section class="card span-4">
+          <h3><span class="dot"></span>Harness Assignments</h3>
+          <div id="mdl-assignments" style="display:flex;flex-direction:column;gap:8px;"><div class="log-empty">Loading…</div></div>
         </section>
       </div>
     </section>
@@ -2069,82 +2087,180 @@ async function loadVersion() {
 document.getElementById('btn-reload').addEventListener('click', () => location.reload());
 document.getElementById('btn-dismiss-update').addEventListener('click', () => document.getElementById('update-banner').classList.remove('show'));
 
-/* ── models management ──────────────────────────────────────────────── */
-let _mdlModels = [];
-let _mdlCustom = JSON.parse(localStorage.getItem('atropos_custom_models') || '[]');
+/* ── models management (multi-provider) ──────────────────────────────── */
+let _mdlProviders = [];
+let _mdlSelectedProvider = '';
+let _mdlAllModels = [];
+let _mdlAssignments = {};
 
 async function loadModelsPanel() {
   try {
-    const d = await api('/api/router');
-    const rt = d.router || {};
-    let st = {};
-    try { st = (await api('/api/settings')).values || {}; } catch(e) {}
-    document.getElementById('mdl-provider-url').value = st['router.base_url'] || rt.base_url || '';
-    document.getElementById('mdl-active-model').value = rt.model || '';
-    if (st['router.api_key'] || st['router.ninerouter_key'] || st['router.openai_key'])
-      document.getElementById('mdl-provider-key').placeholder = '•••••••• (saved)';
-    await renderModelList();
+    const [universal, providers] = await Promise.all([
+      api('/api/models/universal').catch(() => ({models:[], assignments:{}, active:{}})),
+      api('/api/models/providers').catch(() => ({providers:[]})),
+    ]);
+    _mdlProviders = providers.providers || [];
+    _mdlAllModels = universal.models || [];
+    _mdlAssignments = universal.assignments || {};
+    renderProviderChips();
+    renderAssignments(universal.active || {});
+    // Auto-select first provider
+    if (_mdlProviders.length && !_mdlSelectedProvider) {
+      selectProvider(_mdlProviders[0].name);
+    } else if (_mdlSelectedProvider) {
+      selectProvider(_mdlSelectedProvider);
+    }
   } catch (e) {}
+}
+
+function renderProviderChips() {
+  const box = document.getElementById('mdl-providers');
+  if (!_mdlProviders.length) { box.innerHTML = '<div class="log-empty">No providers configured.</div>'; return; }
+  box.innerHTML = _mdlProviders.map(p => {
+    const sel = p.name === _mdlSelectedProvider;
+    return `<div class="provider-chip" onclick="selectProvider('${esc(p.name)}')" style="padding:8px 16px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:600;border:1px solid ${sel ? 'var(--primary)' : 'var(--border)'};background:${sel ? 'color-mix(in srgb, var(--primary) .12, var(--surface))' : 'var(--surface2)'};color:${sel ? 'var(--primary-l)' : 'var(--text)'};transition:var(--tr);display:flex;flex-direction:column;align-items:center;gap:2px;min-width:90px;">
+      <span>${esc(p.name)}</span>
+      <span style="font-size:10px;font-weight:400;color:var(--muted);">${esc((p.description||'').split('—')[0].trim().slice(0,20))}</span>
+    </div>`;
+  }).join('');
+}
+
+function selectProvider(name) {
+  _mdlSelectedProvider = name;
+  const p = _mdlProviders.find(x => x.name === name);
+  if (!p) return;
+  // Show detail card
+  const card = document.getElementById('mdl-detail-card');
+  card.style.display = '';
+  document.getElementById('mdl-detail-name').textContent = p.name + ' — ' + (p.description || '');
+  document.getElementById('mdl-provider-url').value = p.base_url || '';
+  document.getElementById('mdl-active-model').value = p.model || '';
+  document.getElementById('mdl-provider-key').value = '';
+  document.getElementById('mdl-provider-key').placeholder = '•••••••• (env: ' + (p.api_key_env || 'none') + ')';
+  document.getElementById('mdl-provider-status').textContent = '—';
+  document.getElementById('mdl-provider-status').style.color = 'var(--muted)';
+  renderProviderChips();
+  renderModelList();
 }
 
 async function renderModelList() {
   const listEl = document.getElementById('mdl-list');
   const countEl = document.getElementById('mdl-count');
-  const cur = document.getElementById('mdl-active-model').value;
-  // Merge API models + custom models
-  let apiModels = [];
-  try {
-    const d = await api('/api/router/models');
-    apiModels = d.models || [];
-  } catch(e) {}
-  _mdlModels = [...new Set([...apiModels, ..._mdlCustom])];
-  countEl.textContent = _mdlModels.length;
-  if (!_mdlModels.length) {
-    listEl.innerHTML = '<div class="log-empty">No models. Set provider URL + API key and click "Fetch", or add one manually.</div>';
+  // Show all registered models (from universal registry)
+  const models = _mdlAllModels;
+  countEl.textContent = models.length;
+  if (!models.length) {
+    listEl.innerHTML = '<div class="log-empty">No models registered. Click "Fetch Models" or add one manually.</div>';
     return;
   }
-  listEl.innerHTML = _mdlModels.map(m => {
-    const active = m === cur;
-    const isCustom = _mdlCustom.includes(m) && !apiModels.includes(m);
-    return `<div class="set-row" style="padding:6px 10px;background:${active ? 'color-mix(in srgb, var(--primary) .1, var(--surface))' : 'var(--surface2)'};border:1px solid ${active ? 'var(--primary)' : 'var(--border)'};border-radius:var(--radius-x);cursor:pointer;display:flex;align-items:center;gap:8px;" onclick="selectModel('${esc(m)}')">
-      <span style="flex:1;font-size:13px;font-family:var(--font-mono);">${esc(m)}</span>
-      ${active ? '<span style="color:var(--primary);font-size:11px;">● active</span>' : ''}
-      ${isCustom ? '<span style="color:var(--muted);font-size:10px;">manual</span>' : ''}
-      <button onclick="event.stopPropagation();removeCustomModel('${esc(m)}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px;" title="remove">×</button>
+  listEl.innerHTML = models.map(m => {
+    const assigned = Object.entries(_mdlAssignments).filter(([h, n]) => n === m.name);
+    const harnessBadge = assigned.map(([h]) => `<span class="tag" style="font-size:9px;padding:1px 6px;background:color-mix(in srgb, var(--primary) .15, var(--surface));color:var(--primary-l);border:1px solid var(--primary);border-radius:99px;">${esc(h)}</span>`).join(' ');
+    const enabledCls = m.enabled !== false ? '' : 'opacity:.45;';
+    return `<div class="set-row" style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-x);display:flex;align-items:center;gap:8px;${enabledCls}">
+      <span style="flex:1;font-size:13px;font-family:var(--font-mono);">${esc(m.name)}</span>
+      <span style="font-size:10px;color:var(--muted);">${esc(m.provider || '')}</span>
+      ${harnessBadge}
+      <button onclick="event.stopPropagation();mdlToggleModel('${esc(m.name)}')" style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px 6px;color:${m.enabled !== false ? 'var(--green)' : 'var(--muted)'};" title="${m.enabled !== false ? 'disable' : 'enable'}">${m.enabled !== false ? '●' : '○'}</button>
+      <button onclick="event.stopPropagation();mdlRemoveModel('${esc(m.name)}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px;" title="remove">×</button>
     </div>`;
   }).join('');
 }
 
-async function selectModel(name) {
-  document.getElementById('mdl-active-model').value = name;
+function renderAssignments(active) {
+  const box = document.getElementById('mdl-assignments');
+  const harnesses = ['hermes', 'claude', 'atropos'];
+  const labels = {hermes: 'Clotho (Hermes)', claude: 'Lachesis (Claude)', atropos: 'Atropos (self)'};
+  box.innerHTML = harnesses.map(h => {
+    const cur = _mdlAssignments[h] || '';
+    const resolved = active[h];
+    const opts = _mdlAllModels.filter(m => m.enabled !== false).map(m =>
+      `<option value="${esc(m.name)}" ${m.name === cur ? 'selected' : ''}>${esc(m.name)}${m.provider ? ' (' + esc(m.provider) + ')' : ''}</option>`
+    ).join('');
+    return `<div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:11px;color:var(--muted);font-weight:600;">${labels[h]}</label>
+      <select onchange="mdlAssign('${esc(h)}', this.value)" class="token-input" style="width:100%;font-size:12px;padding:5px 8px;">
+        <option value="">— auto —</option>
+        ${opts}
+      </select>
+      ${resolved ? `<span style="font-size:10px;color:var(--green);">→ ${esc(resolved.model || resolved.name || '')}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function mdlAssign(harness, name) {
+  if (!name) { toast('Select a model', 'err'); return; }
   try {
-    await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.model', value: name }) });
-    toast(`Model → ${name}`, 'ok');
-    await renderModelList();
+    await api('/api/models/assign', { method: 'POST', body: JSON.stringify({ harness, name }) });
+    toast(`${harness} → ${name}`, 'ok');
+    await loadModelsPanel();
   } catch (e) { toast(e.message, 'err'); }
 }
 
-async function fetchModelList() {
+async function mdlToggleModel(name) {
+  try {
+    const d = await api('/api/models/toggle', { method: 'POST', body: JSON.stringify({ name }) });
+    toast(`${name}: ${d.enabled ? 'enabled' : 'disabled'}`, 'ok');
+    await loadModelsPanel();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function mdlRemoveModel(name) {
+  if (!confirm('Remove model "' + name + '"?')) return;
+  try {
+    await api('/api/models/remove', { method: 'POST', body: JSON.stringify({ name }) });
+    toast(`${name} removed`, 'ok');
+    await loadModelsPanel();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function mdlAddModel() {
+  const input = document.getElementById('mdl-add-name');
+  const name = input.value.trim();
+  if (!name) return;
+  const provider = _mdlSelectedProvider || '';
+  try {
+    await api('/api/models/add', { method: 'POST', body: JSON.stringify({ name, provider, model: name }) });
+    input.value = '';
+    toast(`${name} added`, 'ok');
+    await loadModelsPanel();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function mdlFetchModels() {
   const statusEl = document.getElementById('mdl-provider-status');
   statusEl.textContent = 'fetching…';
   statusEl.style.color = 'var(--muted)';
+  const name = _mdlSelectedProvider;
+  if (!name) { statusEl.textContent = 'select a provider first'; statusEl.style.color = 'var(--yellow)'; return; }
   try {
-    const d = await api('/api/router/models');
-    const models = d.models || [];
-    statusEl.textContent = `✓ ${models.length} models found`;
-    statusEl.style.color = models.length ? 'var(--green)' : 'var(--yellow)';
-    await renderModelList();
+    const d = await api('/api/models/provider/test', { method: 'POST', body: JSON.stringify({ name }) });
+    statusEl.textContent = d.ok ? `✓ ${d.count || d.models.length} models found` : ('✗ ' + (d.error || 'failed'));
+    statusEl.style.color = d.ok ? 'var(--green)' : 'var(--red)';
+    // Auto-register discovered models that aren't already in the registry
+    if (d.ok && d.models) {
+      let added = 0;
+      for (const mid of d.models.slice(0, 50)) {
+        const safeName = mid.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 63);
+        if (!_mdlAllModels.find(m => m.name === safeName)) {
+          await api('/api/models/add', { method: 'POST', body: JSON.stringify({ name: safeName, provider: name, model: mid }) }).catch(() => {});
+          added++;
+        }
+      }
+      if (added) { toast(`added ${added} new model(s)`, 'ok'); await loadModelsPanel(); }
+    }
   } catch (e) {
     statusEl.textContent = '✗ ' + e.message;
     statusEl.style.color = 'var(--red)';
   }
 }
 
-async function saveProviderConfig() {
+async function mdlSaveProvider() {
   const url = document.getElementById('mdl-provider-url').value.trim();
   const key = document.getElementById('mdl-provider-key').value.trim();
   const model = document.getElementById('mdl-active-model').value.trim();
   const statusEl = document.getElementById('mdl-provider-status');
+  const name = _mdlSelectedProvider;
   try {
     if (url) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.base_url', value: url }) });
     if (key) await api('/api/settings/set', { method: 'POST', body: JSON.stringify({ key: 'router.api_key', value: key }) });
@@ -2158,23 +2274,6 @@ async function saveProviderConfig() {
   }
 }
 
-async function addModelManual() {
-  const input = document.getElementById('mdl-add-name');
-  const name = input.value.trim();
-  if (!name) return;
-  if (!_mdlCustom.includes(name)) {
-    _mdlCustom.push(name);
-    localStorage.setItem('atropos_custom_models', JSON.stringify(_mdlCustom));
-  }
-  input.value = '';
-  await selectModel(name);
-}
-
-function removeCustomModel(name) {
-  _mdlCustom = _mdlCustom.filter(m => m !== name);
-  localStorage.setItem('atropos_custom_models', JSON.stringify(_mdlCustom));
-  renderModelList();
-}
 async function loadStatus() {
   try {
     const d = await api('/api/status');
@@ -2243,10 +2342,21 @@ async function loadOverviewStats() {
   } catch (_) {}
 }
 
-document.getElementById('btn-mdl-save').addEventListener('click', saveProviderConfig);
-document.getElementById('btn-mdl-fetch').addEventListener('click', fetchModelList);
-document.getElementById('btn-mdl-add').addEventListener('click', addModelManual);
-document.getElementById('mdl-add-name').addEventListener('keydown', e => { if (e.key === 'Enter') addModelManual(); });
+document.getElementById('btn-mdl-save').addEventListener('click', mdlSaveProvider);
+document.getElementById('btn-mdl-fetch').addEventListener('click', mdlFetchModels);
+document.getElementById('btn-mdl-add').addEventListener('click', mdlAddModel);
+document.getElementById('mdl-add-name').addEventListener('keydown', e => { if (e.key === 'Enter') mdlAddModel(); });
+document.getElementById('btn-mdl-add-provider')?.addEventListener('click', async () => {
+  const name = prompt('Provider name (e.g. openai, anthropic, groq):');
+  if (!name) return;
+  const base_url = prompt('Base URL (https://api.openai.com/v1):', 'https://api.openai.com/v1') || '';
+  const api_key_env = prompt('Env var for API key (e.g. OPENAI_API_KEY):', 'OPENAI_API_KEY') || '';
+  try {
+    await api('/api/models/add', { method: 'POST', body: JSON.stringify({ name, provider: name, model: '', base_url, api_key_env }) });
+    toast(`Provider "${name}" added`, 'ok');
+    await loadModelsPanel();
+  } catch (e) { toast(e.message, 'err'); }
+});
 async function loadRouteTest() {
   const el = document.getElementById('route-test-result');
   if (el) el.innerHTML = '';
