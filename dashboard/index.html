@@ -2794,7 +2794,7 @@ function startLogStream() {
   badge.classList.remove('off');
   _logStreamActive = true;
   try {
-    const url = '/api/logs/stream?tail=' + tail + '&interval=2&token=' + encodeURIComponent(getToken());
+    const url = '/api/logs/stream?tail=' + tail + '&interval=2';
     _logSSESource = new EventSource(url);
     _logSSESource.onmessage = function(e) {
       try {
@@ -4658,11 +4658,6 @@ function toggleFocus() {
 document.getElementById('btn-share-top').addEventListener('click', openShareModal);
 document.getElementById('sb-share').addEventListener('click', openShareModal);
 document.getElementById('btn-chat-top').addEventListener('click', () => window.open('./chat.html', '_blank'));
-function openTokenModal() { document.getElementById('tk-backdrop').classList.add('open'); document.getElementById('token').focus(); }
-function closeTokenModal() { document.getElementById('tk-backdrop').classList.remove('open'); }
-document.getElementById('btn-token').addEventListener('click', openTokenModal);
-document.getElementById('btn-tk-close').addEventListener('click', closeTokenModal);
-document.getElementById('tk-backdrop').addEventListener('click', e => { if (e.target.id === 'tk-backdrop') closeTokenModal(); });
 document.getElementById('btn-share-close').addEventListener('click', closeShareModal);
 document.getElementById('share-backdrop').addEventListener('click', e => { if (e.target.id === 'share-backdrop') closeShareModal(); });
 document.getElementById('btn-share-copy').addEventListener('click', () => copyText(document.getElementById('share-url').value));
