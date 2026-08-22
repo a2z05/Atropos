@@ -172,9 +172,23 @@ def cmd_update(args):
 
     # ── 1. Check Atropos itself from GitHub ──────────────────────────────
     print(f"\n  {_C_BOLD}Checking Atropos updates...{_C_RESET}")
+    # Find the actual Atropos git repo (not the installed copy)
     atropos_repo = str(Path(__file__).resolve().parent)
+    # Check if current dir is a git repo; if not, look for the source repo
+    import subprocess as _sp
+    _git_check = _sp.run(["git", "-C", atropos_repo, "rev-parse", "--git-dir"],
+                         capture_output=True, text=True, timeout=5)
+    if _git_check.returncode != 0:
+        # Not a git repo — try common locations
+        for candidate in [
+            Path.home() / "Documents" / "atropos",
+            Path.home() / ".atropos" / "src",
+            Path(atropos_repo).parent / "atropos",
+        ]:
+            if (candidate / ".git").exists():
+                atropos_repo = str(candidate)
+                break
     try:
-        import subprocess as _sp
         # Fetch latest from origin
         _sp.run(["git", "-C", atropos_repo, "fetch", "origin", "main"],
                 capture_output=True, timeout=30)
