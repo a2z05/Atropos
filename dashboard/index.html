@@ -4685,9 +4685,9 @@ function iconForFile(name) {
 /* ── SSE live hub (all panels) ──────────────────────────────────────── */
 let _eventSource = null;
 function startLiveHub() {
-  if (_eventSource || !getToken()) return;
+  if (_eventSource) return;
   try {
-    _eventSource = new EventSource('/api/events?token=' + encodeURIComponent(getToken()));
+    _eventSource = new EventSource('/api/events');
     _eventSource.onmessage = ev => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch (_) { return; }
@@ -4711,62 +4711,42 @@ function startLiveHub() {
   if (!location.hash) location.hash = 'overview';
   checkAuthGate().catch(() => {});
   await loadVersion();
-  // theme + lang from settings + URL params
+  // theme + lang from settings (single call)
+  let _settings = null;
   try {
-    const s = await api('/api/settings').catch(() => null);
-    if (s && s.ok) {
-      applyTheme(s.theme || 'dark');
-      /* B&W default: mono wins unless the user explicitly picked a color accent.
-         Legacy stored values (indigo before the palette existed) do NOT count as a choice. */
+    _settings = await api('/api/settings').catch(() => null);
+    if (_settings && _settings.ok) {
+      applyTheme(_settings.theme || 'dark');
       const VALID_ACCENTS = ['mono','indigo','violet','blue','sky','cyan','teal','emerald','green','lime','amber','orange','coral','pink','rose','crimson','fuchsia'];
       const storedAccent = localStorage.getItem('atropos_accent');
       const picked = VALID_ACCENTS.includes(storedAccent) ? storedAccent : '';
       applyAccent(picked || 'indigo');
-      }
+      if (_settings.live !== false) startLiveHub();
+    }
   } catch (_) {}
-  /* English only — no language switching */
   document.documentElement.lang = 'en';
   document.documentElement.dir = 'ltr';
-  const _tokenField = document.getElementById('token');
-  if (_tokenField) _tokenField.placeholder = t('token_ph');
   applyStaticI18n();
   await showPanel(currentPanel());
   loadStatus().catch(() => {});
-  loadStripAnalytics().catch(() => {});
-  // self-update polling: check version every 30s
-  setInterval(() => { if (getToken()) loadVersion().catch(() => {}); }, 30000);
-  // SSE live hub (gated by dashboard.live)
-  try {
-    const s = await api('/api/settings').catch(() => null);
-    if (s && s.ok && s.live !== false) startLiveHub();
-  } catch (_) {}
-  // refresh loop: status strip every 15s, panel-specific per refresh_ms
-  let refreshMs = 10000;
-  try { const s = await api('/api/settings').catch(() => null); if (s && s.ok) refreshMs = s.refresh_ms || 10000; } catch (_) {}
+  // self-update polling: check version every 60s
+  setInterval(() => loadVersion().catch(() => {}), 60000);
+  // refresh loop: only refresh the active panel, not everything
+  let refreshMs = 30000;
+  const _panelLoaders = {
+    overview: () => { loadStatus().catch(() => {}); loadOverviewStats().catch(() => {}); },
+    routers: () => loadModelsPanel().catch(() => {}),
+    sessions: () => loadSessions().catch(() => {}),
+    logs: () => { if (!_logStreamActive) loadLogs().catch(() => {}); },
+    settings: () => loadSettings().catch(() => {}),
+    mcp: () => loadMcp().catch(() => {}),
+    memory: () => loadMemory().catch(() => {}),
+  };
   setInterval(() => {
-    if (!getToken()) return;
-    loadStatus().catch(() => {});
-    loadStripAnalytics().catch(() => {});
     const p = currentPanel();
-    if (p === 'overview') { loadRouter().catch(() => {}); loadOverviewStats().catch(() => {}); loadOverviewMoirai().catch(() => {}); }
-    if (p === 'logs' && !_logStreamActive) loadLogs().catch(() => {});
-    if (p === 'routers') loadRouterModels().catch(() => {});
-    if (p === 'effort') loadEffort().catch(() => {});
-    if (p === 'market') loadMarket().catch(() => {});
-    if (p === 'extensions') loadExtensions().catch(() => {});
-    if (p === 'mcp') loadMcp().catch(() => {});
-    if (p === 'identity') loadIdentity().catch(() => {});
-    if (p === 'configs') loadConfigs().catch(() => {});
-    if (p === 'routing') loadRouting().catch(() => {});
-    if (p === 'files') loadFiles().catch(() => {});
-    if (p === 'models') loadModels().catch(() => {});
-    if (p === 'webhooks') loadWebhooks().catch(() => {});
-    if (p === 'pairing') loadPairing().catch(() => {});
-    if (p === 'memory') loadMemory().catch(() => {});
-    if (p === 'budget') loadBudget().catch(() => {});
-    if (p === 'activity') loadActivity().catch(() => {});
-    if (p === 'announce') loadAnnounce().catch(() => {});
-    if (p === 'sync') loadSync().catch(() => {});
+    const loader = _panelLoaders[p];
+    if (loader) loader();
+  }, refreshMs);
     if (p === 'update-ai') loadUpdateAi().catch(() => {});
     if (p === 'backends') loadBackendBackups().catch(() => {});
     if (p === 'wizard') loadWizard().catch(() => {});
