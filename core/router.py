@@ -25,6 +25,14 @@ from pathlib import Path
 from . import config, detect
 
 ROUTERS = {
+    "local": {
+        "api_key_env": "OLLAMA_HOST",
+        "model": "llama3",
+        "base_url": "http://localhost:11434/v1",
+        "description": "Local Ollama",
+        "env_keys": ["OPENAI_BASE_URL"],
+        "model_kinds": ["chat", "embed"],
+    },
     "nain": {
         "api_key_env": "NINEROUTER_KEY",
         "model": "deepmo",
@@ -40,14 +48,6 @@ ROUTERS = {
         "description": "OmniRoute — multi-provider gateway (OpenRouter protocol)",
         "env_keys": ["OPENAI_BASE_URL", "OPENAI_API_KEY"],
         "model_kinds": ["chat", "tts", "image", "embed"],
-    },
-    "local": {
-        "api_key_env": "OLLAMA_HOST",
-        "model": "llama3",
-        "base_url": "http://localhost:11434/v1",
-        "description": "Local Ollama",
-        "env_keys": ["OPENAI_BASE_URL"],
-        "model_kinds": ["chat", "embed"],
     },
 }
 

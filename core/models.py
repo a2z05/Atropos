@@ -44,20 +44,6 @@ HARNESSES = ("hermes", "claude", "atropos")
 # name → {provider, model, base_url, api_key_env} — mirrors router.ROUTERS.
 DEFAULT_SEED = [
     {
-        "name": "deepmo",
-        "provider": "nain",
-        "model": "deepmo",
-        "base_url": "",
-        "api_key_env": "OPENAI_API_KEY",
-    },
-    {
-        "name": "gpt-4o",
-        "provider": "omni",
-        "model": "gpt-4o",
-        "base_url": "https://openrouter.ai/api/v1",
-        "api_key_env": "OPENAI_API_KEY",
-    },
-    {
         "name": "llama3",
         "provider": "local",
         "model": "llama3",
