@@ -3350,13 +3350,42 @@ def serve(host="127.0.0.1", port=8787):
         start_status_broadcaster()
     except Exception:
         pass
-    srv = ThreadingHTTPServer((host, port), Handler)
+    try:
+        srv = _make_server(host, port)
+    except OSError as e:
+        # Exclusive bind refused: another dashboard is already running here.
+        print(f"Atropos dashboard already running on {host}:{port} ({e})")
+        print(f"Open http://127.0.0.1:{port}/ in your browser, or stop the "
+              "other instance first.")
+        return
     print(f"Atropos dashboard on http://{host}:{port}")
     history_log("dashboard", "started")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+
+
+def _make_server(host, port):
+    """Build the ThreadingHTTPServer with an EXCLUSIVE Windows bind.
+
+    Default HTTPServer sets SO_REUSEADDR, which on Windows lets any number
+    of processes silently bind the same port — instances stack invisibly
+    until the machine grinds down. SO_EXCLUSIVEADDRUSE makes the second
+    bind fail loudly instead.
+    """
+    import socket as _socket
+
+    class _ExclusiveServer(ThreadingHTTPServer):
+        allow_reuse_address = False
+
+        def server_bind(self):
+            if os.name == "nt":
+                self.socket.setsockopt(
+                    _socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
+            super().server_bind()
+
+    return _ExclusiveServer((host, port), Handler)
 
 
 if __name__ == "__main__":
