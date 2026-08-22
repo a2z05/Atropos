@@ -1957,10 +1957,19 @@ def api_models_toggle(payload):
 
 
 def api_models_providers():
-    """GET /api/models/providers — list known providers from router.ROUTERS."""
+    """GET /api/models/providers — list providers from router.ROUTERS.
+
+    Only shows providers whose env vars are actually set (or always shows local).
+    Users can add custom providers via the dashboard.
+    """
     from . import router as _router
     providers = []
     for name, info in _router.ROUTERS.items():
+        # Always show local; for others, only if their key env var is set
+        if name != "local":
+            key_env = info.get("api_key_env", "")
+            if key_env and not os.environ.get(key_env):
+                continue
         providers.append({
             "name": name,
             "description": info.get("description", ""),
@@ -3335,8 +3344,6 @@ def serve(host="127.0.0.1", port=8787):
             port = int(os.environ.get("PORT", port))
     except Exception:
         pass
-    # Kill any stale process on the target port
-    _kill_stale_port(port)
     # kick off the periodic SSE status broadcaster (once, daemon thread)
     try:
         from .sse import start_status_broadcaster
