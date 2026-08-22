@@ -2607,12 +2607,8 @@ def api_update_ai_action(payload):
 # ── HTTP handler ─────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def _auth(self):
-        token = _auth_token()
-        given = self.headers.get("X-Atropos-Token", "")
-        if not given:
-            q = parse_qs(urlparse(self.path).query)
-            given = (q.get("token") or [""])[0]
-        return given == token
+        # Auth disabled — dashboard is bound to localhost, no token needed
+        return True
 
     def _send(self, status, body_bytes, ctype="application/json"):
         self.send_response(status)
@@ -3180,7 +3176,6 @@ def serve(host="127.0.0.1", port=8787):
         pass
     srv = ThreadingHTTPServer((host, port), Handler)
     print(f"Atropos dashboard on http://{host}:{port}")
-    print(f"Token: {_auth_token()}")
     history_log("dashboard", "started")
     try:
         srv.serve_forever()
