@@ -1937,6 +1937,52 @@ def api_models_action(payload):
     return {"ok": False, "error": f"unknown models action: {action}"}
 
 
+def api_models_toggle(payload):
+    """POST /api/models/toggle {name} — toggle enable/disable."""
+    from . import models
+    name = (payload or {}).get("name", "")
+    if not name:
+        return {"ok": False, "error": "name required"}
+    try:
+        data = models._load()
+        entry = models._entry(data["entries"], name)
+        if entry is None:
+            return {"ok": False, "error": f"model not found: {name}"}
+        entry["enabled"] = not entry.get("enabled", True)
+        models._save(data)
+        history_log("models", f"toggle {name} -> {'enabled' if entry['enabled'] else 'disabled'}")
+        return {"ok": True, "name": name, "enabled": entry["enabled"]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_models_providers():
+    """GET /api/models/providers — list known providers from router.ROUTERS."""
+    from . import router as _router
+    providers = []
+    for name, info in _router.ROUTERS.items():
+        providers.append({
+            "name": name,
+            "description": info.get("description", ""),
+            "base_url": info.get("base_url", ""),
+            "api_key_env": info.get("api_key_env", ""),
+            "model": info.get("model", ""),
+            "model_kinds": info.get("model_kinds", ["chat"]),
+        })
+    return {"ok": True, "providers": providers}
+
+
+def api_models_provider_test(payload):
+    """POST /api/models/provider/test {name} — ping a provider's /v1/models."""
+    from . import router as _router
+    name = (payload or {}).get("name", "")
+    if not name:
+        return {"ok": False, "error": "name required"}
+    res = _router.discover_models(name, timeout=10)
+    return {"ok": res.get("ok", False), "models": res.get("models", []),
+            "count": res.get("count", 0), "error": res.get("error")}
+
+
 def api_webhooks():
     """Universal webhook registry."""
     from . import webhooks
@@ -2732,6 +2778,9 @@ class Handler(BaseHTTPRequestHandler):
             "/api/agents": lambda: _api_agents_status(),
             "/api/capabilities": lambda: _api_capabilities(),
             "/api/telegram/status": lambda: _api_telegram_status(),
+            "/api/dashboard/auto-status": lambda: auto_status(),
+            "/api/models/providers": lambda: api_models_providers(),
+            "/api/models/universal": lambda: api_models_universal(),
         }
         if path == "/api/memory/search":
             return api_memory_search((q.get("q") or [""])[0])
@@ -2924,6 +2973,14 @@ class Handler(BaseHTTPRequestHandler):
             return api_middleware_action({**(payload or {}), "action": sub})
         if path == "/api/agents/run":
             return api_agents_action(payload)
+        if path == "/api/dashboard/auto-start":
+            return auto_start(int((payload or {}).get("port", 8787)))
+        if path == "/api/dashboard/auto-stop":
+            return auto_stop()
+        if path == "/api/models/toggle":
+            return api_models_toggle(payload)
+        if path == "/api/models/provider/test":
+            return api_models_provider_test(payload)
         # v19 M5: Session Engine endpoints
         if path == "/api/session_engine/config":
             return api_session_engine_config(payload)
@@ -3151,6 +3208,116 @@ class Handler(BaseHTTPRequestHandler):
         pass  # quiet
 
 
+# ── auto-start (OS-level) ─────────────────────────────────────────────────
+_TASK_NAME = "AtroposDashboard"
+
+
+def _kill_stale_port(port: int):
+    """Kill any process already listening on *port* (best-effort)."""
+    try:
+        if os.name == "nt":
+            import subprocess as _sp
+            out = _sp.run(["netstat", "-ano"], capture_output=True, text=True, timeout=5)
+            for line in out.stdout.splitlines():
+                if f":{port}" in line and "LISTENING" in line:
+                    pid = line.strip().split()[-1]
+                    _sp.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=5)
+                    break
+        else:
+            import subprocess as _sp
+            out = _sp.run(["lsof", "-ti", f":{port}"], capture_output=True, text=True, timeout=5)
+            for pid in out.stdout.strip().splitlines():
+                if pid.isdigit():
+                    _sp.run(["kill", "-9", pid], capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
+def auto_start(port: int = 8787) -> dict:
+    """Register an OS-level auto-start task for the dashboard.
+
+    Windows: Task Scheduler (at logon).  Linux/macOS: cron @reboot.
+    Returns ``{ok, message}``.
+    """
+    import sys as _sys
+    exe = _sys.executable
+    script = str(Path(__file__).resolve().parent.parent / "atropos")
+    if os.name == "nt":
+        import subprocess as _sp
+        cmd = f'"{exe}" "{script}" dashboard --port {port}'
+        # Create via schtasks (runs at logon, highest privilege)
+        xml = (
+            f'<?xml version="1.0" encoding="UTF-16"?>'
+            f'<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
+            f'<Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>'
+            f'<Principals><Principal><LogonType>InteractiveToken</LogonType>'
+            f'<RunLevel>HighestAvailable</RunLevel></Principal></Principals>'
+            f'<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>'
+            f'<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>'
+            f'<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries></Settings>'
+            f'<Actions><Exec><Command>{exe}</Command>'
+            f'<Arguments>"{script}" dashboard --port {port}</Arguments></Exec></Actions>'
+            f'</Task>'
+        )
+        xml_path = detect.atropos_home() / "_task.xml"
+        xml_path.write_text(xml, encoding="utf-16")
+        r = _sp.run(["schtasks", "/Create", "/TN", _TASK_NAME, "/XML", str(xml_path),
+                      "/F"], capture_output=True, text=True, timeout=15)
+        xml_path.unlink(missing_ok=True)
+        if r.returncode == 0:
+            return {"ok": True, "message": f"auto-start registered (Task Scheduler: {_TASK_NAME})"}
+        return {"ok": False, "error": r.stderr.strip() or "schtasks failed"}
+    else:
+        # Linux/macOS: write a cron @reboot entry
+        import subprocess as _sp
+        cron_line = f"@reboot {exe} {script} dashboard --port {port} &"
+        existing = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+        lines = [l for l in existing.stdout.splitlines() if "atropos" not in l.lower()]
+        lines.append(cron_line)
+        proc = _sp.run(["crontab", "-"], input="\n".join(lines) + "\n",
+                        capture_output=True, text=True, timeout=5)
+        if proc.returncode == 0:
+            return {"ok": True, "message": "auto-start registered (cron @reboot)"}
+        return {"ok": False, "error": proc.stderr.strip() or "crontab failed"}
+
+
+def auto_stop() -> dict:
+    """Remove the OS-level auto-start task."""
+    import sys as _sys
+    if os.name == "nt":
+        import subprocess as _sp
+        r = _sp.run(["schtasks", "/Delete", "/TN", _TASK_NAME, "/F"],
+                      capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            return {"ok": True, "message": "auto-start removed"}
+        return {"ok": False, "error": r.stderr.strip() or "not found"}
+    else:
+        import subprocess as _sp
+        existing = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+        lines = [l for l in existing.stdout.splitlines()
+                 if "atropos" not in l.lower() or "dashboard" not in l.lower()]
+        _sp.run(["crontab", "-"], input="\n".join(lines) + "\n",
+                 capture_output=True, text=True, timeout=5)
+        return {"ok": True, "message": "auto-start removed (cron)"}
+
+
+def auto_status() -> dict:
+    """Check if auto-start is registered."""
+    if os.name == "nt":
+        import subprocess as _sp
+        r = _sp.run(["schtasks", "/Query", "/TN", _TASK_NAME],
+                      capture_output=True, text=True, timeout=10)
+        return {"ok": r.returncode == 0, "registered": r.returncode == 0,
+                "message": "registered" if r.returncode == 0 else "not registered"}
+    else:
+        import subprocess as _sp
+        r = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+        has = any("atropos" in l.lower() and "dashboard" in l.lower()
+                  for l in r.stdout.splitlines())
+        return {"ok": True, "registered": has,
+                "message": "registered" if has else "not registered"}
+
+
 def serve(host="127.0.0.1", port=8787):
     # v18 B.3: on Railway, a deploy means new code — snapshot + backup first
     try:
@@ -3168,6 +3335,8 @@ def serve(host="127.0.0.1", port=8787):
             port = int(os.environ.get("PORT", port))
     except Exception:
         pass
+    # Kill any stale process on the target port
+    _kill_stale_port(port)
     # kick off the periodic SSE status broadcaster (once, daemon thread)
     try:
         from .sse import start_status_broadcaster

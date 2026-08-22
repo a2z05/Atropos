@@ -614,6 +614,23 @@ def cmd_dashboard(args):
     cfg = config.load()
     d = cfg.get("dashboard", {})
     port = args.port or int(d.get("port", 8787))
+    # Auto-start management (no server start)
+    if getattr(args, "auto_start", False):
+        from core.dashboard import auto_start
+        r = auto_start(port)
+        if r.get("ok"):
+            _ok(r["message"])
+        else:
+            _fail(r.get("error", "failed"))
+        sys.exit(0)
+    if getattr(args, "no_auto_start", False):
+        from core.dashboard import auto_stop
+        r = auto_stop()
+        if r.get("ok"):
+            _ok(r["message"])
+        else:
+            _fail(r.get("error", "failed"))
+        sys.exit(0)
     url = f"http://127.0.0.1:{port}/"
     if args.share:
         share_url = f"http://{lan.lan_ip()}:{port}/"
@@ -632,19 +649,6 @@ def cmd_dashboard(args):
             _info(f"Opening dashboard in browser: {url}")
         except Exception:
             _info(f"Dashboard: {url}")
-    # Kill any stale process on this port
-    import subprocess as _sp
-    try:
-        if os.name == "nt":
-            out = _sp.run(["netstat", "-ano"], capture_output=True, text=True, timeout=5)
-            for line in out.stdout.splitlines():
-                if f":{port}" in line and "LISTENING" in line:
-                    pid = line.strip().split()[-1]
-                    _sp.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=5)
-                    _info(f"Killed stale process on port {port}")
-                    break
-    except Exception:
-        pass
     from core.dashboard import serve
     serve(d.get("host", "127.0.0.1"), port)
 
@@ -744,6 +748,10 @@ def main():
                    help="print the scannable QR + LAN URL, start the dashboard")
     p.add_argument("--quiet", action="store_true",
                    help="suppress the ASCII banner when printing the share QR")
+    p.add_argument("--auto-start", action="store_true",
+                   help="register OS-level auto-start (runs dashboard on login)")
+    p.add_argument("--no-auto-start", action="store_true",
+                   help="remove OS-level auto-start")
     # watch
     p = sub.add_parser("watch", help="self-healing watchdog")
     p.add_argument("--daemon", action="store_true", help="run forever")
