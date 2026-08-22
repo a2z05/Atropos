@@ -592,8 +592,6 @@ def cmd_init(args):
             _fail(f"{r['name']}: {r['msg']}")
     applied, skipped, errors = patches.apply_hacks()
     _ok(f"patches applied: {len(applied)}")
-    from core.dashboard import _auth_token
-    _info(f"dashboard token: {_auth_token()}")
     _ok("init done. Next: atropos doctor && atropos dashboard")
 
 
@@ -611,6 +609,14 @@ def cmd_dashboard(args):
             for ln in qr.qr_ascii(url.split("//")[1] + "  " + _MOIRAI_TAGLINE):
                 print("  " + ln)
         print()
+    # Auto-open browser
+    if not args.share:
+        try:
+            import webbrowser
+            webbrowser.open(url)
+            _info(f"Opening dashboard in browser: {url}")
+        except Exception:
+            _info(f"Dashboard: {url}")
     from core.dashboard import serve
     serve(d.get("host", "127.0.0.1"), port)
 
