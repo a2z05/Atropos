@@ -533,7 +533,7 @@ const token = localStorage.getItem('atropos_token') || '';
          The server's legacy accent (indigo) does not override a real choice. */
       const saved = localStorage.getItem('atropos_accent');
       if (saved && valid.includes(saved)) { apply(saved); return; }
-      const res = await fetch('/api/settings', { headers: { 'X-Atropos-Token': token } });
+      const res = await fetch('/api/settings');
       if (res.ok) { const d = await res.json(); if (d && d.ok && valid.includes(String(d.accent))) apply(String(d.accent)); else apply('indigo'); }
       else apply('indigo');
     } catch (_) { apply('indigo'); }
@@ -547,10 +547,9 @@ const token = localStorage.getItem('atropos_token') || '';
   window.addEventListener('storage', (e) => { if (e.key === 'atropos_accent') apply(e.newValue); });
 })();
 async function api(path, opts) {
-  const headers = { 'X-Atropos-Token': token };
+  const headers = {};
   if (opts && opts.body) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, Object.assign({}, opts, { headers }));
-  if (res.status === 401) { location.hash = '#token'; throw new Error('unauthorized'); }
   const data = await res.json().catch(() => ({}));
   if (!data.ok && data.error) throw new Error(data.error);
   return data;
@@ -563,7 +562,7 @@ async function streamSend(sessionId, text, onDelta) {
   streamAbort = ctrl;
   const res = await fetch('/api/chat/stream', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Atropos-Token': token },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, text }),
     signal: ctrl ? ctrl.signal : undefined,
   });
@@ -1106,7 +1105,7 @@ window.addEventListener('online', () => document.getElementById('offline-tag').c
   let ok = false;
   async function ping() {
     try {
-      const res = await fetch('/api/status', { headers: { 'X-Atropos-Token': token } });
+      const res = await fetch('/api/status');
       if (!res.ok) throw 0;
       const d = await res.json();
       window.__busy = !!(d && (d.threads > 0 || d.active === true || (d.models && (d.models.processing || d.gen_running))));
