@@ -264,7 +264,16 @@ def _parse_list(lines, idx=0, indent=0):
 def _scalar(val: str):
     val = val.strip()
     if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-        return val[1:-1]
+        inner = val[1:-1]
+        if val[0] == '"':
+            # the writer emits double-quoted strings via json.dumps — its
+            # escapes must be decoded here, or every load→save cycle doubles
+            # each backslash (a Windows path grew to 1.3 GB of `\\` this way)
+            try:
+                return json.loads('"' + inner + '"')
+            except Exception:
+                return inner
+        return inner
     if val.lower() in ("true", "yes", "on"):
         return True
     if val.lower() in ("false", "no", "off"):
@@ -365,6 +374,40 @@ def config_path() -> Path:
     return detect.atropos_home() / "config.yaml"
 
 
+# A scalar larger than this is corruption (the backslash-doubling bug grew
+# hermes.home to 1.3 GB) — cap reads and let the sanity pass rewrite it.
+MAX_SCALAR_CHARS = 1_000_000
+
+
+def _sanity_check(cfg: dict):
+    """Guard against runaway values from historical escape-corruption.
+
+    Any string scalar above MAX_SCALAR_CHARS chars is replaced by its
+    DEFAULT (or dropped for unknown keys) so one bad value can't make the
+    whole config multi-gigabyte.
+    """
+    defaults = json.loads(json.dumps(DEFAULTS))
+
+    def walk(node, dflt, path):
+        if isinstance(node, dict):
+            for k, v in list(node.items()):
+                d = dflt.get(k, {}) if isinstance(dflt, dict) else {}
+                walk(v, d, path + [k])
+        elif isinstance(node, str) and len(node) > MAX_SCALAR_CHARS:
+            replacement = dflt if isinstance(dflt, str) else ""
+            node_val = None  # signal: caller replaces via parent dict
+
+    def prune(node, dflt, parent=None, key=None):
+        if isinstance(node, dict):
+            for k in list(node.keys()):
+                prune(node[k], dflt.get(k) if isinstance(dflt, dict) else None,
+                      node, k)
+        elif isinstance(node, str) and len(node) > MAX_SCALAR_CHARS:
+            parent[key] = dflt if isinstance(dflt, str) else ""
+
+    prune(cfg, defaults)
+
+
 def load() -> dict:
     cfg = json.loads(json.dumps(DEFAULTS))  # deep copy
     # env overrides
@@ -374,9 +417,22 @@ def load() -> dict:
         cfg["hermes"]["log_channel"] = ch
     p = config_path()
     if p.exists():
+        # size guard: a corrupt config once reached 1.3 GB; refuse to read
+        # more than a sane ceiling and fall back to defaults instead of
+        # pulling gigabytes into RAM on every call
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = 0
+        if size > 16 * 1024 * 1024:  # 16 MB — real configs are ~2 KB
+            print(f"[config] warning: {p} is {size:,} bytes — refusing to "
+                  "load (escape-corruption guard). Using defaults.",
+                  file=sys.stderr)
+            return cfg
         try:
             user = parse_yaml(p.read_text(encoding="utf-8"))
             _deep_merge(cfg, user)
+            _sanity_check(cfg)
         except Exception as e:
             # corrupt config: keep defaults, log to stderr
             print(f"[config] warning: failed to parse {p}: {e}", file=sys.stderr)

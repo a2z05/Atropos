@@ -1012,8 +1012,33 @@ def api_history(limit=50):
 
 
 # ── Atropos-specific ─────────────────────────────────────────────────────
+_RUNTIME_CACHE = {"data": None, "ts": 0.0}
+
+
+def _runtime_cached(ttl: float = 300.0):
+    """detect.detect() with a TTL cache.
+
+    detect() spawns two subprocesses (python -c import telegram, node
+    --version) per call — and the dashboard polls /api/status from four
+    independent timers. Uncached, that stacks interpreter launches faster
+    than they exit (AV rescans each one), growing commit charge until the
+    machine page-thrashes to a freeze with no single resource pegged.
+    Runtime facts don't change while the process lives; 5-minute refresh
+    keeps it honest after installs.
+    """
+    now = time.monotonic()
+    if _RUNTIME_CACHE["data"] is None or now - _RUNTIME_CACHE["ts"] > ttl:
+        try:
+            _RUNTIME_CACHE["data"] = detect.detect()
+            _RUNTIME_CACHE["ts"] = now
+        except Exception:
+            if _RUNTIME_CACHE["data"] is None:
+                return {}
+    return _RUNTIME_CACHE["data"]
+
+
 def api_status():
-    rt = detect.detect()
+    rt = _runtime_cached()
     pct, total, used = _disk()
     return {
         "ok": True,

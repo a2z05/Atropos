@@ -1976,21 +1976,20 @@ function cmdAction(el) {
   const mark = () => {
     nodes.forEach(n => n.classList.toggle('live', n.dataset.ent === act));
   };
-  // status poll drives the active worker
-  const tick = async () => {
-    try {
-      const d = await api('/api/status').catch(() => null);
-      if (d) {
-        const rt = d.runtime || {};
-        const active = rt.active_agent || (d.threads ? 'claude' : '');
-        act = active === 'hermes' || active === 'claude' ? active : 'atropos';
-      }
-    } catch (_) {}
-    mark();
-    setTimeout(tick, 5000);
-  };
-  tick();
+  window.__trioSetActive = (a) => { act = a; mark(); };
+  mark();
+  // No own poll loop: loadStatus (30s panel refresh + SSE-driven) calls
+  // __trioFromStatus below. A dedicated 5s /api/status poll here stacked
+  // subprocess-heavy detect() calls faster than the server could answer.
 })();
+function __trioFromStatus(d) {
+  try {
+    const rt = d && d.runtime || {};
+    const active = rt.active_agent || (d && d.threads ? 'claude' : '');
+    const a = active === 'hermes' || active === 'claude' ? active : 'atropos';
+    if (window.__trioSetActive) window.__trioSetActive(a);
+  } catch (_) {}
+}
 document.querySelectorAll('.cmd-actions [data-go]').forEach(btn => {
   btn.addEventListener('click', () => cmdAction(btn));
 });
@@ -2305,6 +2304,7 @@ async function loadStatus() {
     document.getElementById('strip-uptime').textContent = hrs ? hrs + 'h ' + mins + 'm' : mins + 'm';
     document.getElementById('strip-router').textContent = (d.router && d.router.model) || '—';
     document.getElementById('strip-model').textContent = (d.router && d.router.model) || '—';
+    if (window.__trioFromStatus) window.__trioFromStatus(d);
   } catch (_) {}
 }
 async function loadStripAnalytics() {
@@ -2328,14 +2328,12 @@ async function loadRouter() {
 
 async function loadOverviewStats() {
   try {
-    const d = await api('/api/status');
-    const an = await api('/api/analytics').catch(() => ({}));
+    const [d, an] = await Promise.all([api('/api/status'), api('/api/analytics').catch(() => ({}))]);
     const box = document.getElementById('ov-stats');
     const stats = [
       { n: d.disk && d.disk.pct != null ? d.disk.pct + '%' : '—', l: 'disk used', c: d.disk && d.disk.pct >= 85 ? 'yellow' : 'indigo' },
       { n: an.sessions || '—', l: 'sessions', c: 'violet' },
       { n: an.messages || '—', l: 'messages', c: 'cyan' },
-      { n: (d.router && d.router.model) || '—', l: 'model', c: 'green' },
       { n: (d.router && d.router.model) || '—', l: 'model', c: 'green' },
     ];
     box.innerHTML = stats.map(s => `<div class="stat-tile ${s.c}"><div class="n">${esc(s.n)}</div><div class="l">${esc(s.l)}</div></div>`).join('');
