@@ -341,19 +341,28 @@ def cmd_install(args):
             os.symlink(str(self_path), str(target))
             mode = "symlinked"
         except (OSError, NotImplementedError):
-            # copy the whole runtime next to the script so the copy is
-            # self-contained (core/, VERSION, templates/, hacks/, patches/,
-            # dashboard/ are all resolved relative to the script)
-            for sub in ("core", "templates", "hacks", "patches", "dashboard"):
-                src = self_path.resolve().parent / sub
-                if src.is_dir():
-                    shutil.copytree(src, bin_dir / sub, dirs_exist_ok=True)
-            for f in ("VERSION", "icon.png"):
-                sf = self_path.resolve().parent / f
-                if sf.exists():
-                    shutil.copy2(str(sf), bin_dir / f)
-            shutil.copy2(str(self_path), str(target))
-            mode = "copied"
+            if os.name == "nt":
+                # Windows: never copy the tree — copies go stale and shadow
+                # the live repo (the .bat resolves to a frozen snapshot).
+                # Write a thin launcher that execs THIS repo's script.
+                bat = bin_dir / "atropos.bat"
+                bat.write_text(
+                    '@echo off\r\n'
+                    f'python "{self_path}" %*\r\n', encoding="ascii")
+                mode = "launcher (.bat → live repo)"
+            else:
+                # POSIX without symlink support: copy the runtime
+                for sub in ("core", "templates", "hacks", "patches", "dashboard"):
+                    src = self_path.resolve().parent / sub
+                    if src.is_dir():
+                        shutil.copytree(src, bin_dir / sub, dirs_exist_ok=True)
+                for f in ("VERSION", "icon.png"):
+                    sf = self_path.resolve().parent / f
+                    if sf.exists():
+                        shutil.copy2(str(sf), bin_dir / f)
+                shutil.copy2(str(self_path), str(target))
+                mode = "copied"
+                _warn("symlink unavailable — copied runtime (re-run `atropos install` after updates)")
         if os.name != "nt":
             os.chmod(str(target), 0o755)
         _ok(f"atropos {mode} to {target}")
