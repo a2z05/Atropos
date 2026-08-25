@@ -44,7 +44,7 @@ from . import detect, settings
 # ── constants ──────────────────────────────────────────────────────────────
 SENSITIVE_NAMES = {
     "secrets.json", ".env", "state.db", "auth_token",
-    ".gh_backup_token", "auth.json",
+    ".gh_backup_token", "auth.json", "dashboard_auth.json",
 }
 # Patterns applied to relative paths (case-insensitive).
 SENSITIVE_PATTERNS = [

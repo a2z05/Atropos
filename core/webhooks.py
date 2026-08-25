@@ -195,7 +195,9 @@ def _post(url: str, payload: dict, secret: str = "") -> tuple:
             err.close()  # release the response body file
         except Exception:
             code, reason = getattr(err, "code", None), getattr(err, "reason", None)
-        return code < 500, code, f"HTTP {code}: {reason}"
+        # only 2xx counts as delivered; 4xx is a permanent failure (no
+        # retry) but must not be reported as success
+        return 200 <= code < 300, code, f"HTTP {code}: {reason}"
     except urllib.error.URLError as err:
         return False, None, str(err.reason or err)
     except Exception as exc:
@@ -283,10 +285,13 @@ def trigger(event: str, payload: dict | None = None) -> dict:
 
 
 def _deliver_with_retry(url: str, body: dict, secret: str = "") -> tuple:
-    """POST with exponential-backoff retry (area 37). Returns (ok, status, err)."""
+    """POST with exponential-backoff retry (area 37). Returns (ok, status, err).
+
+    Retries transient failures only (5xx / network); a 4xx is permanent
+    and fails immediately."""
     ok, status, err = _post(url, body, secret)
     attempt = 0
-    while not ok and status != 4 and attempt < MAX_RETRIES:
+    while not ok and (status is None or status >= 500) and attempt < MAX_RETRIES:
         # retry transient failures (5xx, network) with 2^n + jitter
         attempt += 1
         time.sleep(min(BACKOFF_BASE ** attempt, 8.0) + random.uniform(0, 0.5))

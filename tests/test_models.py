@@ -41,11 +41,11 @@ class SeedTests(ModelsBase):
     def test_default_seed(self):
         entries = models.list_models()
         names = [e["name"] for e in entries]
-        self.assertEqual(names, ["deepmo", "gpt-4o", "llama3"])
+        self.assertEqual(names, ["llama3"])
         by_name = {e["name"]: e for e in entries}
-        self.assertEqual(by_name["deepmo"]["provider"], "nain")
-        self.assertEqual(by_name["deepmo"]["model"], "deepmo")
-        self.assertEqual(by_name["gpt-4o"]["base_url"], "https://openrouter.ai/api/v1")
+        self.assertEqual(by_name["llama3"]["provider"], "local")
+        self.assertEqual(by_name["llama3"]["model"], "llama3")
+        self.assertEqual(by_name["llama3"]["base_url"], "http://localhost:11434/v1")
         self.assertEqual(by_name["llama3"]["api_key_env"], "OLLAMA_HOST")
         # seed entries are enabled and shared by default
         for e in entries:
@@ -56,12 +56,12 @@ class SeedTests(ModelsBase):
         # read-only access never creates the file; the first write persists
         # the seed so it is not lost on the next read
         self.assertFalse((self.home / "models.json").exists())
-        models.assign("hermes", "deepmo")
+        models.assign("hermes", "llama3")
         p = self.home / "models.json"
         self.assertTrue(p.exists())
         data = json.loads(p.read_text(encoding="utf-8"))
         self.assertEqual([e["name"] for e in data["entries"]],
-                         ["deepmo", "gpt-4o", "llama3"])
+                         ["llama3"])
 
 
 class RegistryTests(ModelsBase):
@@ -83,8 +83,9 @@ class RegistryTests(ModelsBase):
         self.assertEqual(e["api_key_env"], "ACME_KEY")
 
     def test_add_duplicate_raises(self):
+        models.add("mixtral", provider="local", model="mixtral-8x7b")
         with self.assertRaises(ValueError):
-            models.add("deepmo")
+            models.add("mixtral")
 
     def test_add_invalid_name(self):
         with self.assertRaises(ValueError):
@@ -93,12 +94,17 @@ class RegistryTests(ModelsBase):
             models.add("bad/name")
 
     def test_enable_disable(self):
-        models.disable("deepmo")
+        models.add("mixtral", provider="local", model="mixtral-8x7b")
+        models.disable("llama3")
         self.assertFalse(self.store()["entries"][0]["enabled"])
-        models.enable("deepmo")
+        models.enable("llama3")
         self.assertTrue(self.store()["entries"][0]["enabled"])
+        models.disable("mixtral")
+        self.assertFalse(self.store()["entries"][-1]["enabled"])
 
     def test_remove_clears_assignments(self):
+        models.add("gpt-4o", provider="openai", model="gpt-4o",
+                   base_url="https://api.openai.com/v1", api_key_env="OPENAI_API_KEY")
         models.assign("hermes", "gpt-4o")
         models.remove("gpt-4o")
         self.assertEqual(models.assignments(), {})
@@ -112,34 +118,37 @@ class RegistryTests(ModelsBase):
 
 class AssignmentTests(ModelsBase):
     def test_assign_and_active(self):
+        models.add("gpt-4o", provider="openai", model="gpt-4o",
+                   base_url="https://api.openai.com/v1", api_key_env="OPENAI_API_KEY")
         models.assign("hermes", "gpt-4o")
         self.assertEqual(models.assignments(), {"hermes": "gpt-4o"})
         a = models.active("hermes")
         self.assertEqual(a["name"], "gpt-4o")
         self.assertEqual(a["model"], "gpt-4o")
-        self.assertEqual(a["base_url"], "https://openrouter.ai/api/v1")
+        self.assertEqual(a["base_url"], "https://api.openai.com/v1")
         self.assertEqual(a["api_key_env"], "OPENAI_API_KEY")
 
     def test_active_fallback_to_first_enabled(self):
-        # no assignment → first enabled entry (deepmo)
+        # no assignment → first enabled entry (llama3)
         a = models.active("hermes")
-        self.assertEqual(a["name"], "deepmo")
-        self.assertEqual(a["model"], "deepmo")
-        self.assertEqual(a["api_key_env"], "OPENAI_API_KEY")
+        self.assertEqual(a["name"], "llama3")
+        self.assertEqual(a["model"], "llama3")
+        self.assertEqual(a["api_key_env"], "OLLAMA_HOST")
 
     def test_active_skips_disabled_assignment(self):
-        models.assign("hermes", "gpt-4o")
-        models.disable("gpt-4o")
+        models.add("mixtral", provider="local", model="mixtral-8x7b")
+        models.assign("hermes", "mixtral")
+        models.disable("mixtral")
         a = models.active("hermes")
-        self.assertNotEqual(a["name"], "gpt-4o")  # falls back
-        self.assertEqual(a["name"], "deepmo")
+        self.assertNotEqual(a["name"], "mixtral")  # falls back
+        self.assertEqual(a["name"], "llama3")
 
     def test_active_unknown_harness(self):
         self.assertIsNone(models.active("openai"))
 
     def test_assign_validation(self):
         with self.assertRaises(ValueError):
-            models.assign("openai", "deepmo")
+            models.assign("openai", "llama3")
         with self.assertRaises(FileNotFoundError):
             models.assign("hermes", "ghost")
 

@@ -166,8 +166,9 @@ class _LiveHandler(BaseHTTPRequestHandler):
 def live_serve(port: int = 8791, token: str = "") -> ThreadingHTTPServer:
     """Start the live-sync server (blocking; run in a thread)."""
     if not token:
-        from . import dashboard
-        token = dashboard._auth_token()
+        # stable per-box machine token (survives password rotation)
+        from . import auth as _auth
+        token = _auth.machine_token()
     srv = ThreadingHTTPServer(("0.0.0.0", port), _LiveHandler)
     srv._token = token  # type: ignore
     return srv

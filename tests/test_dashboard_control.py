@@ -72,15 +72,14 @@ class PanelEndpointTests(unittest.TestCase):
         from core import detect
         cls._home = Path(__file__).resolve().parent / "tmp_dash_home"
         os.environ["ATROPOS_HOME"] = str(cls._home)
-        cls.tok = "test-token-123"
+        cls.tok = "test-session-token"
         cls._home.mkdir(parents=True, exist_ok=True)
-        (cls._home / "auth_token").write_text(cls.tok + "\n")
         cls._orig_home = detect._home
         detect._home = lambda: cls._home  # auth reads detect.atropos_home()
 
         class TestHandler(db.Handler):
             def _auth(self):
-                return self.headers.get("X-Atropos-Token") == cls.tok
+                return self.headers.get("Cookie", "") == f"atropos_session={cls.tok}"
 
         cls.httpd = db.ThreadingHTTPServer(("127.0.0.1", 0), TestHandler)
         cls.port = cls.httpd.server_address[1]
@@ -99,7 +98,7 @@ class PanelEndpointTests(unittest.TestCase):
         import urllib.request
         req = urllib.request.Request(
             f"http://127.0.0.1:{PanelEndpointTests.port}{path}",
-            headers={"X-Atropos-Token": PanelEndpointTests.tok},
+            headers={"Cookie": f"atropos_session={PanelEndpointTests.tok}"},
         )
         return urllib.request.urlopen(req, timeout=10)
 
@@ -117,7 +116,7 @@ class PanelEndpointTests(unittest.TestCase):
             self.assertEqual(d["build"], _shim_version())
             self.assertIn("beta_badge", d)
 
-    def test_auth_without_token_rejected(self):
+    def test_auth_without_session_rejected(self):
         import urllib.request
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/version", timeout=10)

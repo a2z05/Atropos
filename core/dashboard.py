@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Atropos dashboard — tiny stdlib HTTP server (http.server), no deps.
 
-Serves dashboard/index.html + /api/* JSON endpoints. Auth via token in
-~/.atropos/auth_token (X-Atropos-Token header, or ?token= for GET).
+Serves dashboard/index.html + /api/* JSON endpoints. Auth = password set
+on first open (core/auth.py): PBKDF2-hashed at ~/.atropos/dashboard_auth.json,
+login issues an HttpOnly session cookie; non-browser peers use the
+X-Atropos-Machine-Token header (auth.machine_token()).
 
 The API is a superset of the Hermes web-dashboard surface: sessions, models,
 logs, cron, skills, plugins, channels, config, analytics, files, backup,
@@ -30,17 +32,21 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 
 
 # ── auth ─────────────────────────────────────────────────────────────────
-def _auth_token() -> str:
-    p = detect.atropos_home() / "auth_token"
-    if p.exists():
-        return p.read_text().strip()
-    token = secrets.token_urlsafe(16)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(token + "\n")
-    return token
+# Password auth lives in core/auth.py: first-run setup -> PBKDF2 hash,
+# login -> HttpOnly session cookie, machine tokens for non-browser peers.
+from . import auth as _auth
+
+
+def _session_cookie_name():
+    return _auth._COOKIE_NAME
 
 
 def _body(status, data):
+    # structured errors carry their intended HTTP status inside the body;
+    # honor it here so one code path owns the wire status (and strip the
+    # private field before it leaks to clients)
+    if isinstance(data, dict) and "_status" in data:
+        status = int(data.pop("_status"))
     return json.dumps(data, ensure_ascii=False).encode(), "application/json", status
 
 
@@ -422,15 +428,43 @@ def api_backup_config_set(payload):
 
 
 # ── dashboard password gate ──────────────────────────────────────────────
-def api_auth_check(payload):
-    """Optional password gate. If dashboard.password is set in config, the
-    dashboard frontend shows a password field before accepting a token."""
-    cfg = config.load()
-    pw = (cfg.get("dashboard", {}) or {}).get("password", "")
-    if not pw:
-        return {"ok": True, "required": False}
-    given = (payload or {}).get("password", "")
-    return {"ok": given == pw, "required": True}
+def api_auth_state():
+    """GET /api/auth/state — {needs_setup, authenticated} for the gate UI."""
+    return {
+        "ok": True,
+        "needs_setup": _auth.needs_setup(),
+        "authenticated": False,  # Handler overrides below when cookie valid
+    }
+
+
+def api_auth_setup(payload):
+    """POST /api/auth/setup {password} — first-run password creation.
+
+    Only allowed before any password exists; afterwards use login."""
+    if not _auth.needs_setup():
+        return {"ok": False, "error": "password already set — log in instead"}
+    res = _auth.set_password((payload or {}).get("password", ""))
+    if not res.get("ok"):
+        return res
+    return {"ok": True, "session": _auth.create_session()}
+
+
+def api_auth_login(payload):
+    """POST /api/auth/login {password} -> session cookie value (or error)."""
+    ok, retry_after = _auth.verify_rate_limited((payload or {}).get("password", ""))
+    if not ok:
+        if retry_after is not None:
+            return {"ok": False,
+                    "error": f"too many failed attempts — retry in {retry_after:.0f}s",
+                    "retry_after": retry_after}
+        return {"ok": False, "error": "incorrect password"}
+    return {"ok": True, "session": _auth.create_session()}
+
+
+def api_auth_logout(payload, token: str = ""):
+    """POST /api/auth/logout — drop the browser's session."""
+    _auth.drop_session(token)
+    return {"ok": True}
 
 
 # ── claude doctor runner ────────────────────────────────────────────────
@@ -608,7 +642,8 @@ def api_session_engine_explain(payload):
 
 
 def api_models():
-    """Current default model + provider."""
+    """Current default model + provider (legacy shape; the /api/models
+    route serves api_models_universal — kept for internal reuse)."""
     cfg = config.load()
     r = cfg.get("router", {})
     env_model = os.environ.get("DEFAULT_MODEL", "")
@@ -2686,9 +2721,39 @@ def api_update_ai_action(payload):
 
 # ── HTTP handler ─────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
+    def _cookie_token(self) -> str:
+        """The atropos_session cookie value, or ''."""
+        raw = self.headers.get("Cookie", "") or ""
+        for part in raw.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == _auth._COOKIE_NAME:
+                return v.strip()
+        return ""
+
+    def _machine_authorized(self) -> bool:
+        """X-Atropos-Machine-Token check for non-browser peers (livesync)."""
+        given = self.headers.get("X-Atropos-Machine-Token", "")
+        return bool(given) and secrets.compare_digest(given, _auth.machine_token())
+
     def _auth(self):
-        # Auth disabled — dashboard is bound to localhost, no token needed
-        return True
+        """Cookie session OR machine token. /health and the auth endpoints
+        are exempted by their call sites before reaching here."""
+        tok = self._cookie_token()
+        if tok and _auth.validate_session(tok):
+            return True
+        return self._machine_authorized()
+
+    def _send_session_cookie(self, token: str):
+        """Issue the HttpOnly session cookie after login/setup."""
+        self.send_header(
+            "Set-Cookie",
+            f"{_auth._COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; "
+            f"Max-Age={_auth._SESSION_TTL}")
+
+    def _clear_session_cookie(self):
+        self.send_header(
+            "Set-Cookie",
+            f"{_auth._COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
 
     def _send(self, status, body_bytes, ctype="application/json"):
         self.send_response(status)
@@ -2731,6 +2796,8 @@ class Handler(BaseHTTPRequestHandler):
         api = {
             "/api/status": api_status,
             "/api/version": api_version,
+            "/api/auth/state": lambda: {**api_auth_state(),
+                                        "authenticated": self._auth()},
             "/api/doctor": lambda: api_doctor(),
             "/api/patches": api_patches,
             "/api/route": lambda: api_route(),
@@ -2738,7 +2805,6 @@ class Handler(BaseHTTPRequestHandler):
             "/api/router/models": api_router_models,
             "/api/guest": api_guest,
             "/api/sessions": api_sessions,
-            "/api/models": api_models,
             "/api/cron": api_cron,
             "/api/skills": api_skills,
             "/api/skills/usage": api_autoskill_usage,
@@ -2889,8 +2955,6 @@ class Handler(BaseHTTPRequestHandler):
             return api_claude_settings(payload.get("content"))
         if path == "/api/claude/doctor":
             return api_claude_doctor()
-        if path == "/api/auth":
-            return api_auth_check(payload)
         if path == "/api/hermes-config":
             content = payload.get("content")
             if content is None:
@@ -3011,13 +3075,15 @@ class Handler(BaseHTTPRequestHandler):
             return auto_start(int((payload or {}).get("port", 8787)))
         if path == "/api/dashboard/auto-stop":
             return auto_stop()
+        # exact matches BEFORE prefix branches — /api/models/* shadowing
+        # made toggle + provider/test unreachable (review fix)
         if path == "/api/models/toggle":
             return api_models_toggle(payload)
         if path == "/api/models/provider/test":
             return api_models_provider_test(payload)
         # v19 M5: Session Engine endpoints
         if path == "/api/session_engine/config":
-            return api_session_engine_config(payload)
+            return api_session_engine_config_set(payload)
         if path == "/api/session_engine/stats":
             return api_session_engine_stats()
         if path == "/api/sessions/route":
@@ -3052,6 +3118,13 @@ class Handler(BaseHTTPRequestHandler):
             body, ctype, status = _body(200, data)
             self._send(status, body, ctype)
             return
+        if path == "/api/auth/state":
+            # pre-auth: the gate UI needs to know setup vs login
+            state = api_auth_state()
+            state["authenticated"] = self._auth()
+            body, ctype, status = _body(200, state)
+            self._send(status, body, ctype)
+            return
         if path.startswith("/api/"):
             if not self._auth():
                 self._send(401, b'{"error":"unauthorized"}')
@@ -3071,7 +3144,47 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path != "/api/auth" and not self._auth():
+        if path == "/api/auth/setup":
+            # pre-auth first-run password creation
+            payload = self._read_json()
+            data = api_auth_setup(payload)
+            body, ctype, status = _body(200 if data.get("ok") else 400, data)
+            if data.get("ok"):
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self._send_session_cookie(data.pop("session", ""))
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self._send(status, body, ctype)
+            return
+        if path == "/api/auth/login":
+            payload = self._read_json()
+            data = api_auth_login(payload)
+            body, ctype, status = _body(200 if data.get("ok") else 401, data)
+            if data.get("ok"):
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self._send_session_cookie(data.pop("session", ""))
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self._send(status, body, ctype)
+            return
+        if path == "/api/auth/logout":
+            payload = self._read_json()
+            data = api_auth_logout(payload, token=self._cookie_token())
+            body, ctype, status = _body(200, data)
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self._clear_session_cookie()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if not self._auth():
             self._send(401, b'{"error":"unauthorized"}')
             return
         if path == "/api/chat/stream":
@@ -3125,7 +3238,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Atropos-Token")
+        self.send_header("Access-Control-Allow-Headers",
+                         "Content-Type, X-Atropos-Machine-Token")
         self.end_headers()
 
     def _send_sse(self, data):

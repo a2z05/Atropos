@@ -108,9 +108,9 @@ def _ping_box(box: dict, timeout: float = DEFAULT_TIMEOUT) -> dict:
     try:
         req = urllib.request.Request(url, method="GET")
         if box.get("token"):
-            # assigned directly: Request(headers=...) would lowercase the
-            # header name via add_header's capitalize()
-            req.headers["X-Atropos-Token"] = box["token"]
+            # machine tokens authenticate non-browser peers (cookie auth
+            # is for humans); set via headers dict to keep the case
+            req.headers["X-Atropos-Machine-Token"] = box["token"]
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             latency = round((time.monotonic() - t0) * 1000)
             try:

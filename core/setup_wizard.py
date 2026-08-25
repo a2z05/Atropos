@@ -389,7 +389,7 @@ def _diff_group(group: str) -> list:
     tg = _target_for(group)
     if tg.is_dir():
         for f in sorted(tg.rglob("*")):
-            if f.name in ("secrets.json", "auth_token") or \
+            if f.name in ("secrets.json", "auth_token", "dashboard_auth.json") or \
                f.name.endswith((".env", ".pyc")) or "__pycache__" in f.parts:
                 continue
             st = f.stat()

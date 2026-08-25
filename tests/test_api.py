@@ -35,18 +35,21 @@ class ApiBase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from core import dashboard
+        from core import dashboard, auth as auth_mod
         cls._tmp = tempfile.mkdtemp(prefix="atropos_api_")
         cls._old_a = os.environ.get("ATROPOS_HOME")
         cls._old_h = os.environ.get("HERMES_HOME")
         os.environ["ATROPOS_HOME"] = cls._tmp
         os.environ["HERMES_HOME"] = str(Path(cls._tmp) / ".hermes")
+        # password auth: create a known password and mint a session cookie
+        cls._password = "test-dashboard-pw"
+        auth_mod.set_password(cls._password)
+        cls._token = auth_mod.create_session()  # sent as atropos_session cookie
         cls._port = free_port()
         cls._server_thread = threading.Thread(
             target=dashboard.serve, args=("127.0.0.1", cls._port), daemon=True)
         cls._server_thread.start()
         time.sleep(1.0)
-        cls._token = (Path(cls._tmp) / "auth_token").read_text().strip()
 
     @classmethod
     def tearDownClass(cls):
@@ -64,7 +67,7 @@ class ApiBase(unittest.TestCase):
         body = json.dumps(data).encode() if data is not None else None
         headers = {"Content-Type": "application/json"}
         token = self._token if token is None else token
-        headers["X-Atropos-Token"] = token
+        headers["Cookie"] = f"atropos_session={token}"
         req = urllib.request.Request(
             f"http://127.0.0.1:{self._port}{path}", data=body, headers=headers)
         resp = urllib.request.urlopen(req, timeout=timeout)
@@ -76,15 +79,52 @@ class ApiBase(unittest.TestCase):
 
 
 class AuthTests(ApiBase):
-    def test_unauthenticated_rejected(self):
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
-            self.request("/api/status", token="wrong-token")
-        self.assertEqual(ctx.exception.code, 401)
+    def test_wrong_session_rejected(self):
+        try:
+            self.request("/api/status", token="forged-session-token")
+            rejected = False
+        except urllib.error.HTTPError as e:
+            rejected = e.code == 401
+        self.assertTrue(rejected)
 
     def test_authenticated_ok(self):
         d = self.get("/api/status")
         self.assertTrue(d["ok"])
         self.assertIn("router", d)
+
+    def test_auth_state_endpoints(self):
+        # pre-auth state endpoint needs no cookie
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{self._port}/api/auth/state", timeout=10) as r:
+            st = json.loads(r.read().decode())
+        self.assertTrue(st["ok"])
+        self.assertFalse(st["needs_setup"])  # password exists (setUpClass)
+        self.assertFalse(st["authenticated"])
+
+    def test_login_flow_sets_cookie(self):
+        import urllib.request as _u
+        req = _u.Request(
+            f"http://127.0.0.1:{self._port}/api/auth/login",
+            data=json.dumps({"password": self._password}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        with _u.urlopen(req, timeout=10) as r:
+            self.assertEqual(r.status, 200)
+            setc = r.headers.get("Set-Cookie", "")
+        self.assertIn("atropos_session=", setc)
+        self.assertIn("HttpOnly", setc)
+
+    def test_login_rejects_bad_password(self):
+        import urllib.request as _u
+        req = _u.Request(
+            f"http://127.0.0.1:{self._port}/api/auth/login",
+            data=json.dumps({"password": "totally-wrong"}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            _u.urlopen(req, timeout=10)
+            rejected = False
+        except urllib.error.HTTPError as e:
+            rejected = e.code == 401
+        self.assertTrue(rejected)
 
 
 class SettingsApiTests(ApiBase):
@@ -257,7 +297,8 @@ class SseTests(ApiBase):
         import socket as _socket
         s = _socket.create_connection(("127.0.0.1", self._port), timeout=10)
         s.sendall(
-            f"GET /api/events?token={self._token} HTTP/1.1\r\nHost: x\r\n\r\n".encode())
+            f"GET /api/events HTTP/1.1\r\nHost: x\r\n"
+            f"Cookie: atropos_session={self._token}\r\n\r\n".encode())
         s.settimeout(20)
         try:
             first = s.recv(4096)

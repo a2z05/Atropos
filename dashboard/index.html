@@ -647,6 +647,7 @@
       <button class="btn tb-chip" id="btn-share-top" title="Share on LAN"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4"/></svg><span>Share</span></button>
       <button class="btn tb-chip" id="btn-focus" title="Focus mode — only the active panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg><span>Focus</span></button>
       <button class="btn tb-chip" id="btn-chat-top" title="Open Atropos Chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button>
+      <button class="btn tb-chip" id="btn-logout" title="Log out — clears this browser's session"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Logout</span></button>
       <span id="version" class="version-chip">v—</span>
     </div>
 
@@ -1567,22 +1568,20 @@
   <div id="auth-backdrop" class="auth-backdrop">
     <div class="auth-box">
       <div class="auth-logo">✦</div>
-      <h3>Atropos <span class="beta-badge">BETA</span> — Password required</h3>
-      <input id="auth-pw" type="password" placeholder="Enter dashboard password…" autocomplete="off">
-      <button class="btn" id="btn-auth-submit" style="width:100%;justify-content:center;">Enter</button>
-      <div class="auth-err" id="auth-err"></div>
-    </div>
-  </div>
-
-  <!-- token vault: keeps the API token out of the topbar -->
-  <div id="tk-backdrop" class="share-backdrop" style="z-index:115;">
-    <div class="share-modal">
-      <h3>🔑 Token</h3>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">This is the API token sent with every request as <code style="color:var(--primary-l)">X-Atropos-Token</code>. It also gates the chat page. Stored locally in this browser.</p>
-      <input id="token" class="token-input" type="password" placeholder="Dashboard token…" autocomplete="off" style="width:100%;margin-bottom:10px;">
-      <div class="btn-row just-end" style="margin-top:6px;">
-        <button class="btn" id="btn-tk-close">Close</button>
+      <!-- first run: create the dashboard password; later: log in -->
+      <div id="auth-setup" style="display:none;">
+        <h3>Welcome — create your password</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">First time here? Pick a password for the dashboard. It is stored salted + hashed, never in plaintext.</p>
+        <input id="setup-pw" type="password" placeholder="New password (min 4 chars)…" autocomplete="new-password">
+        <input id="setup-pw2" type="password" placeholder="Repeat password…" autocomplete="new-password" style="margin-top:8px;">
+        <button class="btn" id="btn-setup-submit" style="width:100%;justify-content:center;margin-top:10px;">Create password &amp; enter</button>
       </div>
+      <div id="auth-login">
+        <h3>Atropos <span class="beta-badge">BETA</span> — Password required</h3>
+        <input id="auth-pw" type="password" placeholder="Enter dashboard password…" autocomplete="current-password">
+        <button class="btn" id="btn-auth-submit" style="width:100%;justify-content:center;">Enter</button>
+      </div>
+      <div class="auth-err" id="auth-err"></div>
     </div>
   </div>
 
@@ -1655,7 +1654,7 @@ const I18N = {
     t_sync: 'Sync / Devices', t_update_ai: 'AI Update', t_backends: 'Backends', t_wizard: 'Wizard',
     t_filters: 'Filters', t_agents: 'Agents', t_telegram: 'Telegram',
     control_plane: 'control plane',
-    reload: 'Reload', dismiss: 'Dismiss', token_ph: 'Dashboard token…',
+    reload: 'Reload', dismiss: 'Dismiss',
     password_ph: 'Enter dashboard password…', enter: 'Enter',
     rst: 'Reload', toast_saved: 'Saved ✓',
     toast_err: 'Error', toast_installed: 'Installed ✓',
@@ -1707,8 +1706,6 @@ function applyStaticI18n() {
       n.dataset.i18nDone = '1';
     }
   });
-  const tokenInput = document.getElementById('token');
-  if (tokenInput) tokenInput.placeholder = t('token_ph');
   const authPw = document.getElementById('auth-pw');
   if (authPw) authPw.placeholder = t('password_ph');
 }
@@ -1779,57 +1776,80 @@ function applyAccent(accent) {
   document.getElementById('particles') && (document.getElementById('particles').style.display = 'none');
 }
 
-/* ── token ─────────────────────────────────────────────────────────────── */
-const TOKEN_KEY = 'atropos_dash_token';
-const PW_KEY = 'atropos_dash_pw';
-function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-function getPw() { return localStorage.getItem(PW_KEY) || ''; }
-function setPw(p) { localStorage.setItem(PW_KEY, p); }
-const tokenInput = document.getElementById('token');
-if (tokenInput) {
-  tokenInput.value = getToken();
-  tokenInput.addEventListener('input', () => setToken(tokenInput.value.trim()));
-}
+/* ── auth: password + HttpOnly session cookie ──────────────────────────── */
+/* The server issues an atropos_session cookie on login/setup; the browser
+   sends it automatically. No tokens are stored in localStorage. */
 
-/* ── password gate ─────────────────────────────────────────────────────── */
 async function checkAuthGate() {
   const backdrop = document.getElementById('auth-backdrop');
   try {
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: getPw() }),
-    });
-    const d = await res.json().catch(() => ({}));
-    if (!d.required) { backdrop.classList.remove('open'); return true; }
-    if (d.ok) { backdrop.classList.remove('open'); return true; }
-    // password configured and not yet authenticated → require gate
+    const d = await fetch('/api/auth/state').then(r => r.json()).catch(() => ({}));
+    if (d.authenticated) { backdrop.classList.remove('open'); return true; }
+    const setupEl = document.getElementById('auth-setup');
+    const loginEl = document.getElementById('auth-login');
+    const isSetup = !!d.needs_setup;
+    setupEl.style.display = isSetup ? '' : 'none';
+    loginEl.style.display = isSetup ? 'none' : '';
     backdrop.classList.add('open');
+    setTimeout(() => { (isSetup ? document.getElementById('setup-pw') : document.getElementById('auth-pw')).focus(); }, 50);
     return false;
-  } catch (_) { return true; } // if auth endpoint fails, let token path continue
+  } catch (_) { return false; } // server unreachable → keep the gate up
 }
-function submitPassword() {
+function submitLogin() {
   const pw = document.getElementById('auth-pw').value;
-  fetch('/api/auth', {
+  fetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: pw }),
-  }).then(r => r.json()).then(d => {
+  }).then(async r => {
+    const d = await r.json().catch(() => ({}));
     if (d.ok) {
-      setPw(pw);
       document.getElementById('auth-backdrop').classList.remove('open');
       document.getElementById('auth-err').textContent = '';
-      toast('Password accepted', 'ok');
+      toast('Welcome back', 'ok');
+      location.reload();  // boot the full app with the fresh session
     } else {
-      document.getElementById('auth-err').textContent = 'Incorrect password';
+      document.getElementById('auth-err').textContent =
+        d.retry_after ? d.error : 'Incorrect password';
     }
   }).catch(() => {
     document.getElementById('auth-err').textContent = 'Auth endpoint unreachable';
   });
 }
-document.getElementById('btn-auth-submit').addEventListener('click', submitPassword);
-document.getElementById('auth-pw').addEventListener('keydown', e => { if (e.key === 'Enter') submitPassword(); });
+function submitSetup() {
+  const p1 = document.getElementById('setup-pw').value;
+  const p2 = document.getElementById('setup-pw2').value;
+  const err = document.getElementById('auth-err');
+  if (p1.length < 4) { err.textContent = 'Password must be at least 4 characters'; return; }
+  if (p1 !== p2) { err.textContent = 'Passwords do not match'; return; }
+  fetch('/api/auth/setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: p1 }),
+  }).then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (d.ok) {
+      document.getElementById('auth-backdrop').classList.remove('open');
+      err.textContent = '';
+      toast('Password created — welcome', 'ok');
+      location.reload();  // boot the full app with the fresh session
+    } else {
+      err.textContent = d.error || 'Setup failed';
+    }
+  }).catch(() => {
+    err.textContent = 'Auth endpoint unreachable';
+  });
+}
+document.getElementById('btn-auth-submit').addEventListener('click', submitLogin);
+document.getElementById('auth-pw').addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });
+document.getElementById('btn-setup-submit').addEventListener('click', submitSetup);
+document.getElementById('setup-pw2').addEventListener('keydown', e => { if (e.key === 'Enter') submitSetup(); });
+
+/* logout: drop the session server-side, then reload into the gate */
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); } catch (_) {}
+  location.reload();
+});
 
 function toast(msg, type) {
   const t = document.getElementById('toast');
@@ -2051,7 +2071,12 @@ function loadCmdStatus() {
 })();
 
 /* ── fetch helper ─────────────────────────────────────────────────────── */
-async function api(path, opts) {
+async function api(path, opts, method) {
+  // legacy callers pass the method as a third arg; fold it into opts so
+  // POST-only routes aren't hit with bodiless GETs (review fix)
+  if (method && (!opts || !opts.method)) {
+    opts = Object.assign({}, opts, { method });
+  }
   const headers = {};
   if (opts && opts.body) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, Object.assign({}, opts, { headers }));
@@ -4707,7 +4732,9 @@ function startLiveHub() {
   if (_eventSource) return;
   try {
     _eventSource = new EventSource('/api/events');
-    _eventSource.onmessage = ev => {
+    // server frames carry `event: <channel>` (sse.py) — named events never
+    // fire onmessage, so route them through a shared handler too
+    const _handleHubFrame = ev => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch (_) { return; }
       if (!msg || !msg.channel) return;
@@ -4721,6 +4748,9 @@ function startLiveHub() {
         loadStatus().catch(() => {});
       }
     };
+    _eventSource.onmessage = _handleHubFrame;
+    ['console', 'status', 'chat', 'extensions', 'marketplace'].forEach(ch =>
+      _eventSource.addEventListener(ch, _handleHubFrame));
     _eventSource.onerror = () => { try { _eventSource.close(); } catch (_) {} _eventSource = null; setTimeout(startLiveHub, 5000); };
   } catch (_) { _eventSource = null; }
 }
@@ -4728,7 +4758,11 @@ function startLiveHub() {
 /* ── boot ─────────────────────────────────────────────────────────────── */
 (async function boot() {
   if (!location.hash) location.hash = 'overview';
-  checkAuthGate().catch(() => {});
+  // gate first: nothing else loads until setup/login completes.
+  // On success the cookie is set — reload once so every panel boots
+  // against an authenticated session cleanly.
+  const authed = await checkAuthGate().catch(() => false);
+  if (!authed) return;
   await loadVersion();
   // theme + lang from settings (single call)
   let _settings = null;
@@ -4770,7 +4804,7 @@ function startLiveHub() {
     if (loader) loader();
   }, refreshMs);
   // fleet refresh: 30s regardless of which panel is open
-  setInterval(() => { if (getToken() && currentPanel() === 'fleet') loadFleet().catch(() => {}); }, 30000);
+  setInterval(() => { if (currentPanel() === 'fleet') loadFleet().catch(() => {}); }, 30000);
   // PWA: register the service worker (true offline)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

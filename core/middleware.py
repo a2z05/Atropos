@@ -392,10 +392,7 @@ def run(hook: str, ctx: dict, order: list | None = None) -> dict:
     Each filter pass records a breadcrumb (benchmark area 29 adoption) so
     the decision trail is inspectable.
     """
-    try:
-        from . import errors
-    except Exception:
-        errors = None
+    from . import errors  # stdlib-only core module; the import cannot fail
     for key, fun, h in _all_filters(order):
         if h != hook:
             continue
@@ -406,8 +403,7 @@ def run(hook: str, ctx: dict, order: list | None = None) -> dict:
                     ctx = res
         except Exception as e:
             ctx.setdefault("filter_errors", []).append(f"{key}: {e}")
-            if errors:
-                errors.breadcrumb("middleware", f"{key} raised: {e}", "error")
+            errors.breadcrumb("middleware", f"{key} raised: {e}", "error")
         if ctx.get("rejected"):
             if errors:
                 errors.breadcrumb("middleware",

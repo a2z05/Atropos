@@ -348,7 +348,8 @@ def repl(dispatch) -> int:
                 pass
             continue
         if line.startswith("/session"):
-            dispatch("sessions " + line[len("/session"):].strip() or "current")
+            rest = line[len("/session"):].strip()
+            dispatch("sessions " + (rest or "current"))
             continue
         try:
             history.append(line)

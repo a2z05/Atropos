@@ -77,9 +77,8 @@ class SealedGuestSurfaceTests(unittest.TestCase):
     def setUpClass(cls):
         cls._home = Path(__file__).resolve().parent / "tmp_dash_home"
         os.environ["ATROPOS_HOME"] = str(cls._home)
-        cls.tok = "test-token-123"
+        cls.tok = "test-session-token"
         cls._home.mkdir(parents=True, exist_ok=True)
-        (cls._home / "auth_token").write_text(cls.tok + "\n")
         cls._orig_home = detect._home
         detect._home = lambda: cls._home
 
@@ -90,7 +89,7 @@ class SealedGuestSurfaceTests(unittest.TestCase):
 
         class TestHandler(db.Handler):
             def _auth(self):
-                return self.headers.get("X-Atropos-Token") == cls.tok
+                return self.headers.get("Cookie", "") == f"atropos_session={cls.tok}"
 
         cls.httpd = db.ThreadingHTTPServer(("127.0.0.1", 0), TestHandler)
         cls.port = cls.httpd.server_address[1]
@@ -107,7 +106,7 @@ class SealedGuestSurfaceTests(unittest.TestCase):
     def _get(self, path):
         req = urllib.request.Request(
             f"http://127.0.0.1:{self.port}{path}",
-            headers={"X-Atropos-Token": self.tok},
+            headers={"Cookie": f"atropos_session={self.tok}"},
         )
         return urllib.request.urlopen(req, timeout=10)
 

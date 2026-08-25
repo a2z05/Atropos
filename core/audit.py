@@ -16,7 +16,7 @@ Discovery is dynamic wherever possible:
   * Atropos ``~/.atropos`` — the canonical stores: mcp_servers.json,
     models.json, webhooks.json, links.json, fleet.json, identity/,
     configs/, memory/, skills/, backups/, config.yaml, runtime.json,
-    cron_state.json, watch.log, auth_token, alert_state.json, trash/.
+    cron_state.json, watch.log, dashboard_auth.json, alert_state.json, trash/.
 
 ``table()`` returns rows ``{resource, hermes, claude, atropos_status,
 recommendation}`` sorted by category (the universal list order, then

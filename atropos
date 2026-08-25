@@ -160,6 +160,10 @@ def _print_update_result(r):
 
 
 def cmd_update(args):
+    # --check is honored for the Atropos self-update below (report + exit);
+    # hermes/claude sections stay interactive-only.
+    check_only = getattr(args, "check", False)
+
     if args.set_auto:
         try:
             from core import settings as _st
@@ -203,10 +207,14 @@ def cmd_update(args):
             _ok(f"Atropos is up to date @ {head}")
         else:
             _warn(f"Atropos is behind by {behind} commit(s): {head} → {remote}")
+            if check_only:
+                return
             try:
                 ans = input(f"  Update Atropos now? [Y/n] ").strip().lower()
             except EOFError:
-                ans = "y"
+                # no human to confirm (scripted/headless run) — never apply
+                _info("--check skipped or non-interactive: not updating")
+                return
             if ans not in ("n", "no"):
                 _info("Pulling latest Atropos...")
                 pull = _sp.run(["git", "-C", atropos_repo, "pull", "--ff-only", "origin", "main"],
@@ -1708,12 +1716,18 @@ def cmd_repl(args):
     def dispatch(cmd):
         parts = cmd.split()
         name = parts[0]
-        sub = argparse.Namespace(**vars(args))
-        sub.cmd = name
         handler = handlers.get(name)
         if not handler:
             print(f"  unknown command: {name}")
             return
+        # sessions (and any command with positionals) needs its action/
+        # surface/args attrs — reuse _dispatch_cmd's namespace builder so
+        # slash-forms like "/session current" don't crash cmd_sessions
+        if name == "sessions":
+            _dispatch_cmd(cmd)
+            return
+        sub = argparse.Namespace(**vars(args))
+        sub.cmd = name
         # rebuild a per-command namespace with the subcommand's parsed defaults
         try:
             handler(sub)

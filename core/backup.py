@@ -24,8 +24,8 @@ from pathlib import Path
 from . import config, detect, settings
 
 # ── v18 H.2 manifest helpers ───────────────────────────────────────────────
-_SECRET_NAMES = ("auth_token", "telegram.token", "token", "secret", "key",
-                 "password", "credential", ".env")
+_SECRET_NAMES = ("auth_token", "dashboard_auth.json", "telegram.token", "token",
+                 "secret", "key", "password", "credential", ".env")
 
 
 class _MemFile:
@@ -332,7 +332,7 @@ def content_items(home) -> dict:
             r = f.relative_to(rel)
             if "__pycache__" in r.parts or f.suffix == ".pyc":
                 continue
-            if f.name in ("secrets.json", "auth_token") or "secret" in f.name.lower():
+            if f.name in ("secrets.json", "auth_token", "dashboard_auth.json") or "secret" in f.name.lower():
                 continue
             if f.name == ".env" or f.name.endswith(".env") or f.name.startswith(".env"):
                 continue

@@ -190,14 +190,27 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
+# db path -> True after schema init; keyed by path because tests (and
+# home relocation) swap ATROPOS_HOME mid-process
+_tables_ready: dict[str, bool] = {}
+
+
 def _ensure_tables():
-    """Idempotent schema init for engine tables inside the chat db."""
+    """Idempotent schema init for engine tables inside the chat db.
+
+    The DDL is CREATE IF NOT EXISTS, so one run per db path per process
+    is enough; re-running it on every call meant a fresh connection plus
+    a full executescript on each engine read/write (review fix)."""
+    key = str(chat.db_path())
+    if _tables_ready.get(key):
+        return
     conn = _conn()
     try:
         conn.executescript(_SCHEMA)
         conn.commit()
     finally:
         conn.close()
+    _tables_ready[key] = True
 
 
 _SCHEMA = """
@@ -418,11 +431,27 @@ def _session_titles(surface: str) -> list[dict]:
     cur = _current.get(surface)
     out = []
     try:
-        for s in chat.session_list(limit=200):
-            if s.get("id") == cur:
-                continue
+        sessions = [s for s in chat.session_list(limit=200)
+                    if s.get("id") != cur]
+        # one connection for every keyword lookup — a per-session
+        # _meta_keywords() call here meant 2 connects + DDL per session
+        # on the per-message classify path (review fix)
+        _ensure_tables()
+        conn = _conn()
+        try:
+            kw: dict[str, list[str]] = {}
+            for s in sessions:
+                sid = s.get("id")
+                row = conn.execute(
+                    "SELECT keywords FROM session_meta WHERE session_id = ?",
+                    (sid,)).fetchone()
+                kw[sid] = (row["keywords"].split(",")
+                           if row and row["keywords"] else [])
+        finally:
+            conn.close()
+        for s in sessions:
             out.append({"id": s.get("id"), "title": s.get("title", ""),
-                        "keywords": _meta_keywords(s.get("id"))})
+                        "keywords": kw.get(s.get("id"), [])})
     except Exception:
         pass
     return out
@@ -434,31 +463,23 @@ def _tick_topic(surface: str, sid: str, topic: str):
     now = _now()
     lab = topic.strip()[:48] or "general"
     _sessions_seen[surface] = _sessions_seen.get(surface, 0) + 1
-    if lab != "general" and lab != _threads.get(surface):
-        _threads[surface] = lab
-        conn = _conn()
-        try:
+    # one connection for the whole tick — the thread write and the
+    # message_topics insert belong to a single logical transaction
+    conn = _conn()
+    try:
+        if lab != "general" and lab != _threads.get(surface):
+            _threads[surface] = lab
             conn.execute(
                 "INSERT INTO threads (surface, session_id, label, msg_count,"
                 " created, updated) VALUES (?, ?, ?, 1, ?, ?)"
                 " ON CONFLICT(surface, session_id, label) DO UPDATE SET"
                 " msg_count = msg_count + 1, updated = excluded.updated",
                 (surface, sid, lab, now, now))
-            conn.commit()
-        finally:
-            conn.close()
-    elif lab == _threads.get(surface):
-        conn = _conn()
-        try:
+        elif lab == _threads.get(surface):
             conn.execute(
                 "UPDATE threads SET msg_count = msg_count + 1, updated = ?"
                 " WHERE surface = ? AND session_id = ? AND label = ?",
                 (now, surface, sid, lab))
-            conn.commit()
-        finally:
-            conn.close()
-    conn = _conn()
-    try:
         conn.execute("INSERT INTO message_topics (surface, session_id, ts, topic, msg)"
                      " VALUES (?, ?, ?, ?, ?)",
                      (surface, sid, now, lab, "·"))
@@ -663,11 +684,14 @@ def sessions_detailed(surface: str | None = None, limit: int = 50) -> list[dict]
     """Sessions with engine decorations: keywords, thread chips, mirror
     badges, auto-split flag."""
     _ensure_tables()
-    out = []
-    for s in chat.session_list(limit=limit):
-        sid = s.get("id", "")
-        conn = _conn()
-        try:
+    sessions = chat.session_list(limit=limit)
+    # one connection for the whole listing — a connect per session made
+    # the panel refresh pay N round-trips (review fix)
+    conn = _conn()
+    try:
+        out = []
+        for s in sessions:
+            sid = s.get("id", "")
             meta = conn.execute("SELECT keywords, topic, auto_split FROM session_meta"
                                 " WHERE session_id = ?", (sid,)).fetchone()
             trows = conn.execute("SELECT label, msg_count FROM threads WHERE session_id = ?",
@@ -675,17 +699,17 @@ def sessions_detailed(surface: str | None = None, limit: int = 50) -> list[dict]
             mrows = conn.execute("SELECT id, source_sid, target_sid, undone"
                                  " FROM mirror_links WHERE source_sid = ? OR target_sid = ?",
                                  (sid, sid)).fetchall()
-        finally:
-            conn.close()
-        entry = dict(s)
-        entry.update({
-            "keywords": (meta["keywords"].split(",") if meta and meta["keywords"] else []),
-            "topic": (meta["topic"] if meta else ""),
-            "auto_split": bool(meta and meta["auto_split"]),
-            "threads": [{"label": r["label"], "msg_count": r["msg_count"]} for r in trows],
-            "mirrors": [{"id": r["id"], "source_sid": r["source_sid"],
-                         "target_sid": r["target_sid"], "undone": bool(r["undone"])}
-                        for r in mrows],
-        })
-        out.append(entry)
+            entry = dict(s)
+            entry.update({
+                "keywords": (meta["keywords"].split(",") if meta and meta["keywords"] else []),
+                "topic": (meta["topic"] if meta else ""),
+                "auto_split": bool(meta and meta["auto_split"]),
+                "threads": [{"label": r["label"], "msg_count": r["msg_count"]} for r in trows],
+                "mirrors": [{"id": r["id"], "source_sid": r["source_sid"],
+                             "target_sid": r["target_sid"], "undone": bool(r["undone"])}
+                            for r in mrows],
+            })
+            out.append(entry)
+    finally:
+        conn.close()
     return out

@@ -56,11 +56,6 @@ def code(key: str) -> str:
     return f"{key}: {what}. {why}. fix: {fix}."
 
 
-def register(key: str, what: str, why: str, fix: str):
-    """Register a new error code at runtime (modules can extend the table)."""
-    _CODES[key] = (what, why, fix)
-
-
 def all_codes() -> dict:
     """The full code table (for docs/reference)."""
     return dict(_CODES)

@@ -24,7 +24,9 @@
 #   # Atropos config + hacks
 #   [ -f "$ATROPOS_HOME/config.yaml" ] && cp "$ATROPOS_HOME/config.yaml" "$DEST/" || true
 #   [ -d "$ATROPOS_HOME/hacks" ] && cp -r "$ATROPOS_HOME/hacks" "$DEST/" || true
-#   [ -f "$ATROPOS_HOME/auth_token" ] && cp "$ATROPOS_HOME/auth_token" "$DEST/" || true
+#   # dashboard_auth.json holds only salted hashes — still excluded from
+#   # backups by default; uncomment to copy:
+#   [ -f "$ATROPOS_HOME/dashboard_auth.json" ] && cp "$ATROPOS_HOME/dashboard_auth.json" "$DEST/" || true
 #
 #   # Hermes .env, with secret values redacted (keep keys + placeholders)
 #   if [ -f "$HERMES_HOME/.env" ]; then

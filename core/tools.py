@@ -282,7 +282,7 @@ def bridge_start(port: int = 8765) -> dict:
 
     class Handler(BaseHTTPRequestHandler):
         def _auth(self):
-            return self.headers.get("X-Atropos-Token") == token
+            return self.headers.get("X-Atropos-Machine-Token") == token
 
         def do_GET(self):
             if self.path == "/health":
@@ -322,7 +322,7 @@ def bridge_start(port: int = 8765) -> dict:
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     _BRIDGE_STATE["started"] = port
     return {"ok": True, "port": port, "token": token,
-            "wake": f"POST http://127.0.0.1:{port}/wake (X-Atropos-Token header)"}
+            "wake": f"POST http://127.0.0.1:{port}/wake (X-Atropos-Machine-Token header)"}
 
 
 if __name__ == "__main__":

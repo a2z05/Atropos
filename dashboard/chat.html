@@ -65,19 +65,6 @@
 [data-accent="rose"]   { --primary: #f43f5e; --primary-l: #fb7185; --violet: #e11d48; }
 [data-accent="crimson"]{ --primary: #dc1213; --primary-l: #f87171; --violet: #b91c1c; }
 [data-accent="fuchsia"]{ --primary: #d946ef; --primary-l: #e879f9; --violet: #c026d3; }
-[data-theme="light"] {
-  --bg0: #f2f4fb;
-  --bg1: #e9ecf8;
-  --surface: rgba(15,23,42,.055);
-  --surface-2: rgba(15,23,42,.09);
-  --border: rgba(15,23,42,.13);
-  --text: #0f172a;
-  --dim: #5b6478;
-  --primary: #4f46e5;
-  --primary-l: #6366f1;
-  --violet: #7c3aed;
-  --glow: 0 0 22px rgba(99,102,241,.16);
-}
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body {
@@ -511,9 +498,6 @@ function md(text) {
     .replace(/^[-*] (.*)$/gm, '• $1');
 }
 
-/* ── token ───────────────────────────────────────────────────────── */
-const token = localStorage.getItem('atropos_token') || '';
-
 /* ── accent sync — inherit the accent chosen in the main dashboard ── */
 (function syncAccent() {
   const valid = ['mono','indigo','violet','blue','sky','cyan','teal','emerald','green','lime','amber','orange','coral','pink','rose','crimson','fuchsia'];
@@ -939,10 +923,14 @@ addMsg = (function(orig) {
 /* voice input (graceful fallback) */
 if ('webkitSpeechRecognition' in window) {
   const rec = new webkitSpeechRecognition();
+  let _dictating = false;   // only auto-send if this session heard something
   rec.lang = 'en-US'; rec.interimResults = true;
-  document.getElementById('btn-voice').addEventListener('click', () => rec.start());
+  document.getElementById('btn-voice').addEventListener('click', () => { _dictating = true; rec.start(); });
   rec.onresult = (ev) => { let t = ''; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript; input.value = t; autoGrow(); };
-  rec.onend = () => { send(input.value); };
+  rec.onerror = () => { _dictating = false; };
+  // natural end after dictation sends the transcript; silence/error/cancel
+  // leaves any pre-existing draft untouched
+  rec.onend = () => { if (_dictating && !awaiting) { const t = input.value.trim(); if (t) send(t); } _dictating = false; };
 } else {
   document.getElementById('btn-voice').addEventListener('click', () => { toastMsg('Voice not supported here'); });
 }
@@ -967,20 +955,55 @@ msgArea.addEventListener('touchend', (e) => {
 window.addEventListener('offline', () => document.getElementById('offline-tag').classList.add('show'));
 window.addEventListener('online', () => document.getElementById('offline-tag').classList.remove('show'));
 
-/* share-link / token bootstrap */
+/* share-link / auth bootstrap */
 (async function boot() {
   const share = new URLSearchParams(location.search).get('share');
   if (share) {
     try { await openShare(share); } catch (_) {}
     return;
   }
-  if (!token) {
-    msgArea.innerHTML = '<div style="text-align:center;color:var(--dim);padding-top:40%">No dashboard token — open the dashboard once, then reload this page.</div>';
+  // cookie-session auth: ask the server whether we're in; on first run the
+  // dashboard owner may not have created a password yet
+  const st = await fetch('/api/auth/state').then(r => r.json()).catch(() => ({}));
+  if (st.needs_setup && !st.authenticated) {
+    msgArea.innerHTML = '<div style="text-align:center;color:var(--dim);padding-top:40%">First run: open the dashboard once to create your password, then reload this page.</div>';
     return;
   }
+  if (!st.authenticated) { showLoginGate(); return; }
   try { await loadSessions(); } catch (_) {}
   if (!msgArea.children.length) welcome();
 })();
+
+/* minimal login gate for the mobile chat page */
+function showLoginGate() {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;background:var(--bg0);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;';
+  box.innerHTML = `
+    <div style="width:min(360px,100%);background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;">
+      <h3 style="margin-bottom:12px;">✦ Atropos Chat</h3>
+      <input id="chat-login-pw" type="password" placeholder="Dashboard password…" autocomplete="current-password"
+             style="width:100%;min-height:44px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 13px;margin-bottom:10px;">
+      <button id="chat-login-btn" class="btn" style="width:100%;justify-content:center;">Enter</button>
+      <div id="chat-login-err" style="color:#f87171;font-size:12.5px;margin-top:10px;"></div>
+    </div>`;
+  document.body.appendChild(box);
+  const err = box.querySelector('#chat-login-err');
+  const go = async () => {
+    const pw = box.querySelector('#chat-login-pw').value;
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok) { location.reload(); return; }
+      err.textContent = d.error || 'Incorrect password';
+    } catch (_) { err.textContent = 'Auth endpoint unreachable'; }
+  };
+  box.querySelector('#chat-login-btn').addEventListener('click', go);
+  box.querySelector('#chat-login-pw').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+}
 
 
 /* ── thread trio animation — a traveler rides the thread ──────────── */
@@ -1113,7 +1136,7 @@ window.addEventListener('online', () => document.getElementById('offline-tag').c
     } catch (_) { ok = false; }
     setTimeout(ping, 4000);
   }
-  if (token) { ping(); }
+  ping();
 })();
 
 /* theme-color sync for safe-area status bar */

@@ -14,7 +14,6 @@ full-text fallback when the note store is missing (see
 Storage and search are guarded by a module lock so the dashboard and the
 watch daemon can share the store safely.
 """
-import difflib
 import json
 import re
 import sqlite3
@@ -158,6 +157,7 @@ def add(text: str, tags=None, source: str = "manual", tier: str = "working",
         notes = _load()
         dup = _dedupe(notes, note)
         if dup is not None:
+            _save(notes)  # persist the tag-merge + timestamp bump
             return dup  # merged into an existing note
         notes.append(note)
         _auto_archive(notes)

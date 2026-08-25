@@ -42,7 +42,7 @@ python3 atropos route set nain            # pick a router: nain | omni | local
 python3 atropos dashboard                 # web control plane on :8787
 ```
 
-Open `http://127.0.0.1:8787` and paste the token printed by the dashboard (stored at `~/.atropos/auth_token`).
+Open `http://127.0.0.1:8787` — the first visit asks you to create a dashboard password (stored salted + hashed at `~/.atropos/dashboard_auth.json`; never in plaintext). Log in with it from any browser, including on Railway deployments.
 
 **Requirements:** Python 3.10+ — nothing else. Zero pip dependencies.
 

@@ -154,7 +154,7 @@ SETTINGS_SCHEMA = {
     "dashboard.host": {"type": "string", "default": "127.0.0.1", "group": "dashboard",
                        "description": "Dashboard bind host"},
     "dashboard.password": {"type": "string", "default": "", "secret": True, "group": "dashboard",
-                           "description": "Optional password gate before token entry"},
+                           "description": "Legacy plaintext password — auto-migrated to the hashed store on first login; leave empty"},
     "dashboard.refresh_ms": {"type": "int", "default": 10000, "min": 1000, "group": "dashboard",
                              "description": "Frontend panel refresh interval ms"},
     "dashboard.theme": {"type": "choice", "default": "auto", "choices": THEMES, "group": "dashboard",
@@ -508,6 +508,11 @@ def _coerce(spec: dict, value):
             return bool(value)
         raise ValueError(f"expected a boolean, got {value!r}")
     if t == "choice":
+        if value is None and spec.get("default") is None:
+            # explicit None = reset to default ("use global") for optional
+            # choice overrides like session_engine.surfaces.* — matches the
+            # import_yaml None carve-out below
+            return None
         if value not in spec.get("choices", []):
             choices = ", ".join(str(c) for c in spec.get("choices", []))
             raise ValueError(f"{value!r} is not one of: {choices}")

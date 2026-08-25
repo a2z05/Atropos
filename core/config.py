@@ -388,15 +388,6 @@ def _sanity_check(cfg: dict):
     """
     defaults = json.loads(json.dumps(DEFAULTS))
 
-    def walk(node, dflt, path):
-        if isinstance(node, dict):
-            for k, v in list(node.items()):
-                d = dflt.get(k, {}) if isinstance(dflt, dict) else {}
-                walk(v, d, path + [k])
-        elif isinstance(node, str) and len(node) > MAX_SCALAR_CHARS:
-            replacement = dflt if isinstance(dflt, str) else ""
-            node_val = None  # signal: caller replaces via parent dict
-
     def prune(node, dflt, parent=None, key=None):
         if isinstance(node, dict):
             for k in list(node.keys()):

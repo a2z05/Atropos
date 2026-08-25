@@ -18,7 +18,6 @@ and commits before closing, so dashboard workers and the CLI can use
 this module concurrently.
 """
 import json
-import os
 import sqlite3
 import time
 import urllib.error
@@ -451,10 +450,11 @@ def send_llm(messages, router_name=None) -> dict:
     """POST a completion request to a router's ``/chat/completions``.
 
     ``messages`` is the OpenAI-style ``[{role, content}, ...]`` list.
-    ``router_name`` defaults to the active router. Endpoint and auth
-    mirror ``core.router.ping``: ``{base_url}/chat/completions`` with
-    ``model``, ``messages``, ``max_tokens: 256`` and a ``Bearer`` header
-    from the router's ``api_key_env`` env var (Ollama needs no key).
+    ``router_name`` defaults to the active router. Endpoint and auth are
+    delegated to ``core.router`` (``_endpoint`` / ``_headers``) so chat
+    traffic and health probes authenticate identically:
+    ``{base_url}/chat/completions`` with ``model``, ``messages``,
+    ``max_tokens: 256`` (Ollama needs no key).
 
     Returns ``{ok, reply, model, latency_ms}`` on success, or
     ``{ok: False, error, latency_ms}`` on any transport/parse failure —
@@ -466,24 +466,9 @@ def send_llm(messages, router_name=None) -> dict:
         return {"ok": False, "error": f"unknown router: {router_name}", "latency_ms": 0}
     rinfo = router.ROUTERS[router_name]
     endpoint = _endpoint(router_name)
-    api_key_env = rinfo["api_key_env"]
-    # Check settings-stored keys first, then env vars
-    api_key = ""
-    try:
-        from . import settings as _st
-        if router_name == "nain":
-            api_key = _st.get("router.ninerouter_key") or ""
-        elif router_name == "omni":
-            api_key = _st.get("router.openai_key") or ""
-        if not api_key:
-            api_key = _st.get("router.api_key") or ""
-    except Exception:
-        pass
-    if not api_key:
-        api_key = os.environ.get(api_key_env, "")
-    headers = {"Content-Type": "application/json"}
-    if api_key and api_key_env != "OLLAMA_HOST":
-        headers["Authorization"] = f"Bearer {api_key}"
+    # credentials come from router._headers so probes and traffic can
+    # never diverge (settings cascade + OLLAMA no-auth + nain fallback)
+    headers = router._headers(router_name)
     payload = json.dumps({
         "model": rinfo["model"],
         "messages": messages,

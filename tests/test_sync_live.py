@@ -180,11 +180,13 @@ class FullBackupTests(LiveBase):
 
     def test_secret_file_excluded(self):
         self._make_scope()
+        (detect.atropos_home() / "dashboard_auth.json").write_text("{}\n")
         r = backup.create()
         import tarfile
         with tarfile.open(r["path"], "r:gz") as tar:
             names = "\n".join(tar.getnames())
         self.assertNotIn("auth_token", names)
+        self.assertNotIn("dashboard_auth.json", names)
 
     def test_restore_roundtrip(self):
         self._make_scope()

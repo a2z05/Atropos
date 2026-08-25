@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from . import detect, extensions
 from .extensions import valid_name
@@ -34,7 +34,10 @@ GITHUB_API = "https://api.github.com"
 ALLOWED_HOSTS = ("raw.githubusercontent.com", "api.github.com")
 
 MAX_ITEM_BYTES = 5 * 1024 * 1024  # 5MB per fetched file
-FETCH_TIMEOUT = 25
+FETCH_TIMEOUT = 10
+# catalog description fan-in: cap the wait well under any client timeout —
+# stragglers degrade to empty descriptions instead of stalling the request
+DESC_WAIT_SECONDS = 15
 
 # Rust of extension names handled by the catalog — falls back to the
 # directory listing when the API is unreachable.
@@ -169,7 +172,10 @@ def add_source(repo: str, subdir: str = "", branch: str = "main",
         "author": (author or "").strip() or repo.split("/")[0],
         "description": f"Custom GitHub source: {repo}/{subdir}".rstrip("/"),
     })
-    return _save_custom_sources(sources)
+    res = _save_custom_sources(sources)
+    if res.get("ok", True):
+        invalidate_catalog_cache()
+    return res
 
 
 def remove_source(source_id: str) -> dict:
@@ -178,7 +184,10 @@ def remove_source(source_id: str) -> dict:
     new = [s for s in sources if s["id"] != source_id]
     if len(new) == len(sources):
         return {"ok": False, "error": "source not found"}
-    return _save_custom_sources(new)
+    res = _save_custom_sources(new)
+    if res.get("ok", True):
+        invalidate_catalog_cache()
+    return res
 
 
 # ── allowlist ─────────────────────────────────────────────────────────────
@@ -291,8 +300,52 @@ def catalog() -> dict:
 
     Returns {ok, sources: [{id, name, author, description, kind, target,
     items: [{id, name, installed, enabled}], error?}]}
+
+    Network results (dir listings + descriptions) are cached for
+    CATALOG_TTL seconds — a cold call on a slow network otherwise blocks
+    for minutes and every panel refresh re-hits GitHub.
     """
+    now = time.monotonic()
+    if _CATALOG_CACHE["data"] is not None and \
+            now - _CATALOG_CACHE["ts"] < CATALOG_TTL:
+        data = _CATALOG_CACHE["data"]
+        # install state is cheap + local — always recomputed fresh
+        fresh = _decorate_install_state(data)
+        return {**data, "sources": fresh}
+    result = _catalog_remote()
+    _CATALOG_CACHE["data"] = result
+    _CATALOG_CACHE["ts"] = now
+    return result
+
+
+CATALOG_TTL = 300  # 5 min
+_CATALOG_CACHE = {"data": None, "ts": 0.0}
+
+
+def invalidate_catalog_cache():
+    """Called when custom sources change so the next read is fresh."""
+    _CATALOG_CACHE["data"] = None
+    _CATALOG_CACHE["ts"] = 0.0
+
+
+def _decorate_install_state(data: dict) -> list:
+    """Recompute installed/enabled flags over a cached catalog skeleton."""
     installed = _installed_names()
+    out = []
+    for src in data.get("sources", []):
+        items = []
+        for it in src.get("items", []):
+            st = installed.get(("skill" if src["kind"] == "skill" else "plugin",
+                                src["target"], it["id"]))
+            items.append({**it,
+                          "installed": bool(st),
+                          "enabled": bool(st and st.get("enabled"))})
+        out.append({**src, "items": items})
+    return out
+
+
+def _catalog_remote() -> dict:
+    """Network path of catalog(): dir listings + frontmatter descriptions."""
     sources_out = []
     for src in SOURCES + _custom_sources():
         names = None
@@ -311,24 +364,27 @@ def catalog() -> dict:
         items = []
         valid_names = [n for n in names if valid_name(n)]
         # fetch descriptions concurrently (bounded) so the catalog never
-        # serializes 30+ GitHub round-trips
+        # serializes 30+ GitHub round-trips. A slow/unreachable network
+        # degrades to empty descriptions instead of a 500 (as_completed's
+        # timeout raises and killed the whole request).
         desc_map = {}
         with ThreadPoolExecutor(max_workers=6) as pool:
             futs = {pool.submit(_desc_of, n, src): n for n in valid_names}
-            for fut in as_completed(futs, timeout=30):
+            done, pending = wait(futs, timeout=DESC_WAIT_SECONDS)
+            for fut in done:
                 n = futs[fut]
                 try:
                     desc_map[n] = fut.result()
                 except Exception:
                     desc_map[n] = ""
+            for fut in pending:
+                fut.cancel()
         for n in valid_names:
-            st = installed.get(("skill" if src["kind"] == "skill" else "plugin",
-                                src["target"], n))
             items.append({
                 "id": n,
                 "name": n,
-                "installed": bool(st),
-                "enabled": bool(st and st.get("enabled")),
+                "installed": False,
+                "enabled": False,
                 "description": desc_map.get(n, ""),
             })
         sources_out.append({**src, "items": items})
@@ -372,7 +428,14 @@ def install(source_id: str, item_name: str) -> dict:
     """
     if not valid_name(item_name):
         return {"ok": False, "error": f"invalid item name: {item_name!r}"}
-    src = next((s for s in SOURCES if s["id"] == source_id), None)
+    # catalog() lists custom sources too, so installs must resolve them.
+    # valid_repo() keeps custom repos GitHub-shaped (owner/repo); all fetches
+    # still go through _fetch, which pins the host to the GitHub allowlist.
+    if source_id not in [s["id"] for s in SOURCES]:
+        cs = next((s for s in _custom_sources() if s["id"] == source_id), None)
+        if cs is None or not valid_repo(cs.get("repo", "")):
+            return {"ok": False, "error": f"unknown source: {source_id}"}
+    src = next((s for s in SOURCES + _custom_sources() if s["id"] == source_id), None)
     if src is None:
         return {"ok": False, "error": f"unknown source: {source_id}"}
     if extensions.is_enabled(item_name, src["kind"], src["target"]) or _dir_present(item_name, src):

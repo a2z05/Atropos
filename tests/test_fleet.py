@@ -91,7 +91,7 @@ class FleetPingTests(FleetBase):
         self.assertEqual(r["router"], "nain")
         self.assertIsInstance(r["latency_ms"], int)
         req = m.call_args[0][0]
-        self.assertEqual(req.get_header("X-Atropos-Token"), "tok")
+        self.assertEqual(req.get_header("X-Atropos-Machine-Token"), "tok")
         self.assertEqual(req.get_full_url(), "http://host:1/api/status")
 
     def test_ping_all(self):
